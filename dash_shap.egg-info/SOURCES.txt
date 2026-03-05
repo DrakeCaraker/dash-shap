@@ -1,3 +1,4 @@
+README.md
 pyproject.toml
 dash/__init__.py
 dash/baselines/__init__.py
@@ -17,7 +18,12 @@ dash/evaluation/__init__.py
 dash/experiments/__init__.py
 dash/experiments/synthetic.py
 dash/utils/__init__.py
+dash/utils/io.py
+dash/utils/shap_helpers.py
 dash_shap.egg-info/PKG-INFO
 dash_shap.egg-info/SOURCES.txt
 dash_shap.egg-info/dependency_links.txt
 dash_shap.egg-info/top_level.txt
+tests/test_evaluation.py
+tests/test_pipeline.py
+tests/test_synthetic.py
