@@ -1,3 +1,14 @@
+"""Baseline methods for comparison with DASH."""
+
+__all__ = [
+    "SingleBestBaseline",
+    "LargeSingleModelBaseline",
+    "NaiveAveragingBaseline",
+    "StochasticRetrainBaseline",
+    "EnsembleSHAPBaseline",
+]
+
+
 def __getattr__(name):
     if name == "SingleBestBaseline":
         from dash.baselines.single_best import SingleBestBaseline
