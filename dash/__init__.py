@@ -1,6 +1,15 @@
 """DASH: Diversified Aggregation of SHAP for Stable Feature Importance Under Feature Collinearity."""
 __version__ = "0.1.0"
 
+__all__ = [
+    "DASHPipeline",
+    "FeatureStabilityIndex",
+    "ImportanceStabilityPlot",
+    "compute_consensus",
+    "compute_diagnostics",
+]
+
+
 def __getattr__(name):
     if name == "DASHPipeline":
         from dash.core.pipeline import DASHPipeline
@@ -11,7 +20,10 @@ def __getattr__(name):
     elif name == "ImportanceStabilityPlot":
         from dash.core.diagnostics import ImportanceStabilityPlot
         return ImportanceStabilityPlot
-    elif name in ("compute_consensus", "compute_diagnostics"):
-        from dash.core import consensus
-        return getattr(consensus, name)
+    elif name == "compute_consensus":
+        from dash.core.consensus import compute_consensus
+        return compute_consensus
+    elif name == "compute_diagnostics":
+        from dash.core.diagnostics import compute_diagnostics
+        return compute_diagnostics
     raise AttributeError(f"module 'dash' has no attribute {name}")
