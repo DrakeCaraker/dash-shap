@@ -9,7 +9,9 @@
 ## Table of Contents
 
 - [The Problem](#the-problem)
+- [Why Bigger Models Make It Worse](#why-bigger-models-make-it-worse)
 - [How DASH Works](#how-dash-works)
+- [Beyond XGBoost and SHAP](#beyond-xgboost-and-shap)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [The Five-Stage Pipeline](#the-five-stage-pipeline)
@@ -25,9 +27,9 @@
 
 ## The Problem
 
-SHAP values are one of the most popular tools for explaining machine learning predictions. Given a trained model, SHAP tells you how much each feature contributed to a particular prediction. Practitioners use SHAP to understand which features matter, to audit models for regulatory compliance, and to generate scientific hypotheses from data.
+Every day, millions of data scientists follow the same workflow: train an XGBoost model, run SHAP, and report that "feature A is most important, feature B is second." That ranking drives real decisions -- it selects features for production systems, generates scientific hypotheses, satisfies regulatory auditors, and explains predictions to stakeholders. The workflow is treated as reliable. It is not.
 
-**But SHAP has a hidden fragility when features are correlated.**
+SHAP values are one of the most popular tools for explaining machine learning predictions. Given a trained model, SHAP tells you how much each feature contributed to a particular prediction. **But SHAP has a hidden fragility when features are correlated** -- and in practice, features are almost always correlated.
 
 Consider a dataset with two highly correlated features, say `height` and `arm_span` (correlation = 0.95). When you train an XGBoost model, the algorithm must choose which feature to split on at each decision node. Since both features carry nearly identical information, the choice is essentially arbitrary -- it depends on small differences in the training data, the random seed, or the hyperparameters. The model's *predictions* are virtually the same regardless of which feature it picks. But the *SHAP values* change dramatically:
 
@@ -36,13 +38,35 @@ Consider a dataset with two highly correlated features, say `height` and `arm_sp
 
 Both models make the same predictions. Both are equally valid. But they tell completely different stories about *why* they make those predictions. This is known as the **Rashomon effect** -- many models fit the data equally well but offer contradictory explanations.
 
-This instability gets worse as correlation increases, and it is not just a theoretical concern. In practice:
+This instability gets worse as correlation increases, and it is not just a theoretical concern. The specific ranking of correlated features depends on which hyperparameters you happened to use, not on a property of the data. Run it again with slightly different settings and features swap positions. The predictions are the same. The explanation is different. Nobody notices because nobody reruns the explanation. In practice:
 
 - A data scientist might conclude that `height` is the key driver and recommend collecting more `height` data, when in reality `arm_span` is equally informative.
 - A regulatory audit might flag a model for relying on a sensitive feature, when in fact the model could just as easily have used a non-sensitive proxy.
 - A scientific study might report a specific feature as the primary biomarker, when several correlated biomarkers are equally valid.
 
+The ranking is not wrong -- it captures real signal -- but it is partially arbitrary. **The way the applied ML field currently generates feature importance explanations is unreliable, and the intuitive fix (bigger models) makes it worse.**
+
 **DASH solves this problem.** Instead of trusting a single model's arbitrary feature selection, DASH deliberately trains many models that are forced to explore different parts of the feature space, then combines their explanations into a consensus that fairly distributes credit across correlated features.
+
+---
+
+## Why Bigger Models Make It Worse
+
+The natural response to "my explanations are unstable" is "train a more powerful model." We tested that. The result is the most counterintuitive finding of this work: **a single large model with the same total compute as DASH produces the worst explanations of any method tested** -- worse than a simple tuned model, worse than naive averaging, worse on stability, accuracy, and equity simultaneously.
+
+This happens because of a specific mechanism we call **sequential residual dependency**.
+
+In gradient boosting, each tree fits the errors (residuals) left by all previous trees. If tree 1 picks feature A from a correlated pair (A, B), it partially removes A's contribution from the residuals. Tree 2 now sees residuals where A looks less useful -- but B also looks less useful, because B carries the same signal that A already partially captured. The net effect: whichever feature gets picked first gets reinforced across thousands of subsequent trees. More trees means more reinforcement of an arbitrary initial choice.
+
+Low `colsample_bytree` makes this worse, not better. When each tree sees fewer features, the initial selection becomes even more path-dependent -- a tree that happens not to see feature B in its random column sample will default to feature A, further concentrating importance on A.
+
+A single XGBoost model with 10,000-15,000 trees and the same low `colsample_bytree` that DASH uses -- matching DASH's total compute budget in a single sequential model -- amplifies this path dependence to its extreme. In our experiments, this Large Single Model configuration achieved:
+
+- **Worst stability** (0.9194 vs. 0.96+ for other methods)
+- **Worst accuracy** (0.9479 vs. 0.98+ for DASH)
+- **Worst equity** (CV of 0.3544 vs. 0.19 for DASH)
+
+The ranking that emerges from a large sequential model is not a better version of the truth. It is a more committed version of an arbitrary initial choice.
 
 ---
 
@@ -63,6 +87,24 @@ Unlike a single large XGBoost ensemble (where trees are trained sequentially on 
 ### 3. Diversity-Aware Selection
 
 Not all models in the population are equally useful. DASH filters for high-performing models (so explanations come from accurate models) and then selects a diverse subset (so the selected models collectively cover different feature usage patterns). This is more effective than simply averaging all models or picking the top performers.
+
+### What DASH Proves
+
+DASH's 0.981 stability, 0.990 accuracy, and 0.166 equity numbers are the proof that independence works. But the lasting contribution is the demonstration that explanation instability has a specific mechanistic cause -- sequential path dependence in iterative optimization -- and a specific structural cure -- independence between explained models. Because DASH's independent models make their arbitrary choices independently, averaging cancels the arbitrariness. The consensus reflects what the data supports -- which *group* of correlated features matters -- rather than which individual feature one optimization path happened to favor. This reframes the problem from "SHAP is noisy" to "single-model explanations are fundamentally limited," which is a different and larger claim.
+
+---
+
+## Beyond XGBoost and SHAP
+
+The sequential residual dependency that DASH exposes is not a quirk of XGBoost. It is a property of iterative optimization. Any model where step N+1 depends on the outcome of step N has the potential for the same path-dependent feature utilization:
+
+- **Gradient boosting** (XGBoost, LightGBM, CatBoost): Each tree fits residuals from previous trees. Early feature choices shape all subsequent trees.
+- **Neural networks trained by gradient descent**: If early gradient updates latch onto one member of a correlated feature group, the learned representations organize around that choice. Different random initializations produce different first movers.
+- **Linear models via coordinate descent**: The order in which coordinates are updated determines which correlated feature absorbs the signal first.
+
+This means the instability problem is potentially not confined to XGBoost and SHAP. Every saliency map, every attention visualization, every feature attribution from any iteratively trained model may inherit the same arbitrary path dependence. Different initializations produce different first movers, which produce different explanations from models with identical performance.
+
+We demonstrated the problem rigorously for one model class (XGBoost) and one explanation method (SHAP). The generalization to other model-explanation pairs is an open question -- but the underlying mechanism (sequential dependence creating path-dependent feature utilization) is shared across iterative optimization methods. The structural cure is the same: explanations derived from independent models, whose arbitrary choices cancel under aggregation.
 
 ---
 
