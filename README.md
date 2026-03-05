@@ -93,6 +93,7 @@ pip install -e .
 | scipy | >= 1.11.0 | Statistical tests, clustering |
 | matplotlib | >= 3.8.0 | Plotting |
 | seaborn | >= 0.13.0 | Statistical visualization |
+| pyyaml | >= 6.0 | Configuration management |
 | tqdm | >= 4.65.0 | Progress bars |
 | joblib | >= 1.3.0 | Parallel model training |
 
@@ -338,7 +339,7 @@ The repository includes a comprehensive experimental validation framework. Exper
 python run_experiments.py
 ```
 
-Or interactively via the demo notebooks (`demo_benchmark.ipynb`).
+Or interactively via the demo notebooks (see `notebooks/demo_benchmark.ipynb`).
 
 ### Experiment 1: Synthetic Linear -- Correlation Sweep
 
@@ -381,7 +382,7 @@ Validates DASH on two real datasets:
 
 ## Understanding the Demo Notebook Results
 
-The demo notebooks (`demo_benchmark.ipynb`, `demo_benchmark_1.ipynb`, `demo_benchmark_2.ipynb`) run a compact version of the full experiments (M=50, K=15 for faster execution) and produce the following results. Here is what they mean and why they matter.
+The demo notebooks (`notebooks/demo_benchmark.ipynb`, `notebooks/demo_benchmark_1.ipynb`, `notebooks/demo_benchmark_2.ipynb`) run a compact version of the full experiments (M=50, K=15 for faster execution) and produce the following results. Here is what they mean and why they matter.
 
 ### Proof of Concept at rho=0.9
 
@@ -644,11 +645,19 @@ dash-shap/
 │   ├── evaluation/
 │   │   └── __init__.py                # Metrics: accuracy, stability, equity
 │   └── utils/
+│       ├── __init__.py                # Utils package init
+│       ├── io.py                      # I/O utilities
+│       └── shap_helpers.py            # SHAP computation helpers
+├── notebooks/                         # Interactive demo notebooks
+│   ├── demo_benchmark.ipynb           # Interactive demo notebook
+│   ├── demo_benchmark_1.ipynb         # Demo notebook (copy)
+│   └── demo_benchmark_2.ipynb         # Demo notebook (copy)
+├── tests/                             # Test suite
+│   ├── __init__.py
+│   ├── test_evaluation.py             # Evaluation metrics tests
+│   ├── test_pipeline.py               # Pipeline integration tests
+│   └── test_synthetic.py              # Synthetic data generator tests
 ├── run_experiments.py                 # Full experiment runner (all 4 experiments)
-├── demo_benchmark.ipynb               # Interactive demo notebook
-├── demo_benchmark_1.ipynb             # Demo notebook (copy)
-├── demo_benchmark_2.ipynb             # Demo notebook (copy)
-├── large_single.py                    # Standalone LSM baseline demo
 ├── EXPERIMENT_GUIDE.md                # Detailed experimental design documentation
 ├── requirements.txt                   # Python dependencies
 ├── pyproject.toml                     # Package metadata
