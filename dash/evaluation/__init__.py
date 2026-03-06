@@ -36,12 +36,17 @@ def importance_stability(vectors):
 
 
 def within_group_equity(importance_vector, groups):
-    """Compute mean coefficient of variation within feature groups."""
+    """Compute mean coefficient of variation within feature groups.
+
+    Groups whose mean absolute importance is near zero are excluded from
+    the average rather than being scored as perfect equity (CV=0).
+    """
     cvs = []
     for g in np.unique(groups):
         gi = importance_vector[groups == g]
-        cvs.append(gi.std() / gi.mean() if gi.mean() > 1e-10 else 0.0)
-    return float(np.mean(cvs))
+        if np.abs(gi.mean()) > 1e-10:
+            cvs.append(gi.std() / np.abs(gi.mean()))
+    return float(np.mean(cvs)) if cvs else 0.0
 
 
 def cohens_d(g1, g2):

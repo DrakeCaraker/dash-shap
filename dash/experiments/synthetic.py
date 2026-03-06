@@ -115,6 +115,9 @@ def generate_synthetic_nonlinear(
     n_groups = P // group_size
 
     beta_1, beta_2, beta_3 = 1.0, 0.8, 1.2
+    # Hardcoded seed=42 ensures identical ground-truth coefficients across
+    # reps.  This is intentional: accuracy is NOT reported for nonlinear DGP,
+    # so identical ground truth avoids confounding the stability/equity analysis.
     beta_4_to_G = np.random.RandomState(42).uniform(0.3, 1.0, max(n_groups - 3, 0))
 
     Sigma = make_correlation_matrix(P, group_size, rho, structure=structure)
