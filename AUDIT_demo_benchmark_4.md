@@ -1,25 +1,25 @@
 # Audit: `notebooks/demo_benchmark_4.ipynb`
 
-**Date**: 2026-03-06 (updated)
+**Date**: 2026-03-06 (re-audit)
 **Scope**: Structure, rigor, reproducibility, and statistical methodology
-**Prior audit**: `AUDIT_demo_benchmark_3.md` (20 findings; this document tracks remediation status)
+**Prior audits**: `AUDIT_demo_benchmark_3.md` (20 findings, all remediated); first v4 audit (14 findings N1–N14, all fixed)
 
 ---
 
 ## Overall Assessment
 
-Version 4 is a substantial improvement over v3. All fifteen prior audit findings have been
-addressed (12 in v4 itself, the remaining 3 in this audit pass). This audit identified 14
-additional issues (N1–N14) and implemented fixes for all of them. The notebook now has:
+**Re-audit status**: The notebook is in good shape overall. All v3 and first-round v4 findings
+remain properly addressed. This final re-audit identified **3 issues that must be fixed before
+running** (F1–F3) and **10 advisory items** (A1–A10) that are non-blocking.
 
+Strengths carried forward from prior audits:
 - Centralized `PAPER_CONFIG` with all hyperparameters (including `TAU_CLUSTER`)
 - Consistent `N_REPS=20` across the main sweep and all real-world/nonlinear sections
 - `ABL_N_REPS=10` for ablation studies (C(10,2)=45 pairwise comparisons)
 - Randomized SHAP background sampling (seeded for reproducibility)
 - Scale-appropriate epsilon for the Superconductor dataset (`SC_EPSILON=0.40`)
-- Extended Wilcoxon tests covering all Table 2 baselines with correct Bonferroni
 - Proper handling of zero-mean groups in within-group equity
-- Wall-clock timing and clean rcParams management
+- Wall-clock timing and environment recording
 
 ---
 
@@ -85,7 +85,34 @@ additional issues (N1–N14) and implemented fixes for all of them. The notebook
 
 ---
 
-## Files Modified
+## Re-Audit Findings: Must Fix (F1–F3)
+
+| # | Cell | Severity | Description |
+|---|------|----------|-------------|
+| F1 | 37 | **Critical** | **Cell ordering bug.** Cell 37 "Part 2" references `table2_methods` and `table2_results`, which are not defined until Cell 39. Running top-to-bottom raises `NameError`. **Fix:** Move the "Part 2" Table 2 tests out of Cell 37 into a new cell after Cell 39, or swap Cells 37 and 39. |
+| F2 | 51 | **High** | **Missing scale-appropriate epsilon for California Housing.** Cell 51 uses `epsilon=EPSILON` (=0.08), but the California Housing target has a different scale (~2.07 median house value in $100k units, RMSE ~0.5–0.7). The same logic that motivated `SC_EPSILON=0.40` for Superconductor applies here. **Fix:** Add `CAL_EPSILON` proportional to typical RMSE (e.g., 0.05–0.10 may be appropriate, but verify against actual test RMSE). |
+| F3 | 37 | **High** | **Bonferroni documentation mismatch.** Cell 36 markdown says the correction factor is 20; the code computes `N_TESTS = 26`. A reviewer will flag this inconsistency. **Fix:** Update Cell 36 markdown to state 26 tests. |
+
+---
+
+## Re-Audit Findings: Advisory (A1–A10)
+
+| # | Cell | Severity | Description |
+|---|------|----------|-------------|
+| A1 | 37 | Medium | `_run_test` "Favors" column uses `comp_name.split(' vs ')[1]` which yields truncated names for Table 2 entries (e.g., `Stochast` because `short` is capped at 8 chars in Part 2). Cosmetic but confusing in output. |
+| A2 | 49 | Medium | `_saved_rc = dict(plt.rcParams)` is a shallow copy. Nested mutable values (e.g., `axes.prop_cycle`) are shared references. Use `plt.rc_context()` context manager for bulletproof restoration. |
+| A3 | 53 | Medium | Bootstrap CI uses the percentile method, which has known bias at small sample sizes. BCa (bias-corrected accelerated) would be more appropriate for a publication. |
+| A4 | 55 | Medium | Criterion 2 requires `acc >= 0.90` as an absolute Spearman threshold at ρ=0.9. Under high collinearity all methods degrade; a relative-to-baseline threshold would be more robust. |
+| A5 | 55 | Medium | Criterion 4 "safety control" allows an RMSE gap of 0.1 at ρ=0.0. This is generous for a "no degradation" check where DASH should nearly match baselines. |
+| A6 | 24 | Medium | Breast Cancer reps only collect stability (not accuracy/equity), unlike all other repetition analyses. Inconsistent metrics coverage across sections. |
+| A7 | 24 | Medium | Breast Cancer reps re-split already-scaled data. The scaler was fitted on the original Cell 19 train split, so `Xv_r` contains observations that contributed to scaling parameters. Minor data leakage — unlikely to affect stability conclusions. |
+| A8 | 34 | Medium | Large Single Model excluded from the nonlinear DGP sweep without documented rationale. The linear sweep includes it as a key comparison. |
+| A9 | 16,28 | Low | Variable shadowing: `Xtr`, `Xte`, etc. are overwritten by every sweep/section. Not a bug when run top-to-bottom, but makes partial re-execution fragile. Standard Jupyter caveat. |
+| A10 | 44,49 | Low | Figures created via `plt.subplots()` are never closed with `plt.close(fig)`. Minor memory accumulation in a long-running notebook. |
+
+---
+
+## Files Modified (Prior Audit)
 
 | File | Changes |
 |------|---------|
@@ -94,6 +121,17 @@ additional issues (N1–N14) and implemented fixes for all of them. The notebook
 | `dash/experiments/synthetic.py` | Added explanatory comment for hardcoded seed at line 118 |
 | `dash/evaluation/__init__.py` | Fixed `within_group_equity()` to exclude zero-mean groups and use `np.abs()` |
 | `notebooks/demo_benchmark_4.ipynb` | Cells 1, 9, 12, 24, 28, 32, 33, 34, 37, 39, 41, 43, 45, 46, 49, 51, 55 |
+
+---
+
+## Source File Notes (from re-audit)
+
+| File | Finding | Severity |
+|------|---------|----------|
+| `dash/core/consensus.py` | Uses legacy `np.random.RandomState` (not `default_rng`). Internally consistent but soft-deprecated. | Low |
+| `dash/core/diagnostics.py` | `np.var(..., ddof=1)` produces `inf` if K=1 models. Pipeline guards `len(filtered) >= 2`, but direct calls are unguarded. | Medium |
+| `dash/experiments/synthetic.py` | Hardcoded `seed=42` for nonlinear ground-truth betas ignores caller-provided seed. Documented but fragile for future use. | Low (known) |
+| `dash/evaluation/__init__.py` | Single-element groups report CV=0 (ddof=0). Mathematically correct but may surprise. | Low |
 
 ---
 
@@ -107,3 +145,6 @@ additional issues (N1–N14) and implemented fixes for all of them. The notebook
 6. Bonferroni correction in Cell 37 accounts for extended test count (26 tests)
 7. `SC_EPSILON=0.40` used in Superconductor DASHPipeline call
 8. `_notebook_start` and timing summary bookend the notebook
+9. **[FAIL]** Cell 37 references `table2_methods`/`table2_results` before definition in Cell 39
+10. **[FAIL]** Cell 51 California Housing uses generic `EPSILON` instead of scale-appropriate value
+11. **[FAIL]** Cell 36 markdown Bonferroni count (20) does not match code (26)
