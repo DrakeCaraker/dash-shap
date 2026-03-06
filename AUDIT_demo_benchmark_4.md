@@ -145,6 +145,6 @@ Strengths carried forward from prior audits:
 6. Bonferroni correction in Cell 37 accounts for extended test count (26 tests)
 7. `SC_EPSILON=0.40` used in Superconductor DASHPipeline call
 8. `_notebook_start` and timing summary bookend the notebook
-9. **[FAIL]** Cell 37 references `table2_methods`/`table2_results` before definition in Cell 39
-10. **[FAIL]** Cell 51 California Housing uses generic `EPSILON` instead of scale-appropriate value
-11. **[FAIL]** Cell 36 markdown Bonferroni count (20) does not match code (26)
+9. **[FIXED]** Cell 37 Part 2 moved to new Cell 40, after Cell 39 defines `table2_methods`/`table2_results`
+10. **[FIXED]** Cell 52 California Housing now uses `CAL_EPSILON=0.05` instead of generic `EPSILON`
+11. **[FIXED]** Cell 36 markdown Bonferroni count updated from 20 to 26
