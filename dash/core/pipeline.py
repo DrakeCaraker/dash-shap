@@ -138,7 +138,8 @@ class DASHPipeline:
             print(f"\nDASH Stage 4: Consensus SHAP (K={len(self.selected_indices_)})")
         self.consensus_matrix_, self.all_shap_matrices_ = compute_consensus(
             self.models_, self.selected_indices_, X_ref,
-            background_size=self.background_size, verbose=self.verbose,
+            background_size=self.background_size, seed=self.seed,
+            verbose=self.verbose,
         )
         self.timing_["stage4_shap"] = time.time() - t0
 
