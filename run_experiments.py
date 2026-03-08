@@ -2,17 +2,30 @@
 """
 DASH Experimental Validation — Complete Runner
 ===============================================
-Run with:  python run_experiments.py
+Aligned with audited demo_benchmark_4.ipynb (PAPER_CONFIG).
 
-Executes:
-  1. Synthetic Linear DGP: rho in {0, 0.5, 0.7, 0.9, 0.95} x 5 reps
-  2. Synthetic Linear Overlapping: rho=0.9, overlapping structure
-  3. Synthetic Nonlinear DGP: rho=0.9 x 5 reps
-  4. Real data: California Housing, Breast Cancer
-  5. Stability comparison across all methods
-  6. Generates all figures and result tables
+Run all experiments:
+    python run_experiments.py
+
+Run specific experiments:
+    python run_experiments.py --experiments linear_sweep nonlinear_sweep
+    python run_experiments.py --experiments real_california real_breast_cancer
+    python run_experiments.py --experiments table2_baselines ablation
+
+Available experiments:
+    linear_sweep       Synthetic Linear DGP correlation sweep (rho ∈ {0,0.5,0.7,0.9,0.95})
+    overlapping        Overlapping correlation structure (rho=0.9)
+    nonlinear_sweep    Nonlinear DGP correlation sweep
+    table2_baselines   Extended baselines at rho=0.9 (Ensemble SHAP, Stochastic Retrain, Dedup)
+    real_california    California Housing benchmark
+    real_breast_cancer Breast Cancer benchmark
+    real_superconductor Superconductor UCI benchmark
+    epsilon_sensitivity Epsilon sensitivity analysis
+    ablation           Ablation studies (M, K, epsilon, delta)
+    success_criteria   Run linear_sweep then evaluate pass/fail criteria
 """
 
+import argparse
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -21,11 +34,13 @@ import time
 import os
 import sys
 import warnings
-warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning, module='shap')
 
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import root_mean_squared_error as rmse_score
 
-# Add package root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dash.core.pipeline import DASHPipeline
@@ -52,414 +67,83 @@ from dash.evaluation import (
 )
 from dash.utils.io import save_json
 
-SEED = 42
-OUT = "results"
-os.makedirs(f"{OUT}/figures", exist_ok=True)
-os.makedirs(f"{OUT}/tables", exist_ok=True)
+# ---------------------------------------------------------------------------
+# Canonical configuration — matches PAPER_CONFIG from audited notebook
+# ---------------------------------------------------------------------------
+PAPER_CONFIG = {
+    'M': 500,
+    'K': 30,
+    'N_REPS': 20,
+    'EPSILON': 0.08,
+    'DELTA': 0.05,
+    'N_TRIALS_SB': 30,
+    'T_PER_MODEL': 500,
+    'N_ESTIMATORS_ESHAP': 2000,
+    'TAU_CLUSTER': 0.3,
+}
 
-# Pipeline params (reduce M for faster runs; paper uses M=200, K=20)
-M = 100
-K = 15
-N_REPS = 5
-EPSILON = 0.03
-DELTA = 0.05
-N_TRIALS_SINGLE = 50
+SEED = 42
+M = PAPER_CONFIG['M']
+K = PAPER_CONFIG['K']
+N_REPS = PAPER_CONFIG['N_REPS']
+EPSILON = PAPER_CONFIG['EPSILON']
+DELTA = PAPER_CONFIG['DELTA']
+N_TRIALS_SB = PAPER_CONFIG['N_TRIALS_SB']
+
+# Scale-appropriate epsilons for real-world datasets
+CAL_EPSILON = 0.05   # California Housing: RMSE ~0.5-0.7
+BC_EPSILON = 0.08    # Breast Cancer (classification)
+SC_EPSILON = 0.40    # Superconductor: RMSE ~18
+
+OUT = "results"
+FEATURE_NAMES = [f'G{g}_f{j}' for g in range(10) for j in range(5)]
 
 
 def log(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-###############################################################################
-# EXPERIMENT HELPERS
-###############################################################################
-
-def run_all_methods(
-    X_train, y_train, X_val, y_val, X_ref, groups, true_imp,
-    task='regression', seed=42, feature_names=None,
-):
-    """Run all 7 methods on a single dataset split. Returns dict of importance vectors."""
-    results = {}
-
-    # --- DASH MaxMin ---
-    dm = DASHPipeline(
-        M=M, K=K, epsilon=EPSILON, delta=DELTA,
-        selection_method='maxmin', task=task, n_jobs=-1, seed=seed, verbose=False,
-    )
-    dm.fit(X_train, y_train, X_val, y_val, X_ref=X_ref, feature_names=feature_names)
-    results['DASH (MaxMin)'] = {
-        'importance': dm.global_importance_,
-        'fsi': dm.fsi_,
-        'pipeline': dm,
-    }
-
-    # --- DASH Cluster (reuse population) ---
-    imp_vecs = get_preliminary_importance(
-        dm.models_, dm.filtered_indices_, X_ref, method='gain',
-    )
-    filt_scores = {i: dm.val_scores_[i] for i in dm.filtered_indices_}
-
-    sel_cluster = cluster_coverage_selection(
-        imp_vecs, filt_scores, X_train, tau=0.3, K=K, verbose=False,
-    )
-    cons_c, shap_c = compute_consensus(dm.models_, sel_cluster, X_ref, verbose=False)
-    _, _, fsi_c, imp_c = compute_diagnostics(shap_c)
-    results['DASH (Cluster)'] = {'importance': imp_c, 'fsi': fsi_c}
-
-    # --- DASH Dedup (reuse population) ---
-    sel_dedup = deduplication_selection(
-        imp_vecs, filt_scores, rho_threshold=0.95, verbose=False,
-    )
-    if len(sel_dedup) > K:
-        sel_dedup = sorted(
-            sel_dedup, key=lambda i: dm.val_scores_[i], reverse=True,
-        )[:K]
-    if len(sel_dedup) >= 2:
-        cons_d, shap_d = compute_consensus(dm.models_, sel_dedup, X_ref, verbose=False)
-        _, _, fsi_d, imp_d = compute_diagnostics(shap_d)
-        results['DASH (Dedup)'] = {'importance': imp_d, 'fsi': fsi_d}
-    else:
-        results['DASH (Dedup)'] = {'importance': dm.global_importance_, 'fsi': dm.fsi_}
-
-    # --- Naive Top-N (reuse population) ---
-    naive = NaiveAveragingBaseline(N=K, task=task)
-    naive.fit_from_population(dm.models_, dm.val_scores_, X_ref)
-    results['Naive Top-N'] = {'importance': naive.global_importance_, 'fsi': naive.fsi_}
-
-    # --- Single Best ---
-    sb = SingleBestBaseline(n_trials=N_TRIALS_SINGLE, task=task, seed=seed)
-    sb.fit(X_train, y_train, X_val, y_val, X_ref=X_ref)
-    results['Single Best'] = {'importance': sb.global_importance_}
-
-    # --- Large Single Model ---
-    lsm = LargeSingleModelBaseline(
-        K=K, T_per_model=500, colsample_bytree=0.2, task=task, seed=seed,
-    )
-    lsm.fit(X_train, y_train, X_val, y_val, X_ref=X_ref)
-    results['Large Single Model'] = {'importance': lsm.global_importance_}
-
-    # --- Ensemble SHAP ---
-    ens = EnsembleSHAPBaseline(n_estimators=2000, task=task, seed=seed)
-    ens.fit(X_train, y_train, X_val, y_val, X_ref=X_ref)
-    results['Ensemble SHAP'] = {'importance': ens.global_importance_}
-
-    # --- Stochastic Retrain ---
-    sr = StochasticRetrainBaseline(N=K, task=task, n_jobs=-1, seed=seed)
-    sr.fit(X_train, y_train, X_val, y_val, X_ref=X_ref)
-    results['Stochastic Retrain'] = {'importance': sr.global_importance_, 'fsi': sr.fsi_}
-
-    return results
-
-
-def evaluate_results(results, true_imp, groups):
-    """Compute accuracy, equity for each method."""
-    metrics = {}
-    for name, res in results.items():
-        imp = res['importance']
-        rho_acc, mse = importance_accuracy(imp, true_imp)
-        eq = within_group_equity(imp, groups)
-        metrics[name] = {'accuracy': rho_acc, 'mse': mse, 'equity': eq}
-    return metrics
-
-
-###############################################################################
-# EXPERIMENT 1: Synthetic Linear — Correlation Sweep
-###############################################################################
-
-def experiment_synthetic_linear():
-    log("=" * 70)
-    log("EXPERIMENT 1: Synthetic Linear DGP — Correlation Sweep")
-    log("=" * 70)
-
-    rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
-    method_names = [
-        'Single Best', 'Large Single Model', 'Ensemble SHAP', 'Naive Top-N',
-        'Stochastic Retrain', 'DASH (Dedup)', 'DASH (MaxMin)', 'DASH (Cluster)',
-    ]
-    feature_names = [f'G{g}_f{j}' for g in range(10) for j in range(5)]
-
-    all_results = {}
-
-    for rho in rho_levels:
-        log(f"\n--- rho = {rho} ---")
-        stability_vectors = {n: [] for n in method_names}
-        accuracy_vectors = {n: [] for n in method_names}
-        equity_vectors = {n: [] for n in method_names}
-
-        for rep in range(N_REPS):
-            rep_seed = SEED + rep
-            log(f"  Rep {rep+1}/{N_REPS} (seed={rep_seed})")
-
-            Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, meta = \
-                generate_synthetic_linear(N=5000, rho=rho, seed=rep_seed)
-
-            results = run_all_methods(
-                Xtr, ytr, Xv, yv, X_ref=Xv, groups=grps,
-                true_imp=true_imp, seed=rep_seed, feature_names=feature_names,
-            )
-            metrics = evaluate_results(results, true_imp, grps)
-
-            for name in method_names:
-                stability_vectors[name].append(results[name]['importance'])
-                accuracy_vectors[name].append(metrics[name]['accuracy'])
-                equity_vectors[name].append(metrics[name]['equity'])
-
-        rho_results = {}
-        for name in method_names:
-            stab = importance_stability(stability_vectors[name])
-            acc_mean = np.mean(accuracy_vectors[name])
-            acc_std = np.std(accuracy_vectors[name])
-            eq_mean = np.mean(equity_vectors[name])
-            eq_std = np.std(equity_vectors[name])
-            rho_results[name] = {
-                'stability': stab,
-                'accuracy_mean': acc_mean, 'accuracy_std': acc_std,
-                'equity_mean': eq_mean, 'equity_std': eq_std,
-            }
-            log(f"    {name:<20} stab={stab:.4f}  acc={acc_mean:.4f}+/-{acc_std:.4f}  eq={eq_mean:.4f}")
-
-        all_results[rho] = rho_results
-
-    save_json(all_results, f"{OUT}/tables/synthetic_linear_sweep.json")
-    log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
-    plot_correlation_sweep(all_results, rho_levels, method_names)
-
-    return all_results
-
-
-###############################################################################
-# EXPERIMENT 2: Overlapping Correlation Structure
-###############################################################################
-
-def experiment_overlapping():
-    log("\n" + "=" * 70)
-    log("EXPERIMENT 2: Overlapping Correlation Structure")
-    log("=" * 70)
-
-    feature_names = [f'G{g}_f{j}' for g in range(10) for j in range(5)]
-    method_names = ['Single Best', 'DASH (MaxMin)', 'DASH (Cluster)']
-    stability_vectors = {n: [] for n in method_names}
-
-    for rep in range(N_REPS):
-        rep_seed = SEED + rep
-        log(f"  Rep {rep+1}/{N_REPS}")
-
-        Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, meta = \
-            generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed, structure="overlapping")
-
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SINGLE, seed=rep_seed)
-        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xv)
-        stability_vectors['Single Best'].append(sb.global_importance_)
-
-        dm = DASHPipeline(
-            M=M, K=K, epsilon=EPSILON, delta=DELTA,
-            selection_method='maxmin', n_jobs=-1, seed=rep_seed, verbose=False,
-        )
-        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xv, feature_names=feature_names)
-        stability_vectors['DASH (MaxMin)'].append(dm.global_importance_)
-
-        imp_vecs = get_preliminary_importance(
-            dm.models_, dm.filtered_indices_, Xv, method='gain',
-        )
-        filt_scores = {i: dm.val_scores_[i] for i in dm.filtered_indices_}
-        sel_c = cluster_coverage_selection(
-            imp_vecs, filt_scores, Xtr, tau=0.3, K=K, verbose=False,
-        )
-        cons_c, shap_c = compute_consensus(dm.models_, sel_c, Xv, verbose=False)
-        _, _, _, imp_c = compute_diagnostics(shap_c)
-        stability_vectors['DASH (Cluster)'].append(imp_c)
-
-    log("\n  Overlapping structure results:")
-    for name in method_names:
-        stab = importance_stability(stability_vectors[name])
-        log(f"    {name:<20} stability={stab:.4f}")
-
-
-###############################################################################
-# EXPERIMENT 3: Synthetic Nonlinear
-###############################################################################
-
-def experiment_nonlinear():
-    log("\n" + "=" * 70)
-    log("EXPERIMENT 3: Synthetic Nonlinear DGP (rho=0.9)")
-    log("  (Evaluating stability & equity, not accuracy)")
-    log("=" * 70)
-
-    feature_names = [f'G{g}_f{j}' for g in range(10) for j in range(5)]
-    method_names = [
-        'Single Best', 'Large Single Model', 'Ensemble SHAP',
-        'DASH (MaxMin)', 'DASH (Cluster)',
-    ]
-    stability_vectors = {n: [] for n in method_names}
-    equity_vectors = {n: [] for n in method_names}
-
-    for rep in range(N_REPS):
-        rep_seed = SEED + rep
-        log(f"  Rep {rep+1}/{N_REPS}")
-
-        Xtr, ytr, Xv, yv, _, _, grps, true_imp, _ = \
-            generate_synthetic_nonlinear(N=5000, rho=0.9, seed=rep_seed)
-
-        results = run_all_methods(
-            Xtr, ytr, Xv, yv, X_ref=Xv, groups=grps,
-            true_imp=true_imp, seed=rep_seed, feature_names=feature_names,
-        )
-
-        for name in method_names:
-            stability_vectors[name].append(results[name]['importance'])
-            equity_vectors[name].append(
-                within_group_equity(results[name]['importance'], grps),
-            )
-
-    log("\n  Nonlinear DGP results:")
-    for name in method_names:
-        stab = importance_stability(stability_vectors[name])
-        eq = np.mean(equity_vectors[name])
-        log(f"    {name:<20} stability={stab:.4f}  equity={eq:.4f}")
-
-
-###############################################################################
-# EXPERIMENT 4: Real Data
-###############################################################################
-
-def experiment_real_data():
-    log("\n" + "=" * 70)
-    log("EXPERIMENT 4: Real Data — California Housing & Breast Cancer")
-    log("=" * 70)
-
-    from sklearn.datasets import fetch_california_housing, load_breast_cancer
-    from sklearn.preprocessing import StandardScaler
-
-    # --- California Housing ---
-    log("\n  California Housing:")
-    cal = fetch_california_housing()
-    X, y = cal.data, cal.target
-    cal_names = list(cal.feature_names)
-    stability_vectors = {
-        n: [] for n in ['Single Best', 'Large Single Model', 'Ensemble SHAP', 'DASH (MaxMin)']
-    }
-
-    for rep in range(N_REPS):
-        rep_seed = SEED + rep
-        Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=rep_seed)
-        Xtr, Xv, ytr, yv = train_test_split(Xtr, ytr, test_size=0.2, random_state=rep_seed)
-        scaler = StandardScaler().fit(Xtr)
-        Xtr, Xv = scaler.transform(Xtr), scaler.transform(Xv)
-
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SINGLE, seed=rep_seed)
-        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xv)
-        stability_vectors['Single Best'].append(sb.global_importance_)
-
-        lsm = LargeSingleModelBaseline(K=K, T_per_model=500, seed=rep_seed)
-        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xv)
-        stability_vectors['Large Single Model'].append(lsm.global_importance_)
-
-        ens = EnsembleSHAPBaseline(n_estimators=2000, seed=rep_seed)
-        ens.fit(Xtr, ytr, Xv, yv, X_ref=Xv)
-        stability_vectors['Ensemble SHAP'].append(ens.global_importance_)
-
-        dm = DASHPipeline(
-            M=M, K=K, epsilon=EPSILON, delta=DELTA,
-            selection_method='maxmin', n_jobs=-1, seed=rep_seed, verbose=False,
-        )
-        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xv, feature_names=cal_names)
-        stability_vectors['DASH (MaxMin)'].append(dm.global_importance_)
-
-    for name in stability_vectors:
-        stab = importance_stability(stability_vectors[name])
-        log(f"    {name:<20} stability={stab:.4f}")
-
-    fig = dm.plot_importance_stability(title='IS Plot — California Housing', annotate_top_k=8)
-    fig.savefig(f"{OUT}/figures/is_plot_california.png", dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    log("    Saved IS Plot: figures/is_plot_california.png")
-
-    # --- Breast Cancer ---
-    log("\n  Breast Cancer:")
-    bc = load_breast_cancer()
-    X_bc, y_bc = bc.data, bc.target
-    bc_names = list(bc.feature_names)
-
-    corr = np.abs(np.corrcoef(X_bc.T))
-    n_high = (np.sum(corr > 0.9) - len(bc_names)) // 2
-    log(f"    {len(bc_names)} features, {n_high} pairs with |r|>0.9")
-
-    stability_vectors_bc = {n: [] for n in ['Single Best', 'DASH (MaxMin)']}
-
-    for rep in range(N_REPS):
-        rep_seed = SEED + rep
-        Xtr, Xte, ytr, yte = train_test_split(X_bc, y_bc, test_size=0.2, random_state=rep_seed)
-        Xtr, Xv, ytr, yv = train_test_split(Xtr, ytr, test_size=0.2, random_state=rep_seed)
-        scaler = StandardScaler().fit(Xtr)
-        Xtr, Xv = scaler.transform(Xtr), scaler.transform(Xv)
-
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SINGLE, task='binary', seed=rep_seed)
-        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xv)
-        stability_vectors_bc['Single Best'].append(sb.global_importance_)
-
-        dm = DASHPipeline(
-            M=M, K=K, epsilon=0.02, delta=DELTA,
-            selection_method='maxmin', task='binary',
-            n_jobs=-1, seed=rep_seed, verbose=False,
-        )
-        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xv, feature_names=bc_names)
-        stability_vectors_bc['DASH (MaxMin)'].append(dm.global_importance_)
-
-    for name in stability_vectors_bc:
-        stab = importance_stability(stability_vectors_bc[name])
-        log(f"    {name:<20} stability={stab:.4f}")
-
-    fig = dm.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
-    fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.png", dpi=150, bbox_inches='tight')
-    plt.close(fig)
-
-    var_obs = np.mean(dm.variance_matrix_, axis=1)
-    fig = local_disagreement_map(
-        dm.all_shap_matrices_, np.argmax(var_obs),
-        feature_names=bc_names, top_k=12,
-    )
-    fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.png", dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    log("    Saved figures: is_plot_breast_cancer.png, disagreement_breast_cancer.png")
+def _ensure_dirs():
+    os.makedirs(f"{OUT}/figures", exist_ok=True)
+    os.makedirs(f"{OUT}/tables", exist_ok=True)
 
 
 ###############################################################################
 # PLOTTING
 ###############################################################################
 
+COLORS = {
+    'Single Best': '#95a5a6',
+    'Large Single Model': '#e74c3c',
+    'Ensemble SHAP': '#9b59b6',
+    'Naive Top-N': '#f39c12',
+    'Stochastic Retrain': '#e67e22',
+    'DASH (Dedup)': '#3498db',
+    'DASH (MaxMin)': '#2ecc71',
+    'DASH (Cluster)': '#1abc9c',
+}
+
+MARKERS = {
+    'Single Best': 's',
+    'Large Single Model': 'X',
+    'Ensemble SHAP': 'D',
+    'Naive Top-N': '^',
+    'Stochastic Retrain': 'v',
+    'DASH (MaxMin)': 'o',
+    'DASH (Cluster)': 'P',
+}
+
+
 def plot_correlation_sweep(all_results, rho_levels, method_names):
     """Generate main result figures from the correlation sweep."""
-    plot_methods = [
-        'Single Best', 'Large Single Model', 'Ensemble SHAP', 'Naive Top-N',
-        'Stochastic Retrain', 'DASH (MaxMin)', 'DASH (Cluster)',
-    ]
-    colors = {
-        'Single Best': '#95a5a6',
-        'Large Single Model': '#e74c3c',
-        'Ensemble SHAP': '#9b59b6',
-        'Naive Top-N': '#f39c12',
-        'Stochastic Retrain': '#e67e22',
-        'DASH (Dedup)': '#3498db',
-        'DASH (MaxMin)': '#2ecc71',
-        'DASH (Cluster)': '#1abc9c',
-    }
-    markers = {
-        'Single Best': 's',
-        'Large Single Model': 'X',
-        'Ensemble SHAP': 'D',
-        'Naive Top-N': '^',
-        'Stochastic Retrain': 'v',
-        'DASH (MaxMin)': 'o',
-        'DASH (Cluster)': 'P',
-    }
+    _ensure_dirs()
+    plot_methods = [n for n in MARKERS if n in method_names]
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
 
     for name in plot_methods:
-        if name not in method_names:
-            continue
-        c = colors.get(name, '#333')
-        m = markers.get(name, 'o')
+        c = COLORS.get(name, '#333')
+        m = MARKERS.get(name, 'o')
 
         vals = [all_results[rho][name]['stability'] for rho in rho_levels]
         axes[0].plot(rho_levels, vals, f'{m}-', color=c, label=name, linewidth=2, markersize=7)
@@ -478,16 +162,16 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
             label=name, linewidth=2, markersize=7, capsize=3,
         )
 
-    axes[0].set_xlabel('Within-Group Correlation rho')
+    axes[0].set_xlabel('Within-Group Correlation ρ')
     axes[0].set_ylabel('Importance Stability\n(Mean Pairwise Spearman)')
     axes[0].set_title('Stability vs. Collinearity')
     axes[0].legend(fontsize=7, loc='lower left')
 
-    axes[1].set_xlabel('Within-Group Correlation rho')
-    axes[1].set_ylabel('Spearman rho vs Ground Truth')
+    axes[1].set_xlabel('Within-Group Correlation ρ')
+    axes[1].set_ylabel('Spearman ρ vs Ground Truth')
     axes[1].set_title('Accuracy vs. Collinearity')
 
-    axes[2].set_xlabel('Within-Group Correlation rho')
+    axes[2].set_xlabel('Within-Group Correlation ρ')
     axes[2].set_ylabel('Mean Within-Group CV\n(lower = better)')
     axes[2].set_title('Within-Group Equity vs. Collinearity')
 
@@ -498,92 +182,675 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
     log(f"  Saved: figures/correlation_sweep.png")
 
     # Bar chart for rho=0.9
-    rho_key = 0.9
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
-    bar_methods = list(all_results[rho_key].keys())
-    bar_colors = [colors.get(n, '#333') for n in bar_methods]
+    if 0.9 in all_results:
+        rho_key = 0.9
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+        bar_methods = list(all_results[rho_key].keys())
+        bar_colors = [COLORS.get(n, '#333') for n in bar_methods]
 
-    stab_vals = [all_results[rho_key][n]['stability'] for n in bar_methods]
-    axes[0].bar(range(len(bar_methods)), stab_vals, color=bar_colors, edgecolor='k', linewidth=0.5)
-    axes[0].set_xticks(range(len(bar_methods)))
-    axes[0].set_xticklabels(bar_methods, rotation=35, ha='right', fontsize=8)
-    axes[0].set_ylabel('Stability')
-    axes[0].set_title('Importance Stability (rho=0.9)')
+        stab_vals = [all_results[rho_key][n]['stability'] for n in bar_methods]
+        axes[0].bar(range(len(bar_methods)), stab_vals, color=bar_colors, edgecolor='k', linewidth=0.5)
+        axes[0].set_xticks(range(len(bar_methods)))
+        axes[0].set_xticklabels(bar_methods, rotation=35, ha='right', fontsize=8)
+        axes[0].set_ylabel('Stability')
+        axes[0].set_title('Importance Stability (ρ=0.9)')
 
-    acc_vals = [all_results[rho_key][n]['accuracy_mean'] for n in bar_methods]
-    acc_errs = [all_results[rho_key][n]['accuracy_std'] for n in bar_methods]
-    axes[1].bar(
-        range(len(bar_methods)), acc_vals, yerr=acc_errs,
-        color=bar_colors, edgecolor='k', linewidth=0.5, capsize=3,
-    )
-    axes[1].set_xticks(range(len(bar_methods)))
-    axes[1].set_xticklabels(bar_methods, rotation=35, ha='right', fontsize=8)
-    axes[1].set_ylabel('Accuracy (Spearman rho)')
-    axes[1].set_title('Importance Accuracy (rho=0.9)')
+        acc_vals = [all_results[rho_key][n]['accuracy_mean'] for n in bar_methods]
+        acc_errs = [all_results[rho_key][n]['accuracy_std'] for n in bar_methods]
+        axes[1].bar(
+            range(len(bar_methods)), acc_vals, yerr=acc_errs,
+            color=bar_colors, edgecolor='k', linewidth=0.5, capsize=3,
+        )
+        axes[1].set_xticks(range(len(bar_methods)))
+        axes[1].set_xticklabels(bar_methods, rotation=35, ha='right', fontsize=8)
+        axes[1].set_ylabel('Accuracy (Spearman ρ)')
+        axes[1].set_title('Importance Accuracy (ρ=0.9)')
 
-    eq_vals = [all_results[rho_key][n]['equity_mean'] for n in bar_methods]
-    eq_errs = [all_results[rho_key][n]['equity_std'] for n in bar_methods]
-    axes[2].bar(
-        range(len(bar_methods)), eq_vals, yerr=eq_errs,
-        color=bar_colors, edgecolor='k', linewidth=0.5, capsize=3,
-    )
-    axes[2].set_xticks(range(len(bar_methods)))
-    axes[2].set_xticklabels(bar_methods, rotation=35, ha='right', fontsize=8)
-    axes[2].set_ylabel('Within-Group CV')
-    axes[2].set_title('Equity (rho=0.9, lower=better)')
+        eq_vals = [all_results[rho_key][n]['equity_mean'] for n in bar_methods]
+        eq_errs = [all_results[rho_key][n]['equity_std'] for n in bar_methods]
+        axes[2].bar(
+            range(len(bar_methods)), eq_vals, yerr=eq_errs,
+            color=bar_colors, edgecolor='k', linewidth=0.5, capsize=3,
+        )
+        axes[2].set_xticks(range(len(bar_methods)))
+        axes[2].set_xticklabels(bar_methods, rotation=35, ha='right', fontsize=8)
+        axes[2].set_ylabel('Within-Group CV')
+        axes[2].set_title('Equity (ρ=0.9, lower=better)')
 
-    fig.tight_layout()
-    fig.savefig(f"{OUT}/figures/bar_chart_rho09.png", dpi=150, bbox_inches='tight')
-    plt.close(fig)
-    log(f"  Saved: figures/bar_chart_rho09.png")
+        fig.tight_layout()
+        fig.savefig(f"{OUT}/figures/bar_chart_rho09.png", dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        log(f"  Saved: figures/bar_chart_rho09.png")
 
 
 ###############################################################################
-# MAIN
+# EXPERIMENT: Synthetic Linear — Correlation Sweep
 ###############################################################################
 
-if __name__ == "__main__":
-    t_start = time.time()
+def experiment_linear_sweep():
+    """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
-    log("DASH Experimental Validation")
-    log(f"Config: M={M}, K={K}, epsilon={EPSILON}, delta={DELTA}, reps={N_REPS}")
-    log("")
-
-    sweep_results = experiment_synthetic_linear()
-    experiment_overlapping()
-    experiment_nonlinear()
-    experiment_real_data()
-
-    # --- Statistical summary ---
-    log("\n" + "=" * 70)
-    log("STATISTICAL TESTS")
+    Matches notebook Section 4 — uses X_ref=Xte (D1 fix), saves per-rep arrays
+    for downstream significance tests, and collects RMSE.
+    """
+    _ensure_dirs()
     log("=" * 70)
-    rho09 = sweep_results[0.9]
-    method_names = list(rho09.keys())
-    log(f"  Stability at rho=0.9:")
-    for n in method_names:
-        log(f"    {n:<20} {rho09[n]['stability']:.4f}")
+    log("EXPERIMENT: Synthetic Linear DGP — Correlation Sweep")
+    log("=" * 70)
 
-    best_dash = max(
-        rho09['DASH (MaxMin)']['stability'],
-        rho09['DASH (Cluster)']['stability'],
+    rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
+    sweep_methods = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
+    sweep_results = {rho: {} for rho in rho_levels}
+
+    for rho in rho_levels:
+        log(f"\n--- ρ = {rho} ---")
+        for name in sweep_methods:
+            acc_runs, eq_runs, imp_runs, rmse_runs = [], [], [], []
+            for rep in range(N_REPS):
+                rep_seed = SEED + rep
+                Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+                    generate_synthetic_linear(N=5000, rho=rho, seed=rep_seed)
+
+                if name == 'Single Best':
+                    m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    imp = m.global_importance_
+                    preds = m.model_.predict(Xte)
+                elif name == 'Large Single Model':
+                    m = LargeSingleModelBaseline(
+                        K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
+                        colsample_bytree=0.2, seed=rep_seed,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    imp = m.global_importance_
+                    preds = m.model_.predict(Xte)
+                else:  # DASH MaxMin
+                    m = DASHPipeline(
+                        M=M, K=K, epsilon=EPSILON, delta=DELTA,
+                        selection_method='maxmin', n_jobs=-1,
+                        seed=rep_seed, verbose=False,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                    imp = m.global_importance_
+                    preds = m.get_consensus_ensemble_predictions(Xte)
+
+                rmse_val = rmse_score(yte, preds)
+                r, _ = importance_accuracy(imp, true_imp)
+                acc_runs.append(r)
+                eq_runs.append(within_group_equity(imp, grps))
+                imp_runs.append(imp)
+                rmse_runs.append(rmse_val)
+
+            stab = importance_stability(imp_runs)
+            sweep_results[rho][name] = {
+                'stability': stab,
+                'accuracy_mean': float(np.mean(acc_runs)),
+                'accuracy_std': float(np.std(acc_runs)),
+                'equity_mean': float(np.mean(eq_runs)),
+                'equity_std': float(np.std(eq_runs)),
+                'rmse_mean': float(np.mean(rmse_runs)),
+                'rmse_std': float(np.std(rmse_runs)),
+                'acc_runs': np.array(acc_runs),
+                'eq_runs': np.array(eq_runs),
+                'rmse_runs': np.array(rmse_runs),
+                'imp_runs': imp_runs,
+            }
+            log(f"  {name:<20} stab={stab:.4f}  acc={np.mean(acc_runs):.4f}  "
+                f"eq={np.mean(eq_runs):.4f}  RMSE={np.mean(rmse_runs):.4f}")
+
+    save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
+    log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
+    plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
+
+    return sweep_results
+
+
+###############################################################################
+# EXPERIMENT: Overlapping Correlation Structure
+###############################################################################
+
+def experiment_overlapping():
+    """Overlapping correlation structure at rho=0.9."""
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Overlapping Correlation Structure")
+    log("=" * 70)
+
+    method_names = ['Single Best', 'DASH (MaxMin)', 'DASH (Cluster)']
+    stability_vectors = {n: [] for n in method_names}
+
+    for rep in range(N_REPS):
+        rep_seed = SEED + rep
+        log(f"  Rep {rep+1}/{N_REPS}")
+
+        Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, meta = \
+            generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed, structure="overlapping")
+
+        # D1: X_ref=Xte
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+        stability_vectors['Single Best'].append(sb.global_importance_)
+
+        dm = DASHPipeline(
+            M=M, K=K, epsilon=EPSILON, delta=DELTA,
+            selection_method='maxmin', n_jobs=-1, seed=rep_seed, verbose=False,
+        )
+        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+        stability_vectors['DASH (MaxMin)'].append(dm.global_importance_)
+
+        imp_vecs = get_preliminary_importance(
+            dm.models_, dm.filtered_indices_, Xte, method='gain',
+        )
+        filt_scores = {i: dm.val_scores_[i] for i in dm.filtered_indices_}
+        sel_c = cluster_coverage_selection(
+            imp_vecs, filt_scores, Xtr,
+            tau=PAPER_CONFIG['TAU_CLUSTER'], K=K, verbose=False,
+        )
+        cons_c, shap_c = compute_consensus(dm.models_, sel_c, Xte, verbose=False)
+        _, _, _, imp_c = compute_diagnostics(shap_c)
+        stability_vectors['DASH (Cluster)'].append(imp_c)
+
+    log("\n  Overlapping structure results:")
+    for name in method_names:
+        stab = importance_stability(stability_vectors[name])
+        log(f"    {name:<20} stability={stab:.4f}")
+
+
+###############################################################################
+# EXPERIMENT: Nonlinear DGP Correlation Sweep
+###############################################################################
+
+def experiment_nonlinear_sweep():
+    """Nonlinear DGP sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
+
+    Evaluates stability and equity (no ground-truth accuracy for nonlinear DGP).
+    """
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Nonlinear DGP — Correlation Sweep")
+    log("=" * 70)
+
+    nl_rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
+    nl_methods = ['Single Best', 'DASH (MaxMin)']
+    nl_sweep = {rho: {} for rho in nl_rho_levels}
+
+    for rho in nl_rho_levels:
+        log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
+        for name in nl_methods:
+            eq_runs, imp_runs = [], []
+            for rep in range(N_REPS):
+                rep_seed = SEED + rep
+                Xtr, ytr, Xv, yv, Xte, yte, grps, _, _ = \
+                    generate_synthetic_nonlinear(N=5000, rho=rho, seed=rep_seed)
+
+                if name == 'Single Best':
+                    m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    imp = m.global_importance_
+                else:
+                    m = DASHPipeline(
+                        M=M, K=K, epsilon=EPSILON, delta=DELTA,
+                        selection_method='maxmin', n_jobs=-1,
+                        seed=rep_seed, verbose=False,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                    imp = m.global_importance_
+
+                eq_runs.append(within_group_equity(imp, grps))
+                imp_runs.append(imp)
+
+            stab = importance_stability(imp_runs)
+            nl_sweep[rho][name] = {
+                'stability': stab,
+                'equity_mean': float(np.mean(eq_runs)),
+                'equity_std': float(np.std(eq_runs)),
+                'eq_runs': np.array(eq_runs),
+            }
+            log(f"  {name:<20} stab={stab:.4f}  eq={np.mean(eq_runs):.4f}")
+
+    save_json(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json")
+    log(f"  Saved: {OUT}/tables/nonlinear_sweep.json")
+
+    return nl_sweep
+
+
+###############################################################################
+# EXPERIMENT: Extended Baselines (Table 2) at rho=0.9
+###############################################################################
+
+def experiment_table2_baselines():
+    """Extended baselines at rho=0.9: Ensemble SHAP, Stochastic Retrain, DASH (Dedup)."""
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Table 2 — Extended Baselines at ρ=0.9")
+    log("=" * 70)
+
+    table2_methods = ['Ensemble SHAP', 'Stochastic Retrain', 'DASH (Dedup)']
+    table2_results = {}
+
+    for name in table2_methods:
+        imp_runs, acc_runs, eq_runs = [], [], []
+        for rep in range(N_REPS):
+            rep_seed = SEED + rep
+            Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+                generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed)
+
+            if name == 'Ensemble SHAP':
+                m = EnsembleSHAPBaseline(
+                    n_estimators=PAPER_CONFIG['N_ESTIMATORS_ESHAP'],
+                    task='regression', seed=rep_seed,
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                imp = m.global_importance_
+            elif name == 'Stochastic Retrain':
+                m = StochasticRetrainBaseline(N=K, task='regression', n_jobs=-1, seed=rep_seed)
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                imp = m.global_importance_
+            else:  # DASH (Dedup)
+                dm = DASHPipeline(
+                    M=M, K=K, epsilon=EPSILON, delta=DELTA,
+                    selection_method='dedup', n_jobs=-1,
+                    seed=rep_seed, verbose=False,
+                )
+                dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                imp = dm.global_importance_
+
+            r, _ = importance_accuracy(imp, true_imp)
+            acc_runs.append(r)
+            eq_runs.append(within_group_equity(imp, grps))
+            imp_runs.append(imp)
+
+        table2_results[name] = {
+            'stability': importance_stability(imp_runs),
+            'accuracy_mean': float(np.mean(acc_runs)),
+            'accuracy_std': float(np.std(acc_runs)),
+            'equity_mean': float(np.mean(eq_runs)),
+            'equity_std': float(np.std(eq_runs)),
+            'acc_runs': np.array(acc_runs),
+            'eq_runs': np.array(eq_runs),
+        }
+        log(f"  {name:<22} stab={table2_results[name]['stability']:.4f}  "
+            f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
+
+    save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
+    log(f"  Saved: {OUT}/tables/table2_baselines.json")
+
+    return table2_results
+
+
+###############################################################################
+# EXPERIMENT: California Housing
+###############################################################################
+
+def experiment_real_california():
+    """California Housing benchmark with scale-appropriate epsilon."""
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Real Data — California Housing")
+    log("=" * 70)
+
+    from sklearn.datasets import fetch_california_housing
+
+    cal = fetch_california_housing()
+    X_cal, y_cal = cal.data, cal.target
+    cal_names = list(cal.feature_names)
+    log(f"  {X_cal.shape[0]} samples, {X_cal.shape[1]} features")
+
+    corr_cal = np.abs(np.corrcoef(X_cal.T))
+    n_high_cal = (np.sum(corr_cal > 0.7) - len(cal_names)) // 2
+    log(f"  Feature pairs with |r|>0.7: {n_high_cal}")
+
+    X_cal_pool, X_cal_test, y_cal_pool, y_cal_test = train_test_split(
+        X_cal, y_cal, test_size=0.2, random_state=SEED,
     )
-    sb_stab = rho09['Single Best']['stability']
-    lsm_stab = rho09.get(
-        'Large Single Model', rho09.get('Ensemble SHAP', {}),
-    ).get('stability', 0)
-    log(f"\n  DASH best stability:       {best_dash:.4f}")
-    log(f"  Single Best stability:     {sb_stab:.4f}")
-    log(f"  Large Single Model stab:   {lsm_stab:.4f}")
-    log(f"  DASH improvement over SB:  +{best_dash - sb_stab:.4f}")
-    log(f"  DASH improvement over LSM: +{best_dash - lsm_stab:.4f}")
 
-    # --- Success criteria check ---
+    cal_methods = ['Single Best', 'DASH (MaxMin)']
+    cal_results = {}
+
+    for name in cal_methods:
+        imp_runs, rmse_runs = [], []
+        for rep in range(N_REPS):
+            rep_seed = SEED + rep
+
+            # D2: Re-split and re-fit scaler per rep
+            Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
+                X_cal_pool, y_cal_pool, test_size=0.2, random_state=rep_seed,
+            )
+            scaler_r = StandardScaler().fit(Xtr_r)
+            Xtr_r = scaler_r.transform(Xtr_r)
+            Xv_r = scaler_r.transform(Xv_r)
+            Xte_r = scaler_r.transform(X_cal_test)
+
+            if name == 'Single Best':
+                m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+                imp = m.global_importance_
+                rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
+            else:
+                m = DASHPipeline(
+                    M=M, K=K, epsilon=CAL_EPSILON, delta=DELTA,
+                    selection_method='maxmin', n_jobs=-1,
+                    seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r, feature_names=cal_names)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_cal_test, preds)
+
+            imp_runs.append(imp)
+            rmse_runs.append(rmse_val)
+
+        cal_results[name] = {
+            'stability': importance_stability(imp_runs),
+            'rmse_mean': float(np.mean(rmse_runs)),
+            'rmse_std': float(np.std(rmse_runs)),
+        }
+        log(f"  {name:<22} stab={cal_results[name]['stability']:.4f}  "
+            f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs):.4f}")
+
+    # IS plot from last DASH run
+    fig = m.plot_importance_stability(title='IS Plot — California Housing', annotate_top_k=8)
+    fig.savefig(f"{OUT}/figures/is_plot_california.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    log(f"  Saved: figures/is_plot_california.png")
+
+    save_json(cal_results, f"{OUT}/tables/california_housing.json")
+    return cal_results
+
+
+###############################################################################
+# EXPERIMENT: Breast Cancer
+###############################################################################
+
+def experiment_real_breast_cancer():
+    """Breast Cancer benchmark (binary classification)."""
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Real Data — Breast Cancer")
+    log("=" * 70)
+
+    from sklearn.datasets import load_breast_cancer
+
+    bc = load_breast_cancer()
+    X_bc, y_bc = bc.data, bc.target
+    bc_names = list(bc.feature_names)
+
+    corr = np.abs(np.corrcoef(X_bc.T))
+    n_high = (np.sum(corr > 0.9) - len(bc_names)) // 2
+    log(f"  {len(bc_names)} features, {n_high} pairs with |r|>0.9")
+
+    X_bc_pool, X_bc_test, y_bc_pool, y_bc_test = train_test_split(
+        X_bc, y_bc, test_size=0.2, random_state=SEED,
+    )
+
+    bc_methods = ['Single Best', 'DASH (MaxMin)']
+    bc_results = {}
+
+    for name in bc_methods:
+        imp_runs = []
+        for rep in range(N_REPS):
+            rep_seed = SEED + rep
+
+            Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
+                X_bc_pool, y_bc_pool, test_size=0.2, random_state=rep_seed,
+            )
+            scaler_r = StandardScaler().fit(Xtr_r)
+            Xtr_r = scaler_r.transform(Xtr_r)
+            Xv_r = scaler_r.transform(Xv_r)
+            Xte_r = scaler_r.transform(X_bc_test)
+
+            if name == 'Single Best':
+                m = SingleBestBaseline(n_trials=N_TRIALS_SB, task='binary', seed=rep_seed)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+            else:
+                m = DASHPipeline(
+                    M=M, K=K, epsilon=BC_EPSILON, delta=DELTA,
+                    selection_method='maxmin', task='binary',
+                    n_jobs=-1, seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r, feature_names=bc_names)
+
+            imp_runs.append(m.global_importance_)
+
+        bc_results[name] = {
+            'stability': importance_stability(imp_runs),
+        }
+        log(f"  {name:<22} stability={bc_results[name]['stability']:.4f}")
+
+    # IS plot and disagreement map from last DASH run
+    fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
+    fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+
+    var_obs = np.mean(m.variance_matrix_, axis=1)
+    fig = local_disagreement_map(
+        m.all_shap_matrices_, np.argmax(var_obs),
+        feature_names=bc_names, top_k=12,
+    )
+    fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    log(f"  Saved: is_plot_breast_cancer.png, disagreement_breast_cancer.png")
+
+    save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
+    return bc_results
+
+
+###############################################################################
+# EXPERIMENT: Superconductor UCI Benchmark
+###############################################################################
+
+def experiment_real_superconductor():
+    """Superconductor UCI benchmark with scale-appropriate epsilon."""
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Real Data — Superconductor UCI")
+    log("=" * 70)
+
+    from sklearn.datasets import fetch_openml
+
+    log("  Loading Superconductor dataset...")
+    data = fetch_openml(name='superconduct', version=1, as_frame=False, parser='auto')
+    X_sc, y_sc = data.data, data.target
+    sc_names = [f'f{i}' for i in range(X_sc.shape[1])]
+    log(f"  {X_sc.shape[0]} samples, {X_sc.shape[1]} features")
+
+    X_sc_pool, X_sc_test, y_sc_pool, y_sc_test = train_test_split(
+        X_sc, y_sc, test_size=0.2, random_state=SEED,
+    )
+
+    SC_M = 200  # Lighter compute for real-world dataset
+    SC_K = 30
+    sc_methods = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
+    sc_results = {}
+
+    for name in sc_methods:
+        imp_runs, rmse_runs = [], []
+        for rep in range(N_REPS):
+            rep_seed = SEED + rep
+
+            Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
+                X_sc_pool, y_sc_pool, test_size=0.2, random_state=rep_seed,
+            )
+            scaler_r = StandardScaler().fit(Xtr_r)
+            Xtr_r = scaler_r.transform(Xtr_r)
+            Xv_r = scaler_r.transform(Xv_r)
+            Xte_r = scaler_r.transform(X_sc_test)
+
+            if name == 'Single Best':
+                m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+                imp = m.global_importance_
+                rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
+            elif name == 'Large Single Model':
+                m = LargeSingleModelBaseline(
+                    K=SC_K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
+                    colsample_bytree=0.2, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+                imp = m.global_importance_
+                rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
+            else:
+                m = DASHPipeline(
+                    M=SC_M, K=SC_K, epsilon=SC_EPSILON, delta=DELTA,
+                    selection_method='maxmin', n_jobs=-1,
+                    seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r, feature_names=sc_names)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_sc_test, preds)
+
+            imp_runs.append(imp)
+            rmse_runs.append(rmse_val)
+
+        sc_results[name] = {
+            'stability': importance_stability(imp_runs),
+            'rmse_mean': float(np.mean(rmse_runs)),
+            'rmse_std': float(np.std(rmse_runs)),
+        }
+        log(f"  {name:<22} stab={sc_results[name]['stability']:.4f}  "
+            f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs):.2f}")
+
+    save_json(sc_results, f"{OUT}/tables/superconductor.json")
+    return sc_results
+
+
+###############################################################################
+# EXPERIMENT: Epsilon Sensitivity
+###############################################################################
+
+def experiment_epsilon_sensitivity():
+    """Epsilon sensitivity sweep: epsilon ∈ {0.03, 0.05, 0.08, 0.10}."""
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Epsilon Sensitivity")
+    log("=" * 70)
+
+    from dash.core.population import generate_model_population
+
+    EPS_VALUES = [0.03, 0.05, 0.08, 0.10]
+    eps_results = {eps: {
+        'n_passing': [], 'k_eff': [],
+        'acc_runs': [], 'eq_runs': [], 'imp_runs': [],
+    } for eps in EPS_VALUES}
+
+    for rep in range(N_REPS):
+        rep_seed = SEED + rep
+        log(f"  Rep {rep+1}/{N_REPS}")
+
+        Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+            generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed)
+
+        for eps in EPS_VALUES:
+            dm = DASHPipeline(
+                M=M, K=K, epsilon=eps, delta=DELTA,
+                selection_method='maxmin', n_jobs=-1,
+                seed=rep_seed, verbose=False,
+            )
+            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+            imp = dm.global_importance_
+
+            r, _ = importance_accuracy(imp, true_imp)
+            eps_results[eps]['n_passing'].append(len(dm.filtered_indices_))
+            eps_results[eps]['k_eff'].append(len(dm.selected_indices_))
+            eps_results[eps]['acc_runs'].append(r)
+            eps_results[eps]['eq_runs'].append(within_group_equity(imp, grps))
+            eps_results[eps]['imp_runs'].append(imp)
+
+    log(f"\n  {'ε':>6} {'Models Passing':>16} {'K_eff':>12} {'Stability':>10} {'Accuracy':>10}")
+    log("  " + "=" * 60)
+    for eps in EPS_VALUES:
+        stab = importance_stability(eps_results[eps]['imp_runs'])
+        eps_results[eps]['stability'] = stab
+        log(f"  {eps:>6.2f} {np.mean(eps_results[eps]['n_passing']):>12.1f}±"
+            f"{np.std(eps_results[eps]['n_passing']):<4.1f}"
+            f"{np.mean(eps_results[eps]['k_eff']):>8.1f}±"
+            f"{np.std(eps_results[eps]['k_eff']):<4.1f}"
+            f"{stab:>10.4f}"
+            f"{np.mean(eps_results[eps]['acc_runs']):>10.4f}")
+
+    save_json(eps_results, f"{OUT}/tables/epsilon_sensitivity.json")
+    return eps_results
+
+
+###############################################################################
+# EXPERIMENT: Ablation Studies
+###############################################################################
+
+def experiment_ablation():
+    """Ablation studies: one parameter at a time, across multiple rho levels."""
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Ablation Studies")
+    log("=" * 70)
+
+    ABL_N_REPS = 10  # C(10,2)=45 pairwise comparisons
+    ABL_DEFAULTS = {'M': M, 'K': K, 'eps': EPSILON, 'delta': DELTA}
+    ABL_RHOS = [0.0, 0.9, 0.95]
+
+    ablations = {
+        'M': [50, 100, 200, 500],
+        'K': [5, 10, 20, 30, 50],
+        'eps': [0.01, 0.03, 0.05, 0.08, 0.10],
+        'delta': [0.01, 0.05, 0.10, 0.20],
+    }
+
+    abl_results = {rho: {} for rho in ABL_RHOS}
+
+    for abl_rho in ABL_RHOS:
+        log(f"\n{'=' * 60}")
+        log(f"Ablation at ρ = {abl_rho}")
+        log(f"{'=' * 60}")
+        for param_name, values in ablations.items():
+            log(f"\n--- Ablation: {param_name} ---")
+            abl_results[abl_rho][param_name] = {}
+            for val in values:
+                p = ABL_DEFAULTS.copy()
+                p[param_name] = val
+                log(f"  {param_name}={val}  ", )
+
+                imp_runs, acc_runs = [], []
+                for rep in range(ABL_N_REPS):
+                    rep_seed = SEED + rep
+                    Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+                        generate_synthetic_linear(N=5000, rho=abl_rho, seed=rep_seed)
+
+                    dm = DASHPipeline(
+                        M=p['M'], K=p['K'], epsilon=p['eps'],
+                        delta=p['delta'], selection_method='maxmin',
+                        n_jobs=-1, seed=rep_seed, verbose=False,
+                    )
+                    dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                    imp = dm.global_importance_
+                    r, _ = importance_accuracy(imp, true_imp)
+                    acc_runs.append(r)
+                    imp_runs.append(imp)
+
+                stab = importance_stability(imp_runs)
+                abl_results[abl_rho][param_name][val] = {
+                    'stability': stab,
+                    'accuracy_mean': float(np.mean(acc_runs)),
+                    'accuracy_std': float(np.std(acc_runs)),
+                }
+                log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}")
+
+    save_json(abl_results, f"{OUT}/tables/ablation.json")
+    log(f"  Saved: {OUT}/tables/ablation.json")
+    return abl_results
+
+
+###############################################################################
+# SUCCESS CRITERIA
+###############################################################################
+
+def check_success_criteria(sweep_results):
+    """Evaluate pass/fail criteria against the linear sweep results."""
     log("\n" + "=" * 70)
     log("SUCCESS CRITERIA CHECK")
     log("=" * 70)
 
     rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
+
+    # 1. Stability wins
     n_wins = sum(
         1 for rho in rho_levels
         if sweep_results[rho]['DASH (MaxMin)']['stability']
@@ -592,10 +859,12 @@ if __name__ == "__main__":
     log(f"  1. Stability wins: {n_wins}/{len(rho_levels)} "
         f"({'PASS' if n_wins >= 4 else 'FAIL'}, need >=80%)")
 
+    # 2. Accuracy at rho=0.9
     acc_09 = sweep_results[0.9]['DASH (MaxMin)']['accuracy_mean']
-    log(f"  2. Accuracy at rho=0.9: {acc_09:.4f} "
+    log(f"  2. Accuracy at ρ=0.9: {acc_09:.4f} "
         f"({'PASS' if acc_09 >= 0.90 else 'check'}, target >=0.90)")
 
+    # 3. Equity wins
     n_eq_wins = sum(
         1 for rho in rho_levels
         if sweep_results[rho]['DASH (MaxMin)']['equity_mean']
@@ -604,11 +873,13 @@ if __name__ == "__main__":
     log(f"  3. Equity wins: {n_eq_wins}/{len(rho_levels)} "
         f"({'PASS' if n_eq_wins == len(rho_levels) else 'check'})")
 
+    # 4. Safety control at rho=0
     rho0_dash = sweep_results[0.0]['DASH (MaxMin)']['accuracy_mean']
     rho0_sb = sweep_results[0.0]['Single Best']['accuracy_mean']
-    log(f"  4. rho=0 control: DASH acc={rho0_dash:.4f}, SB acc={rho0_sb:.4f} "
+    log(f"  4. ρ=0 control: DASH acc={rho0_dash:.4f}, SB acc={rho0_sb:.4f} "
         f"({'PASS' if abs(rho0_dash - rho0_sb) < 0.1 else 'check'})")
 
+    # 5. Independence value (DASH vs Large Single Model)
     if 'Large Single Model' in sweep_results[0.9]:
         n_lsm_wins = sum(
             1 for rho in rho_levels
@@ -616,17 +887,106 @@ if __name__ == "__main__":
             and sweep_results[rho]['DASH (MaxMin)']['stability']
             > sweep_results[rho]['Large Single Model']['stability']
         )
-        log(f"  8. Independence value: DASH > LSM on {n_lsm_wins}/{len(rho_levels)} "
+        log(f"  5. Independence value: DASH > LSM on {n_lsm_wins}/{len(rho_levels)} "
             f"({'PASS' if n_lsm_wins >= int(0.7 * len(rho_levels)) else 'check'}, need >=70%)")
-        gaps = {
-            rho: (sweep_results[rho]['DASH (MaxMin)']['stability']
-                  - sweep_results[rho].get('Large Single Model', {}).get('stability', 0))
-            for rho in rho_levels
-            if 'Large Single Model' in sweep_results[rho]
-        }
-        if gaps:
-            max_gap_rho = max(gaps, key=gaps.get)
-            log(f"     Largest gap at rho={max_gap_rho} ({gaps[max_gap_rho]:.4f})")
+
+    # Summary
+    rho09 = sweep_results[0.9]
+    log(f"\n  Stability at ρ=0.9:")
+    for n in rho09:
+        log(f"    {n:<20} {rho09[n]['stability']:.4f}")
+
+    dash_stab = rho09['DASH (MaxMin)']['stability']
+    sb_stab = rho09['Single Best']['stability']
+    log(f"\n  DASH improvement over Single Best: +{dash_stab - sb_stab:.4f}")
+    if 'Large Single Model' in rho09:
+        lsm_stab = rho09['Large Single Model']['stability']
+        log(f"  DASH improvement over LSM:         +{dash_stab - lsm_stab:.4f}")
+
+
+###############################################################################
+# EXPERIMENT REGISTRY
+###############################################################################
+
+EXPERIMENTS = {
+    'linear_sweep': experiment_linear_sweep,
+    'overlapping': experiment_overlapping,
+    'nonlinear_sweep': experiment_nonlinear_sweep,
+    'table2_baselines': experiment_table2_baselines,
+    'real_california': experiment_real_california,
+    'real_breast_cancer': experiment_real_breast_cancer,
+    'real_superconductor': experiment_real_superconductor,
+    'epsilon_sensitivity': experiment_epsilon_sensitivity,
+    'ablation': experiment_ablation,
+}
+
+# Default run order (all experiments)
+DEFAULT_ORDER = [
+    'linear_sweep',
+    'overlapping',
+    'nonlinear_sweep',
+    'table2_baselines',
+    'real_california',
+    'real_breast_cancer',
+    'real_superconductor',
+    'epsilon_sensitivity',
+    'ablation',
+]
+
+
+###############################################################################
+# MAIN
+###############################################################################
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="DASH Experimental Validation Runner",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python run_experiments.py                                  # Run all experiments
+  python run_experiments.py --experiments linear_sweep       # Run only the linear sweep
+  python run_experiments.py --experiments linear_sweep nonlinear_sweep
+  python run_experiments.py --experiments real_california real_breast_cancer
+  python run_experiments.py --list                           # List available experiments
+        """,
+    )
+    parser.add_argument(
+        '--experiments', nargs='+', choices=list(EXPERIMENTS.keys()),
+        help='Specific experiments to run (default: all)',
+    )
+    parser.add_argument(
+        '--list', action='store_true',
+        help='List available experiments and exit',
+    )
+    args = parser.parse_args()
+
+    if args.list:
+        print("Available experiments:")
+        for name, fn in EXPERIMENTS.items():
+            doc = (fn.__doc__ or '').strip().split('\n')[0]
+            print(f"  {name:<24} {doc}")
+        sys.exit(0)
+
+    _ensure_dirs()
+    t_start = time.time()
+
+    log("DASH Experimental Validation")
+    log(f"Config: M={M}, K={K}, ε={EPSILON}, δ={DELTA}, N_REPS={N_REPS}")
+    log(f"  CAL_EPSILON={CAL_EPSILON}, BC_EPSILON={BC_EPSILON}, SC_EPSILON={SC_EPSILON}")
+    log("")
+
+    to_run = args.experiments or DEFAULT_ORDER
+    sweep_results = None
+
+    for name in to_run:
+        result = EXPERIMENTS[name]()
+        if name == 'linear_sweep':
+            sweep_results = result
+
+    # Run success criteria if linear_sweep was included
+    if sweep_results is not None:
+        check_success_criteria(sweep_results)
 
     total_time = time.time() - t_start
     log(f"\nTotal runtime: {total_time/60:.1f} minutes")
