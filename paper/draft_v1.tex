@@ -69,10 +69,14 @@ within-group equity of all methods tested, with advantages that grow
 monotonically with correlation severity. At $\rhovar = 0.95$, \dash{}
 improves stability by $+0.029$, accuracy by $+0.015$, and equity by
 $-0.084$ (coefficient of variation) relative to the standard single-best
-baseline, with 17 of 26 Wilcoxon signed-rank tests significant after
-Bonferroni correction (Cohen's $d > 1.0$). Critically, \dash{} never
-degrades predictive performance---it achieves the best test RMSE at every
-correlation level. We also demonstrate that naively scaling up a single
+baseline. Wilcoxon signed-rank tests with Bonferroni correction show
+statistically significant improvements over the single-best baseline at
+$\rhovar \geq 0.7$, with large effect sizes (Cohen's $d > 1.0$);
+however, the comparison against the strongest baseline (Stochastic
+Retrain) is not statistically significant at $\rhovar = 0.9$ (Cohen's
+$d = 0.26$), indicating that \dash{}'s marginal gain over simple seed
+averaging is modest. \dash{} does not degrade predictive
+performance---it achieves the best test RMSE at every correlation level. We also demonstrate that naively scaling up a single
 model (\ie a Large Single Model with equivalent compute) is
 counter-productive: it amplifies the sequential residual dependency that
 \dash{} is designed to break, producing the worst explanations across all
@@ -146,7 +150,7 @@ averaging their SHAP values causes the arbitrary choices to cancel,
 revealing the true underlying importance structure. Specifically, \dash{}:
 
 \begin{enumerate}
-  \item Trains a large population ($M = 500$) of XGBoost models with
+  \item Trains a population ($M = 200$) of XGBoost models with
     randomly sampled hyperparameters, including deliberately low
     \texttt{colsample\_bytree} (0.1--0.5) to force feature diversity.
   \item Filters for predictive quality, retaining only models within
@@ -166,7 +170,9 @@ We make three contributions:
     patterns of an ensemble to stabilize post-hoc explanations.
   \item \textbf{Mechanism.} We identify sequential residual dependency as
     a distinct cause of SHAP instability and demonstrate that model
-    independence is both necessary and sufficient to resolve it.
+    independence is a key contributor to resolving it, with forced
+    feature restriction and diversity selection providing additional
+    gains.
   \item \textbf{Diagnostics.} The Feature Stability Index (FSI) and
     Importance-Stability (IS) Plot enable practitioners to detect and
     quantify explanation fragility without access to ground truth.
@@ -217,9 +223,17 @@ applied to different-but-equally-valid models.
 \paragraph{Feature selection under multicollinearity.}
 Classical approaches to multicollinearity include variance inflation
 factors \citep{obrien2007caution}, principal component regression, and
-elastic net regularization \citep{zou2005regularization}. These operate
-at the model-fitting stage. \dash{} operates at the explanation stage,
-preserving the original feature space while stabilizing the attributions.
+elastic net regularization \citep{zou2005regularization}. Stability
+selection \citep{meinshausen2010stability} addresses a related problem
+by subsampling data and tracking which features are consistently
+selected across subsamples. Permutation importance
+\citep{altmann2010permutation} offers an alternative to SHAP with
+different stability properties. Causal Shapley values
+\citep{heskes2020causal} provide principled handling of correlated
+features through causal structure. These methods operate at the
+model-fitting or feature-selection stage. \dash{} operates at the
+explanation stage, preserving the original feature space while
+stabilizing the attributions.
 
 
 % ===========================================================================
@@ -270,8 +284,10 @@ G_l$, it partially removes $j$'s signal from $r_2$. Since feature $k
 for $r_2$ is also reduced---but $j$ retains a slight residual advantage
 from its own partial fit. Over $T$ iterations, this creates a
 path-dependent concentration of splits on the first-selected feature
-within each correlated group. We call this \emph{sequential residual
-dependency}.
+within each correlated group. We coin the term \emph{sequential residual
+dependency} to describe this mechanism, which is related to the
+well-known feature selection bias in boosted ensembles but specifically
+concerns its effect on post-hoc feature attributions.
 
 \subsection{Desiderata}
 
@@ -293,6 +309,15 @@ A good feature importance method under multicollinearity should satisfy:
 \label{sec:method}
 
 \dash{} is a five-stage pipeline (Figure~\ref{fig:pipeline}):
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\textwidth}{\centering\textit{[Pipeline diagram to be added.
+Five stages: Population Generation $\to$ Performance Filtering $\to$
+Diversity Selection $\to$ Consensus SHAP $\to$ Stability Diagnostics.]}}}
+\caption{The \dash{} five-stage pipeline.}
+\label{fig:pipeline}
+\end{figure}
 
 \subsection{Stage 1: Population Generation}
 
@@ -372,7 +397,13 @@ model from each pair. This provides a minimal-overhead diversity guarantee.
 
 We compute interventional TreeSHAP \citep{lundberg2020local} for each
 selected model $i \in \mathcal{S}$ using a randomly sampled background
-dataset of size $B = 100$:
+dataset of size $B = 100$. In our experiments, SHAP values are computed
+on the held-out test set $X_{\text{test}}$, which is disjoint from both
+the training set and the validation set used for performance filtering
+(Stage~2).\footnote{Earlier versions of the codebase used the validation
+set as both the filtering criterion and the SHAP reference set, which
+creates a potential confound. We recommend using a held-out reference set
+in practice.}
 \begin{equation}
   \Phi^{(i)} \in \mathbb{R}^{N' \times P}, \quad i \in \mathcal{S}.
 \end{equation}
@@ -443,7 +474,18 @@ The target follows a linear data-generating process (DGP):
 where $\bar{z}_g$ is the mean of features in group $g$ and
 $\beta_g \in \{2.0, 1.5, 1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.0\}$.
 By construction, the true importance of each feature within group $g$ is
-$|\beta_g|/5$.
+defined as $|\beta_g|/5$ (uniform within group).
+
+\paragraph{Caveat on ground-truth definition.}
+This uniform definition presupposes equitable credit distribution
+within correlated groups---precisely the property \dash{} is designed
+to achieve. Alternative decompositions are valid: a single model that
+correctly uses feature $A$ (not $B$) from a correlated pair has a
+legitimate attribution where $A$ is important and $B$ is not. Our
+accuracy metric therefore measures agreement with the equitable
+decomposition, not ``correctness'' in an absolute sense. The accuracy
+advantage of \dash{} should be interpreted as a consequence of its
+equity properties rather than independent evidence of superiority.
 
 For the nonlinear DGP, the target includes quadratic terms, interactions,
 and a sinusoidal component:
@@ -528,7 +570,7 @@ reported as Cohen's $d$.
 
 \subsection{Pipeline configuration}
 
-All experiments use: $M = 500$ population, $K_{\max} = 30$,
+All experiments use: $M = 200$ population, $K_{\max} = 30$,
 $\varepsilon = 0.08$ (synthetic), $\delta = 0.05$ (diversity threshold),
 $\tau = 0.3$ (cluster threshold), background size $B = 100$.
 
@@ -548,8 +590,11 @@ with $\rhovar$.
 \begin{table}[h]
 \centering
 \caption{Correlation sweep results (20 repetitions per $\rhovar$ level).
-Bold indicates best. \dash{} leads on all metrics at all correlation
-levels.}
+Bold indicates best. Stability is a single scalar (mean pairwise Spearman);
+Accuracy and Equity report mean $\pm$ SE across repetitions. At
+$\rhovar = 0.9$ all methods are shown; at other levels, only Single Best
+and \dash{} are compared in this table. See Table~\ref{tab:extended} for
+the full baseline comparison at $\rhovar = 0.9$.}
 \label{tab:sweep}
 \small
 \begin{tabular}{clcccc}
@@ -576,6 +621,7 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability} & \textbf{Accuracy} &
 \multirow{3}{*}{0.9}
   & Single Best          & 0.9601 & 0.9796 & 0.2171 & 0.6043 \\
   & Large Single Model   & 0.9401 & 0.9693 & 0.2528 & 0.7177 \\
+  & Stochastic Retrain   & 0.9795 & 0.9892 & 0.1719 & --- \\
   & \textbf{DASH (MaxMin)} & \textbf{0.9805} & \textbf{0.9901} &
     \textbf{0.1625} & \textbf{0.5821} \\
 \midrule
@@ -587,6 +633,15 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability} & \textbf{Accuracy} &
 \bottomrule
 \end{tabular}
 \end{table}
+
+\paragraph{Note on baselines.}
+Stochastic Retrain is the strongest non-\dash{} baseline, achieving
+stability of 0.9795 at $\rhovar = 0.9$ compared to \dash{}'s 0.9805---a
+gap of only 0.001 that is not statistically significant (see
+Section~\ref{sec:significance}). The full baseline comparison at
+$\rhovar = 0.9$ is presented in Table~\ref{tab:extended}. At the time
+of writing, Stochastic Retrain has not been run across all $\rhovar$
+levels; this is a limitation of the current experimental scope.
 
 Three key patterns emerge:
 
@@ -635,14 +690,29 @@ Stochastic Retrain   & 0.9795 & 0.9892 & 0.1719 \\
 The ranking is: \dash{} (Dedup) $\approx$ \dash{} (MaxMin) $>$ Stochastic
 Retrain $>$ Ensemble SHAP $\approx$ Single Best $>$ Large Single Model.
 Stochastic Retrain is the strongest non-\dash{} baseline, confirming that
-seed diversity provides some stabilization, but \dash{}'s forced feature
-restriction and diversity selection add further value.
+seed diversity provides substantial stabilization.
+
+\paragraph{Dedup vs.\ MaxMin.}
+Interestingly, Dedup outperforms MaxMin on both stability (0.9820 vs.\
+0.9805) and equity (0.1498 vs.\ 0.1625) at $\rhovar = 0.9$. This
+suggests that the simpler deduplication strategy may be preferable to
+the more complex greedy diversity selection in some settings. We retain
+MaxMin as the default because its performance is more consistent across
+different correlation structures (particularly overlapping groups), but
+practitioners should consider Dedup as a lighter-weight alternative.
 
 \subsection{Statistical significance}
+\label{sec:significance}
 
 Table~\ref{tab:significance} reports Wilcoxon signed-rank tests for key
-comparisons. Of 26 total tests (with Bonferroni correction,
-$\alpha_{\text{adj}} = 0.0019$), 17 are statistically significant.
+comparisons. Of the comparisons tested (with Bonferroni correction,
+$\alpha_{\text{adj}} = 0.0019$), most \dash{} vs.\ Single Best and
+\dash{} vs.\ Large Single Model comparisons are significant at
+$\rhovar \geq 0.7$. However, the comparison between \dash{} and
+Stochastic Retrain---the most relevant baseline---is not statistically
+significant (Cohen's $d = 0.26$), indicating that the marginal benefit
+of forced feature restriction and diversity selection over simple seed
+averaging is small at $\rhovar = 0.9$.
 
 \begin{table}[h]
 \centering
@@ -660,8 +730,8 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p$ & Cohen's $d$ \\
 0.7  & DASH vs SB  & Equity   & \textbf{$<$0.001} & $-$1.31 \\
 0.9  & DASH vs SB  & Accuracy & \textbf{0.004} & +1.80 \\
 0.9  & DASH vs SB  & Equity   & \textbf{0.007} & $-$1.53 \\
-0.9  & DASH vs Ens.\ SHAP & Accuracy & --- & +3.31 \\
-0.9  & DASH vs Stoch.\ Ret.\ & Accuracy & --- & +0.26 \\
+0.9  & DASH vs Ens.\ SHAP & Accuracy & n.s. & +3.31 \\
+0.9  & DASH vs Stoch.\ Ret.\ & Accuracy & n.s. & +0.26 \\
 0.95 & DASH vs SB  & Accuracy & \textbf{0.002} & +2.21 \\
 0.95 & DASH vs SB  & Equity   & \textbf{$<$0.001} & $-$2.24 \\
 0.95 & DASH vs LSM & Accuracy & \textbf{0.002} & +5.34 \\
@@ -669,16 +739,26 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p$ & Cohen's $d$ \\
 \end{tabular}
 \end{table}
 
-Effect sizes are large to very large at $\rhovar \geq 0.7$ (Cohen's
-$d > 1.0$ for all significant comparisons). The non-significance of
-\dash{} vs.\ Stochastic Retrain at $\rhovar = 0.9$ (Cohen's $d = 0.26$)
-suggests that \dash{}'s additional mechanisms provide a modest but
-detectable improvement over simple seed diversity.
+Effect sizes are large to very large at $\rhovar \geq 0.7$ for \dash{}
+vs.\ Single Best and \dash{} vs.\ Large Single Model comparisons
+(Cohen's $d > 1.0$). The \dash{} vs.\ Stochastic Retrain comparison at
+$\rhovar = 0.9$ is not statistically significant (Cohen's $d = 0.26$,
+stability gap = 0.001). This is an important result: it indicates
+that the primary driver of stability improvement is model
+independence (shared by both methods), with \dash{}'s additional
+mechanisms (forced feature restriction, diversity selection) providing
+only a marginal gain at this correlation level. The practical value of
+\dash{} over Stochastic Retrain may lie in its diagnostics (FSI, IS
+Plot) and its equity improvements rather than raw stability.
 
-\subsection{Large Single Model: The anti-pattern}
+\subsection{Large Single Model: An illustrative anti-pattern}
 
 The Large Single Model is consistently the worst-performing method across
-all metrics:
+all metrics. We note that this baseline uses fixed hyperparameters
+(max\_depth=6, learning\_rate=0.1) and is not tuned, so its poor
+performance partly reflects the lack of tuning rather than purely the
+sequential residual dependency mechanism. Nevertheless, the comparison
+illustrates the risk of naively scaling up a single ensemble:
 \begin{itemize}
   \item At $\rhovar = 0.9$: RMSE = 0.7177 vs.\ \dash{} = 0.5821
     (23\% worse prediction).
@@ -720,7 +800,14 @@ $\rhovar$ & SB Stability & \textbf{DASH Stability} & SB Equity & \textbf{DASH Eq
 
 At $\rhovar = 0.95$, \dash{} achieves a stability gap of +0.076 over
 Single Best, demonstrating that the method generalizes beyond the linear
-setting.
+setting. However, at $\rhovar = 0.0$ and $\rhovar = 0.5$, \dash{}
+shows marginally \emph{lower} stability than Single Best (0.9420 vs.\
+0.9437 and 0.8678 vs.\ 0.8769, respectively). This violates the safety
+desideratum and suggests that ensemble averaging may introduce
+noise when features are uncorrelated and relationships are nonlinear.
+The advantage of \dash{} emerges only at $\rhovar \geq 0.7$ in the
+nonlinear case, which should inform practitioners about when to apply
+the method.
 
 \subsection{Real-world datasets}
 
@@ -835,12 +922,15 @@ real-world datasets.
 \subsection{Computational cost}
 
 \dash{} requires training $M$ models (parallelizable) and computing
-$K$ TreeSHAP explanations. For $M = 500$, $K \approx 20$, and
-$N = 5{,}000$ observations, the total wall-clock time is dominated
-by Stage 1 (population generation) and Stage 4 (SHAP computation).
-With parallelization across CPU cores, this is practical for
-medium-scale datasets. For larger datasets, reducing $M$ to 200
-retains most of the benefit with proportionally lower cost.
+$K$ TreeSHAP explanations. For $M = 200$, $K \approx 20\text{--}30$, and
+$N = 5{,}000$ observations with $P = 50$ features, the total
+wall-clock time is dominated by Stage 1 (population generation) and
+Stage 4 (SHAP computation). With parallelization across CPU cores,
+this is practical for medium-scale datasets. We note that actual
+wall-clock timings are not reported in this draft and should be
+included in the final version, particularly for the larger
+Superconductor dataset ($N = 21{,}263$, $P = 81$) where SHAP
+computation is substantially more expensive.
 
 \subsection{Limitations}
 
@@ -861,8 +951,29 @@ retains most of the benefit with proportionally lower cost.
     The synthetic experiments provide accuracy validation.
   \item \textbf{Stochastic Retrain.} The difference between \dash{} and
     Stochastic Retrain is not statistically significant at $\rhovar = 0.9$
-    (Cohen's $d = 0.26$). With larger sample sizes or more repetitions,
-    significance may emerge, but the practical difference is modest.
+    (Cohen's $d = 0.26$, stability gap = 0.001). This raises the
+    question of whether \dash{}'s additional complexity (forced feature
+    restriction, diversity selection) is justified over simple seed
+    averaging. \dash{}'s advantages may lie primarily in its diagnostics
+    (FSI, IS Plot) and equity improvements rather than raw stability.
+  \item \textbf{Accuracy metric circularity.} The ground-truth importance
+    definition ($|\beta_g|/5$) presupposes uniform within-group credit,
+    which is the property \dash{} optimizes for. The accuracy metric is
+    therefore partially confounded with the equity metric
+    (see Section~\ref{sec:experiments}).
+  \item \textbf{Nonlinear safety.} Under the nonlinear DGP, \dash{}
+    shows marginally lower stability than Single Best at $\rhovar = 0.0$
+    and $\rhovar = 0.5$, violating the safety desideratum. \dash{}'s
+    advantage emerges only at $\rhovar \geq 0.7$ for nonlinear data.
+  \item \textbf{Incomplete baseline sweep.} The correlation sweep
+    (Table~\ref{tab:sweep}) does not include all baselines at all
+    $\rhovar$ levels. Running Stochastic Retrain and Naive Averaging
+    across the full sweep would strengthen the analysis.
+  \item \textbf{Confidence intervals.} Due to computational constraints,
+    the current benchmark uses $N_{\text{reps}} = 20$, which provides
+    limited statistical power for detecting small effects. The Wilcoxon
+    test is underpowered for the small effect sizes observed between
+    \dash{} and Stochastic Retrain.
 \end{itemize}
 
 \subsection{Broader implications}
@@ -891,19 +1002,28 @@ to cancel, revealing the true underlying importance structure.
 Our experiments demonstrate that:
 \begin{enumerate}
   \item \dash{} achieves the highest stability, accuracy, and equity at
-    all tested correlation levels, with advantages that grow
-    monotonically with correlation severity.
+    all tested correlation levels in the linear DGP, with advantages
+    that grow monotonically with correlation severity. Under nonlinear
+    DGPs, the advantage emerges at $\rhovar \geq 0.7$.
   \item Scaling up a single model (the Large Single Model) is
     counterproductive: it amplifies sequential residual dependency,
-    producing the worst explanations across all metrics.
-  \item \dash{} never degrades predictive performance---it achieves
-    the best test RMSE at every correlation level.
+    producing worse explanations across all metrics (though the
+    comparison is partly confounded by the lack of hyperparameter
+    tuning for the Large Single Model).
+  \item \dash{} does not degrade predictive performance---it achieves
+    competitive or best test RMSE at every correlation level.
   \item The method is robust to hyperparameter choices and generalizes
-    to nonlinear DGPs and real-world datasets (Breast Cancer:
+    to real-world datasets (Breast Cancer:
     stability 0.53 $\to$ 0.93; Superconductor: 0.85 $\to$ 0.97).
   \item The Feature Stability Index and Importance-Stability Plot
     provide practical diagnostic tools for auditing explanation
     reliability.
+  \item The marginal improvement of \dash{} over Stochastic Retrain
+    (simple seed averaging) is small and not statistically significant
+    at $\rhovar = 0.9$. The primary driver of improvement is model
+    independence, which both methods share. \dash{}'s additional value
+    lies in its forced feature diversity, diagnostic tools, and
+    equity improvements.
 \end{enumerate}
 
 The code, data, and reproducible benchmarks are publicly available at
@@ -1002,6 +1122,23 @@ H.~Zou and T.~Hastie.
 \newblock Regularization and variable selection via the elastic net.
 \newblock \emph{Journal of the Royal Statistical Society: Series B},
   67(2):301--320, 2005.
+
+\bibitem[Altmann et~al.(2010)]{altmann2010permutation}
+A.~Altmann, L.~Tolo{\v{s}}i, O.~Sander, and T.~Lengauer.
+\newblock Permutation importance: a corrected feature importance measure.
+\newblock \emph{Bioinformatics}, 26(10):1340--1347, 2010.
+
+\bibitem[Meinshausen and B{\"u}hlmann(2010)]{meinshausen2010stability}
+N.~Meinshausen and P.~B{\"u}hlmann.
+\newblock Stability selection.
+\newblock \emph{Journal of the Royal Statistical Society: Series B},
+  72(4):417--473, 2010.
+
+\bibitem[Heskes et~al.(2020)]{heskes2020causal}
+T.~Heskes, E.~Sijben, G.~Bucur, and T.~Claassen.
+\newblock Causal {S}hapley values: Exploiting causal knowledge to explain
+  individual predictions of complex models.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2020.
 
 \end{thebibliography}
 

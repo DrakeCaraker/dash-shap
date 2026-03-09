@@ -91,9 +91,11 @@ Unlike a single large XGBoost ensemble (where trees are trained sequentially on 
 
 Not all models in the population are equally useful. DASH filters for high-performing models (so explanations come from accurate models) and then selects a diverse subset (so the selected models collectively cover different feature usage patterns). This is more effective than simply averaging all models or picking the top performers.
 
-### What DASH Proves
+### What DASH Shows
 
-DASH's 0.982 stability, 0.991 accuracy, and 0.159 equity numbers at high collinearity (ρ=0.95, 20 repetitions) are the proof that independence works. But the lasting contribution is the demonstration that explanation instability has a specific mechanistic cause -- sequential path dependence in iterative optimization -- and a specific structural cure -- independence between explained models. Because DASH's independent models make their arbitrary choices independently, averaging cancels the arbitrariness. The consensus reflects what the data supports -- which *group* of correlated features matters -- rather than which individual feature one optimization path happened to favor. This reframes the problem from "SHAP is noisy" to "single-model explanations are fundamentally limited," which is a different and larger claim.
+DASH's 0.982 stability, 0.991 accuracy, and 0.159 equity numbers at high collinearity (ρ=0.95, 20 repetitions) demonstrate that independence helps. The lasting contribution is the identification that explanation instability has a specific mechanistic cause -- sequential path dependence in iterative optimization -- and a structural mitigation -- independence between explained models. Because DASH's independent models make their arbitrary choices independently, averaging cancels the arbitrariness. The consensus reflects what the data supports -- which *group* of correlated features matters -- rather than which individual feature one optimization path happened to favor. This reframes the problem from "SHAP is noisy" to "single-model explanations are fundamentally limited."
+
+**Important caveats:** (1) The simplest form of independence -- Stochastic Retrain (same hyperparameters, different seeds) -- achieves stability within 0.001 of DASH at ρ=0.9, and the difference is not statistically significant. DASH's marginal value over seed averaging lies in its diagnostics (FSI, IS Plot) and equity improvements rather than raw stability. (2) The accuracy metric uses a ground-truth definition (uniform within-group importance) that presupposes equitable credit distribution, making it partially circular with the equity metric. (3) Under nonlinear DGPs, DASH shows marginally lower stability than Single Best at low correlation (ρ ≤ 0.5), so it should be applied when moderate-to-high correlation is suspected.
 
 ---
 
@@ -153,13 +155,13 @@ from dash.core.pipeline import DASHPipeline
 pipeline = DASHPipeline(
     M=200,                      # Train 200 diverse models
     K=20,                       # Select 20 for consensus
-    epsilon=0.02,               # Keep models within 0.02 of best score
+    epsilon=0.08,               # Keep models within 0.08 of best score
     selection_method="maxmin",  # Greedy diversity selection
     task="regression",          # "regression", "binary", or "multiclass"
 )
 
-# Fit on your data
-pipeline.fit(X_train, y_train, X_val, y_val, X_ref=X_val)
+# Fit on your data (use X_test as X_ref to avoid data leakage)
+pipeline.fit(X_train, y_train, X_val, y_val, X_ref=X_test)
 
 # Get consensus feature importance (mean |SHAP| per feature)
 importance = pipeline.global_importance_
@@ -214,7 +216,7 @@ Input:  M models with validation scores
 Output: Filtered subset of models (typically 30-50 from M=200)
 ```
 
-Not every model in the population performs well -- some random hyperparameter combinations produce poor models. Stage 2 removes these by keeping only models whose validation score is within `epsilon` (default: 0.02) of the best model's score.
+Not every model in the population performs well -- some random hyperparameter combinations produce poor models. Stage 2 removes these by keeping only models whose validation score is within `epsilon` (default: 0.08) of the best model's score.
 
 For example, if the best model achieves an RMSE of 0.60, all models with RMSE <= 0.63 pass the filter (for RMSE, lower is better; for AUC, higher is better).
 
@@ -401,7 +403,7 @@ The central experiment. Tests DASH across five levels of feature correlation.
 - Within each group, features have pairwise correlation `rho`
 - The target variable is a linear combination of group means: `y = sum(z_g * beta_g) + noise`
 - Ground-truth betas: `[2.0, 1.5, 1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.0]`
-- True per-feature importance: `|beta_g| / group_size` (within each group, all features are equally important)
+- True per-feature importance: `|beta_g| / group_size` (within each group, all features are defined as equally important). **Note:** This ground-truth definition presupposes equitable credit distribution within correlated groups, which is the property DASH optimizes for. The accuracy metric is therefore partially circular with the equity metric -- it measures agreement with the equitable decomposition rather than "correctness" in an absolute sense
 
 **Sweep:** `rho` in {0.0, 0.5, 0.7, 0.9, 0.95}, with 20 repetitions at each level.
 
@@ -503,11 +505,11 @@ DASH stability is effectively flat across all correlation levels (0.9765-0.9819)
 
 3. **DASH distributes credit fairly across correlated features.** At ρ=0.95, DASH's within-group CV of 0.1585 is 34% lower than Single Best (0.2421) and 41% lower than Large Single Model (0.2708). Where single models arbitrarily concentrate importance on one member of a correlated group, DASH's consensus reflects the group's collective contribution.
 
-4. **DASH is safe when collinearity is absent.** At ρ=0.0, the accuracy gap between DASH and Single Best is 0.0005 -- effectively zero. DASH does not degrade performance on uncorrelated data.
+4. **DASH is safe when collinearity is absent (linear DGP).** At ρ=0.0, the accuracy gap between DASH and Single Best is 0.0005 -- effectively zero under the linear DGP. However, under nonlinear DGPs, DASH shows marginally lower stability at ρ=0.0 and ρ=0.5, so the safety guarantee is conditional on the DGP type.
 
 5. **DASH also has the best predictive RMSE** at every correlation level, disproving the concern that diversified ensembles sacrifice prediction quality. At ρ=0.9: DASH RMSE=0.5821 vs Single Best=0.6043 vs Large Single Model=0.7177.
 
-6. **Statistical rigor.** 17/26 Wilcoxon signed-rank tests are significant after Bonferroni correction, with large effect sizes (Cohen's d > 1.0) at high correlation levels. DASH's advantages become statistically significant at ρ≥0.7 vs Single Best.
+6. **Statistical rigor.** Wilcoxon signed-rank tests with Bonferroni correction show statistically significant improvements over Single Best at ρ≥0.7, with large effect sizes (Cohen's d > 1.0). However, the comparison against Stochastic Retrain (the strongest baseline) is not statistically significant at ρ=0.9 (Cohen's d = 0.26, stability gap = 0.001), indicating that DASH's marginal improvement over simple seed averaging is modest.
 
 7. **Robust to hyperparameters.** Epsilon sensitivity analysis shows <0.001 variation in stability across a 3× range of ε values (0.03 to 0.10). Ablation studies show diminishing returns past M=200.
 
@@ -561,7 +563,9 @@ DASH improves stability by +0.1177 over Single Best and +0.2636 over Large Singl
 
 ### Nonlinear DGP Results
 
-DASH's advantage persists under a nonlinear data-generating process with interactions and nonlinear terms. At ρ=0.9: DASH stability=0.8955 vs Single Best=0.8403 (+0.0552). At ρ=0.95: DASH stability=0.8955 vs Single Best=0.8191 (+0.0764). All methods degrade more under nonlinearity (stability drops from ~0.98 to ~0.89), but DASH degrades less.
+DASH's advantage persists under a nonlinear data-generating process with interactions and nonlinear terms at moderate-to-high correlation. At ρ=0.9: DASH stability=0.8955 vs Single Best=0.8403 (+0.0552). At ρ=0.95: DASH stability=0.8955 vs Single Best=0.8191 (+0.0764). All methods degrade more under nonlinearity (stability drops from ~0.98 to ~0.89), but DASH degrades less at high ρ.
+
+**Caveat:** At ρ=0.0 and ρ=0.5, DASH shows marginally *lower* stability than Single Best (0.9420 vs 0.9437 and 0.8678 vs 0.8769, respectively), violating the safety desideratum. DASH's advantage emerges only at ρ≥0.7 under nonlinearity. Practitioners working with nonlinear relationships and low correlation should verify that DASH does not introduce unnecessary noise for their specific use case.
 
 ### Epsilon Sensitivity
 
@@ -581,7 +585,7 @@ from dash.core.pipeline import DASHPipeline
 pipeline = DASHPipeline(
     M=200,                              # Number of models in the population
     K=20,                               # Number of models to select for consensus
-    epsilon=0.02,                       # Performance filter threshold
+    epsilon=0.08,                       # Performance filter threshold
     selection_method="maxmin",          # "maxmin", "cluster", or "dedup"
     delta=0.1,                          # Diversity threshold (maxmin)
     tau=0.3,                            # Cluster distance threshold (cluster)
@@ -599,7 +603,7 @@ pipeline = DASHPipeline(
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `fit(X_train, y_train, X_val, y_val, X_ref=None, feature_names=None)` | self | Runs all 5 stages. `X_ref` defaults to `X_val`. |
+| `fit(X_train, y_train, X_val, y_val, X_ref=None, feature_names=None)` | self | Runs all 5 stages. `X_ref` defaults to `X_val`. **Recommended:** pass a held-out reference set (e.g., `X_test`) as `X_ref` to avoid computing SHAP on data used for filtering. |
 | `get_fsi()` | `FeatureStabilityIndex` | Feature Stability Index object with quadrant labels. |
 | `plot_importance_stability(groups=None, **kwargs)` | matplotlib Figure | Generates the IS Plot. Pass `groups` to color by feature group. |
 | `get_importance_ranking()` | np.array | Feature indices sorted by descending importance. |
