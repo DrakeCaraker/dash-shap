@@ -62,8 +62,9 @@ from dash.baselines import (
     StochasticRetrainBaseline, EnsembleSHAPBaseline,
 )
 from dash.evaluation import (
-    importance_accuracy, importance_stability, stability_bootstrap_ci,
-    within_group_equity, compare_methods, friedman_test,
+    dgp_agreement, importance_accuracy, importance_stability,
+    stability_bootstrap_ci, within_group_equity, compare_methods,
+    friedman_test,
 )
 from dash.utils.io import save_json
 
@@ -232,9 +233,16 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
 def experiment_linear_sweep():
     """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
-    Matches notebook Section 4 — uses X_ref=Xte (D1 fix), saves per-rep arrays
-    for downstream significance tests, collects RMSE, and reports bootstrap CI
-    for stability.
+    Matches notebook Section 4.  Uses four-way split: X_explain for SHAP
+    (X_ref), X_test exclusively for RMSE (A4 fix).  Reports BCa bootstrap
+    CI for stability (A3 fix), within_group_equity with include_zero_groups
+    robustness check (A2), and dgp_agreement instead of importance_accuracy
+    (A5 reframing).
+
+    Note on bootstrap CIs (A1): CIs reflect run-to-run variability and do
+    not include uncertainty from the model selection stage.  Since K_eff is
+    typically 10-30 out of ~110 filtered candidates, selection-stage variance
+    is expected to be small relative to cross-run variance.
 
     Includes LSM (Tuned) — a tuned variant of the Large Single Model that
     searches over max_depth and learning_rate, making the comparison fair.
@@ -255,15 +263,15 @@ def experiment_linear_sweep():
     for rho in rho_levels:
         log(f"\n--- ρ = {rho} ---")
         for name in sweep_methods:
-            acc_runs, eq_runs, imp_runs, rmse_runs = [], [], [], []
+            acc_runs, eq_runs, eq_zero_runs, imp_runs, rmse_runs = [], [], [], [], []
             for rep in range(N_REPS):
                 rep_seed = SEED + rep
-                Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
                     generate_synthetic_linear(N=5000, rho=rho, seed=rep_seed)
 
                 if name == 'Single Best':
                     m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
                 elif name == 'Large Single Model':
@@ -271,7 +279,7 @@ def experiment_linear_sweep():
                         K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
                         colsample_bytree=0.2, seed=rep_seed, tune=False,
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
                 elif name == 'LSM (Tuned)':
@@ -279,14 +287,14 @@ def experiment_linear_sweep():
                         K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
                         colsample_bytree=0.2, seed=rep_seed, tune=True,
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
                 elif name == 'Stochastic Retrain':
                     m = StochasticRetrainBaseline(
                         N=K, task='regression', n_jobs=-1, seed=rep_seed,
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                     preds = None  # StochasticRetrain doesn't expose predictions
                 else:  # DASH MaxMin
@@ -295,14 +303,15 @@ def experiment_linear_sweep():
                         selection_method='maxmin', n_jobs=-1,
                         seed=rep_seed, verbose=False,
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
 
                 rmse_val = rmse_score(yte, preds) if preds is not None else np.nan
-                r, _ = importance_accuracy(imp, true_imp)
+                r, _ = dgp_agreement(imp, true_imp)
                 acc_runs.append(r)
                 eq_runs.append(within_group_equity(imp, grps))
+                eq_zero_runs.append(within_group_equity(imp, grps, include_zero_groups=True))
                 imp_runs.append(imp)
                 rmse_runs.append(rmse_val)
 
@@ -312,12 +321,18 @@ def experiment_linear_sweep():
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'dgp_agreement_mean': float(np.mean(acc_runs)),
+                'dgp_agreement_se': float(np.std(acc_runs, ddof=1) / np.sqrt(len(acc_runs))),
+                'dgp_agreement_std': float(np.std(acc_runs, ddof=1)),
+                # Backward-compatible aliases
                 'accuracy_mean': float(np.mean(acc_runs)),
                 'accuracy_se': float(np.std(acc_runs, ddof=1) / np.sqrt(len(acc_runs))),
                 'accuracy_std': float(np.std(acc_runs, ddof=1)),
                 'equity_mean': float(np.mean(eq_runs)),
                 'equity_se': float(np.std(eq_runs, ddof=1) / np.sqrt(len(eq_runs))),
                 'equity_std': float(np.std(eq_runs, ddof=1)),
+                'equity_incl_zero_mean': float(np.mean(eq_zero_runs)),
+                'equity_incl_zero_std': float(np.std(eq_zero_runs, ddof=1)),
                 'rmse_mean': float(np.mean(rmse_runs)),
                 'rmse_std': float(np.std(rmse_runs, ddof=1)),
                 'acc_runs': np.array(acc_runs),
@@ -325,8 +340,8 @@ def experiment_linear_sweep():
                 'rmse_runs': np.array(rmse_runs),
                 'imp_runs': imp_runs,
             }
-            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  "
-                f"acc={np.mean(acc_runs):.4f}±{np.std(acc_runs, ddof=1)/np.sqrt(len(acc_runs)):.4f}  "
+            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f} [{stab_ci_lo:.4f},{stab_ci_hi:.4f}]  "
+                f"dgp={np.mean(acc_runs):.4f}±{np.std(acc_runs, ddof=1)/np.sqrt(len(acc_runs)):.4f}  "
                 f"eq={np.mean(eq_runs):.4f}  RMSE={np.nanmean(rmse_runs):.4f}")
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
@@ -356,30 +371,29 @@ def experiment_overlapping():
         rep_seed = SEED + rep
         log(f"  Rep {rep+1}/{N_REPS}")
 
-        Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, meta = \
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, meta = \
             generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed, structure="overlapping")
 
-        # D1: X_ref=Xte
         sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
         stability_vectors['Single Best'].append(sb.global_importance_)
 
         dm = DASHPipeline(
             M=M, K=K, epsilon=EPSILON, delta=DELTA,
             selection_method='maxmin', n_jobs=-1, seed=rep_seed, verbose=False,
         )
-        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
         stability_vectors['DASH (MaxMin)'].append(dm.global_importance_)
 
         imp_vecs = get_preliminary_importance(
-            dm.models_, dm.filtered_indices_, Xte, method='gain',
+            dm.models_, dm.filtered_indices_, Xexp, method='gain',
         )
         filt_scores = {i: dm.val_scores_[i] for i in dm.filtered_indices_}
         sel_c = cluster_coverage_selection(
             imp_vecs, filt_scores, Xtr,
             tau=PAPER_CONFIG['TAU_CLUSTER'], K=K, verbose=False,
         )
-        cons_c, shap_c = compute_consensus(dm.models_, sel_c, Xte, verbose=False)
+        cons_c, shap_c = compute_consensus(dm.models_, sel_c, Xexp, verbose=False)
         _, _, _, imp_c = compute_diagnostics(shap_c)
         stability_vectors['DASH (Cluster)'].append(imp_c)
 
@@ -421,12 +435,12 @@ def experiment_nonlinear_sweep():
             eq_runs, imp_runs = [], []
             for rep in range(N_REPS):
                 rep_seed = SEED + rep
-                Xtr, ytr, Xv, yv, Xte, yte, grps, _, _ = \
+                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = \
                     generate_synthetic_nonlinear(N=5000, rho=rho, seed=rep_seed)
 
                 if name == 'Single Best':
                     m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                 elif name in ('Large Single Model', 'LSM (Tuned)'):
                     m = LargeSingleModelBaseline(
@@ -434,13 +448,13 @@ def experiment_nonlinear_sweep():
                         colsample_bytree=0.2, seed=rep_seed,
                         tune=(name == 'LSM (Tuned)'),
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                 elif name == 'Stochastic Retrain':
                     m = StochasticRetrainBaseline(
                         N=K, task='regression', n_jobs=-1, seed=rep_seed,
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                 else:  # DASH MaxMin
                     m = DASHPipeline(
@@ -448,7 +462,7 @@ def experiment_nonlinear_sweep():
                         selection_method='maxmin', n_jobs=-1,
                         seed=rep_seed, verbose=False,
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
                     imp = m.global_importance_
 
                 eq_runs.append(within_group_equity(imp, grps))
@@ -493,7 +507,7 @@ def experiment_table2_baselines():
         imp_runs, acc_runs, eq_runs = [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
-            Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
                 generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed)
 
             if name == 'Ensemble SHAP':
@@ -501,11 +515,11 @@ def experiment_table2_baselines():
                     n_estimators=PAPER_CONFIG['N_ESTIMATORS_ESHAP'],
                     task='regression', seed=rep_seed,
                 )
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                 imp = m.global_importance_
             elif name == 'Stochastic Retrain':
                 m = StochasticRetrainBaseline(N=K, task='regression', n_jobs=-1, seed=rep_seed)
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                 imp = m.global_importance_
             else:  # DASH (Dedup)
                 dm = DASHPipeline(
@@ -513,10 +527,10 @@ def experiment_table2_baselines():
                     selection_method='dedup', n_jobs=-1,
                     seed=rep_seed, verbose=False,
                 )
-                dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
                 imp = dm.global_importance_
 
-            r, _ = importance_accuracy(imp, true_imp)
+            r, _ = dgp_agreement(imp, true_imp)
             acc_runs.append(r)
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
@@ -583,17 +597,22 @@ def experiment_real_california():
             rep_seed = SEED + rep
 
             # D2: Re-split and re-fit scaler per rep
+            # A4: Three-way split from pool — explain set separate from test
             Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
                 X_cal_pool, y_cal_pool, test_size=0.2, random_state=rep_seed,
+            )
+            Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
+                Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed,
             )
             scaler_r = StandardScaler().fit(Xtr_r)
             Xtr_r = scaler_r.transform(Xtr_r)
             Xv_r = scaler_r.transform(Xv_r)
+            Xexp_r = scaler_r.transform(Xexp_r)
             Xte_r = scaler_r.transform(X_cal_test)
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
             else:
@@ -602,7 +621,7 @@ def experiment_real_california():
                     selection_method='maxmin', n_jobs=-1,
                     seed=rep_seed, verbose=False,
                 )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r, feature_names=cal_names)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=cal_names)
                 imp = m.global_importance_
                 preds = m.get_consensus_ensemble_predictions(Xte_r)
                 rmse_val = rmse_score(y_cal_test, preds)
@@ -668,24 +687,29 @@ def experiment_real_breast_cancer():
         for rep in range(N_REPS):
             rep_seed = SEED + rep
 
+            # A4: Separate explain set from test
             Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
                 X_bc_pool, y_bc_pool, test_size=0.2, random_state=rep_seed,
+            )
+            Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
+                Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed,
             )
             scaler_r = StandardScaler().fit(Xtr_r)
             Xtr_r = scaler_r.transform(Xtr_r)
             Xv_r = scaler_r.transform(Xv_r)
+            Xexp_r = scaler_r.transform(Xexp_r)
             Xte_r = scaler_r.transform(X_bc_test)
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, task='binary', seed=rep_seed)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
             else:
                 m = DASHPipeline(
                     M=M, K=K, epsilon=BC_EPSILON, delta=DELTA,
                     selection_method='maxmin', task='binary',
                     n_jobs=-1, seed=rep_seed, verbose=False,
                 )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r, feature_names=bc_names)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=bc_names)
 
             imp_runs.append(m.global_importance_)
 
@@ -752,17 +776,22 @@ def experiment_real_superconductor():
         for rep in range(N_REPS):
             rep_seed = SEED + rep
 
+            # A4: Separate explain set from test
             Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
                 X_sc_pool, y_sc_pool, test_size=0.2, random_state=rep_seed,
+            )
+            Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
+                Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed,
             )
             scaler_r = StandardScaler().fit(Xtr_r)
             Xtr_r = scaler_r.transform(Xtr_r)
             Xv_r = scaler_r.transform(Xv_r)
+            Xexp_r = scaler_r.transform(Xexp_r)
             Xte_r = scaler_r.transform(X_sc_test)
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
             elif name == 'Large Single Model':
@@ -770,7 +799,7 @@ def experiment_real_superconductor():
                     K=SC_K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
                     colsample_bytree=0.2, seed=rep_seed,
                 )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
             else:
@@ -779,7 +808,7 @@ def experiment_real_superconductor():
                     selection_method='maxmin', n_jobs=-1,
                     seed=rep_seed, verbose=False,
                 )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xte_r, feature_names=sc_names)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=sc_names)
                 imp = m.global_importance_
                 preds = m.get_consensus_ensemble_predictions(Xte_r)
                 rmse_val = rmse_score(y_sc_test, preds)
@@ -829,7 +858,7 @@ def experiment_epsilon_sensitivity():
         rep_seed = SEED + rep
         log(f"  Rep {rep+1}/{N_REPS}")
 
-        Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
             generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed)
 
         for eps in EPS_VALUES:
@@ -838,10 +867,10 @@ def experiment_epsilon_sensitivity():
                 selection_method='maxmin', n_jobs=-1,
                 seed=rep_seed, verbose=False,
             )
-            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
             imp = dm.global_importance_
 
-            r, _ = importance_accuracy(imp, true_imp)
+            r, _ = dgp_agreement(imp, true_imp)
             eps_results[eps]['n_passing'].append(len(dm.filtered_indices_))
             eps_results[eps]['k_eff'].append(len(dm.selected_indices_))
             eps_results[eps]['acc_runs'].append(r)
@@ -906,7 +935,7 @@ def experiment_ablation():
                 imp_runs, acc_runs = [], []
                 for rep in range(ABL_N_REPS):
                     rep_seed = SEED + rep
-                    Xtr, ytr, Xv, yv, Xte, yte, grps, true_imp, _ = \
+                    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
                         generate_synthetic_linear(N=5000, rho=abl_rho, seed=rep_seed)
 
                     dm = DASHPipeline(
@@ -914,9 +943,9 @@ def experiment_ablation():
                         delta=p['delta'], selection_method='maxmin',
                         n_jobs=-1, seed=rep_seed, verbose=False,
                     )
-                    dm.fit(Xtr, ytr, Xv, yv, X_ref=Xte, feature_names=FEATURE_NAMES)
+                    dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
                     imp = dm.global_importance_
-                    r, _ = importance_accuracy(imp, true_imp)
+                    r, _ = dgp_agreement(imp, true_imp)
                     acc_runs.append(r)
                     imp_runs.append(imp)
 
@@ -956,10 +985,10 @@ def check_success_criteria(sweep_results):
     log(f"  1. Stability wins: {n_wins}/{len(rho_levels)} "
         f"({'PASS' if n_wins >= 4 else 'FAIL'}, need >=80%)")
 
-    # 2. Accuracy at rho=0.9 (relative to Single Best baseline)
+    # 2. DGP agreement at rho=0.9 (relative to Single Best baseline)
     acc_09 = sweep_results[0.9]['DASH (MaxMin)']['accuracy_mean']
     sb_acc_09 = sweep_results[0.9]['Single Best']['accuracy_mean']
-    log(f"  2. Accuracy at ρ=0.9: DASH={acc_09:.4f} vs SB={sb_acc_09:.4f} "
+    log(f"  2. DGP agreement at ρ=0.9: DASH={acc_09:.4f} vs SB={sb_acc_09:.4f} "
         f"({'PASS' if acc_09 >= sb_acc_09 else 'check'}, DASH >= SB)")
 
     # 3. Equity wins
@@ -974,7 +1003,7 @@ def check_success_criteria(sweep_results):
     # 4. Safety control at rho=0
     rho0_dash = sweep_results[0.0]['DASH (MaxMin)']['accuracy_mean']
     rho0_sb = sweep_results[0.0]['Single Best']['accuracy_mean']
-    log(f"  4. ρ=0 control: DASH acc={rho0_dash:.4f}, SB acc={rho0_sb:.4f} "
+    log(f"  4. ρ=0 control: DASH dgp={rho0_dash:.4f}, SB dgp={rho0_sb:.4f} "
         f"({'PASS' if abs(rho0_dash - rho0_sb) < 0.1 else 'check'})")
 
     # 5. Independence value (DASH vs Large Single Model)
