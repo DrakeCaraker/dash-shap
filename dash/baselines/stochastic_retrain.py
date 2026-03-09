@@ -48,7 +48,7 @@ class StochasticRetrainBaseline:
         models = {i: model for i, model, _ in results}
 
         consensus, all_shap = compute_consensus(
-            models, list(models.keys()), X_ref, verbose=False,
+            models, list(models.keys()), X_ref, seed=self.seed, verbose=False,
         )
         _, _, self.fsi_, self.global_importance_ = compute_diagnostics(all_shap)
         return self
