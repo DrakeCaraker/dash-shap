@@ -239,7 +239,7 @@ def experiment_linear_sweep():
     log("=" * 70)
 
     rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
-    sweep_methods = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
+    sweep_methods = ['Single Best', 'Large Single Model', 'Stochastic Retrain', 'DASH (MaxMin)']
     sweep_results = {rho: {} for rho in rho_levels}
 
     for rho in rho_levels:
@@ -264,6 +264,13 @@ def experiment_linear_sweep():
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
+                elif name == 'Stochastic Retrain':
+                    m = StochasticRetrainBaseline(
+                        N=K, task='regression', n_jobs=-1, seed=rep_seed,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    imp = m.global_importance_
+                    preds = None  # StochasticRetrain doesn't expose predictions
                 else:  # DASH MaxMin
                     m = DASHPipeline(
                         M=M, K=K, epsilon=EPSILON, delta=DELTA,
@@ -274,7 +281,7 @@ def experiment_linear_sweep():
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
 
-                rmse_val = rmse_score(yte, preds)
+                rmse_val = rmse_score(yte, preds) if preds is not None else np.nan
                 r, _ = importance_accuracy(imp, true_imp)
                 acc_runs.append(r)
                 eq_runs.append(within_group_equity(imp, grps))
@@ -370,7 +377,7 @@ def experiment_nonlinear_sweep():
     log("=" * 70)
 
     nl_rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
-    nl_methods = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
+    nl_methods = ['Single Best', 'Large Single Model', 'Stochastic Retrain', 'DASH (MaxMin)']
     nl_sweep = {rho: {} for rho in nl_rho_levels}
 
     for rho in nl_rho_levels:
@@ -393,7 +400,13 @@ def experiment_nonlinear_sweep():
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
                     imp = m.global_importance_
-                else:
+                elif name == 'Stochastic Retrain':
+                    m = StochasticRetrainBaseline(
+                        N=K, task='regression', n_jobs=-1, seed=rep_seed,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    imp = m.global_importance_
+                else:  # DASH MaxMin
                     m = DASHPipeline(
                         M=M, K=K, epsilon=EPSILON, delta=DELTA,
                         selection_method='maxmin', n_jobs=-1,
