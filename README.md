@@ -65,9 +65,9 @@ Low `colsample_bytree` makes this worse, not better. When each tree sees fewer f
 
 A single XGBoost model with 10,000-15,000 trees and the same low `colsample_bytree` that DASH uses -- matching DASH's total compute budget in a single sequential model -- amplifies this path dependence to its extreme. In our full benchmark (20 repetitions at ρ=0.95), this Large Single Model configuration achieved:
 
-- **Worst stability** (0.9301 vs. 0.9806 for DASH)
-- **Worst accuracy** (0.9641 vs. 0.9901 for DASH)
-- **Worst equity** (CV of 0.2708 vs. 0.1618 for DASH)
+- **Worst stability** (0.9301 vs. 0.9819 for DASH)
+- **Worst accuracy** (0.9641 vs. 0.9907 for DASH)
+- **Worst equity** (CV of 0.2708 vs. 0.1585 for DASH)
 
 The ranking that emerges from a large sequential model is not a better version of the truth. It is a more committed version of an arbitrary initial choice.
 
@@ -93,7 +93,7 @@ Not all models in the population are equally useful. DASH filters for high-perfo
 
 ### What DASH Proves
 
-DASH's 0.981 stability, 0.990 accuracy, and 0.162 equity numbers at high collinearity (ρ=0.95, 20 repetitions) are the proof that independence works. But the lasting contribution is the demonstration that explanation instability has a specific mechanistic cause -- sequential path dependence in iterative optimization -- and a specific structural cure -- independence between explained models. Because DASH's independent models make their arbitrary choices independently, averaging cancels the arbitrariness. The consensus reflects what the data supports -- which *group* of correlated features matters -- rather than which individual feature one optimization path happened to favor. This reframes the problem from "SHAP is noisy" to "single-model explanations are fundamentally limited," which is a different and larger claim.
+DASH's 0.982 stability, 0.991 accuracy, and 0.159 equity numbers at high collinearity (ρ=0.95, 20 repetitions) are the proof that independence works. But the lasting contribution is the demonstration that explanation instability has a specific mechanistic cause -- sequential path dependence in iterative optimization -- and a specific structural cure -- independence between explained models. Because DASH's independent models make their arbitrary choices independently, averaging cancels the arbitrariness. The consensus reflects what the data supports -- which *group* of correlated features matters -- rather than which individual feature one optimization path happened to favor. This reframes the problem from "SHAP is noisy" to "single-model explanations are fundamentally limited," which is a different and larger claim.
 
 ---
 
@@ -389,7 +389,8 @@ python run_experiments.py
 Or interactively via the demo notebooks:
 
 - **`notebooks/demo_benchmark_1.ipynb`** -- Prototype run (M=50, K=15, 5 reps). Runs in minutes. Use for quick validation and development iteration.
-- **`notebooks/demo_benchmark_2.ipynb`** -- Full run (M=500, K=30, 20 reps). Runs in ~1-2 hours. Produces the authoritative results cited throughout this README.
+- **`notebooks/demo_benchmark_2.ipynb`** -- Full run (M=500, K=30, 20 reps). Earlier full-scale benchmark.
+- **`notebooks/demo_benchmark_4_checkpointed.ipynb`** -- Authoritative run (M=200, K=30, 20 reps) with checkpointing. Produces the results cited throughout this README. Includes all 9 experiments: correlation sweep, overlapping structure, nonlinear DGP, extended baselines, real-world datasets (California Housing, Breast Cancer, Superconductor), epsilon sensitivity, and ablation studies.
 
 ### Experiment 1: Synthetic Linear -- Correlation Sweep
 
@@ -402,10 +403,10 @@ The central experiment. Tests DASH across five levels of feature correlation.
 - Ground-truth betas: `[2.0, 1.5, 1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.0]`
 - True per-feature importance: `|beta_g| / group_size` (within each group, all features are equally important)
 
-**Sweep:** `rho` in {0.0, 0.5, 0.7, 0.9, 0.95}, with 5 repetitions at each level.
+**Sweep:** `rho` in {0.0, 0.5, 0.7, 0.9, 0.95}, with 20 repetitions at each level.
 
 **Metrics:**
-- **Stability:** Mean pairwise Spearman correlation of importance vectors across the 5 repetitions. Measures: "If I run this method twice, do I get the same ranking?"
+- **Stability:** Mean pairwise Spearman correlation of importance vectors across the 20 repetitions. Measures: "If I run this method twice, do I get the same ranking?"
 - **Accuracy:** Spearman correlation between estimated importance and ground truth. Measures: "Is the ranking correct?"
 - **Within-group equity:** Average coefficient of variation (std/mean) of importance values within each correlated group. Measures: "Do correlated features get similar importance, as they should?"
 
@@ -423,28 +424,30 @@ where `z_g` is the mean of group `g`'s features. Accuracy against ground truth i
 
 ### Experiment 4: Real Data
 
-Validates DASH on two real datasets:
+Validates DASH on three real datasets:
 
 - **California Housing** (8 features, regression): Natural collinearity between median income and house value, number of rooms and bedrooms, latitude and longitude.
 - **Breast Cancer Wisconsin** (30 features, binary classification): Heavy collinearity -- radius, perimeter, and area are mathematically related (perimeter ~ 2*pi*radius, area ~ pi*radius^2). Mean, standard error, and worst-case versions of each measurement create ~21 feature pairs with |r| > 0.9.
+- **Superconductor UCI** (81 features, regression): Large-scale real-world benchmark with 21,263 samples. Uses scale-appropriate epsilon (SC_EPSILON=0.40) due to higher RMSE scale (~18).
 
 ---
 
 ## Benchmark Results
 
-The repository includes two benchmark notebooks that validate DASH at different scales. The prototype run confirms the method works directionally; the full run provides the authoritative evidence. All numbers cited in narrative sections of this README come from the full run.
+All numbers cited in this README come from `demo_benchmark_4_checkpointed.ipynb` (M=200, K=30, 20 repetitions), the authoritative benchmark. The prototype notebook (`demo_benchmark_1.ipynb`, M=50, K=15, 5 reps) confirms directional findings and runs in minutes.
 
-### Two Benchmark Configurations
+### Benchmark Configuration
 
-| Parameter | Prototype | Full Run |
-|-----------|-----------|----------|
-| Population size (M) | 50 | 500 |
-| Selected models (K) | 15 | 30 |
-| Repetitions (N_REPS) | 5 | 20 |
-| Notebook | `demo_benchmark_1.ipynb` | `demo_benchmark_2.ipynb` |
-| Runtime | Minutes | ~1-2 hours |
+| Parameter | Value |
+|-----------|-------|
+| Population size (M) | 200 |
+| Selected models (K) | 30 |
+| Repetitions (N_REPS) | 20 |
+| Performance filter (ε) | 0.08 |
+| Diversity threshold (δ) | 0.05 |
+| Notebook | `demo_benchmark_4_checkpointed.ipynb` |
 
-Both notebooks run the same experiments: a proof of concept at high collinearity, a full baseline comparison, a stability test across repetitions, a correlation sweep from ρ=0.0 to ρ=0.95, and a real-data validation on Breast Cancer. The full run uses 10x the population, 2x the selected models, and 4x the repetitions, producing tighter confidence intervals and more decisive results.
+The benchmark runs 9 experiments: proof of concept at high collinearity, full baseline comparison, stability across repetitions, correlation sweep (ρ=0.0 to 0.95), nonlinear DGP sweep, extended baselines (Table 2), real-world datasets (California Housing, Breast Cancer, Superconductor), epsilon sensitivity, and ablation studies.
 
 ### Baseline Comparison at ρ=0.95
 
@@ -453,18 +456,18 @@ The most demanding test: 50 features in 10 correlated groups at ρ=0.95, average
 ```
 Method                Stability   Accuracy (ρ)    Equity (CV)
 =============================================================
-Single Best              0.9527         0.9757         0.2411
+Single Best              0.9529         0.9755         0.2421
 Large Single Model       0.9301         0.9641         0.2708
-DASH (MaxMin)            0.9806         0.9901         0.1618
+DASH (MaxMin)            0.9819         0.9907         0.1585
 ```
 
 DASH (MaxMin) leads on all three metrics at the highest collinearity level:
 
-- **Stability:** 0.9806 vs. 0.9527 for Single Best (+0.0279). DASH produces nearly identical importance rankings across 20 independent runs. Single Best's ranking shifts substantially depending on which arbitrary feature choices a given seed produces.
+- **Stability:** 0.9819 vs. 0.9529 for Single Best (+0.0290). DASH produces nearly identical importance rankings across 20 independent runs. Single Best's ranking shifts substantially depending on which arbitrary feature choices a given seed produces.
 
-- **Accuracy:** 0.9901 vs. 0.9757 for Single Best. DASH's consensus ranking is closer to the known ground truth because averaging cancels the arbitrary feature-selection noise that biases any single model's ranking.
+- **Accuracy:** 0.9907 vs. 0.9755 for Single Best. DASH's consensus ranking is closer to the known ground truth because averaging cancels the arbitrary feature-selection noise that biases any single model's ranking.
 
-- **Equity:** CV of 0.1618 vs. 0.2411 for Single Best (33% lower) and 0.2708 for Large Single Model (40% lower). Within each correlated group, DASH distributes importance fairly across all members rather than concentrating it on whichever feature one model happened to grab.
+- **Equity:** CV of 0.1585 vs. 0.2421 for Single Best (34% lower) and 0.2708 for Large Single Model (41% lower). Within each correlated group, DASH distributes importance fairly across all members rather than concentrating it on whichever feature one model happened to grab.
 
 The Large Single Model -- which matches DASH's total compute budget in a single sequential ensemble -- performs worst on every metric. This is the direct evidence for sequential residual dependency: more trees in a single ensemble amplifies the first-mover bias rather than correcting it.
 
@@ -474,57 +477,68 @@ The central result: how each method performs as correlation increases from 0.0 t
 
 **Stability:**
 ```
-ρ=0.0:    DASH=0.9778   SB=0.9744   LSM=0.9650   (comparable -- safety check)
-ρ=0.5:    DASH=0.9815   SB=0.9781   LSM=0.9702   (small advantage)
-ρ=0.7:    DASH=0.9781   SB=0.9699   LSM=0.9635   (advantage emerges)
-ρ=0.9:    DASH=0.9810   SB=0.9603   LSM=0.9396   (clear separation)
-ρ=0.95:   DASH=0.9806   SB=0.9527   LSM=0.9301   (largest gap)
+ρ=0.0:    DASH=0.9765   SB=0.9756   LSM=0.9649   (comparable -- safety check)
+ρ=0.5:    DASH=0.9816   SB=0.9784   LSM=0.9702   (small advantage)
+ρ=0.7:    DASH=0.9804   SB=0.9697   LSM=0.9635   (advantage emerges)
+ρ=0.9:    DASH=0.9805   SB=0.9601   LSM=0.9401   (clear separation)
+ρ=0.95:   DASH=0.9819   SB=0.9529   LSM=0.9301   (largest gap)
 ```
 
 **Equity (within-group CV, lower is better):**
 ```
-ρ=0.0:    DASH=0.1511   SB=0.1539   LSM=0.1532   (comparable)
-ρ=0.5:    DASH=0.1583   SB=0.1667   LSM=0.1799   (advantage begins)
-ρ=0.7:    DASH=0.1719   SB=0.1980   LSM=0.2021   (growing gap)
-ρ=0.9:    DASH=0.1655   SB=0.2182   LSM=0.2539   (24% better than SB)
-ρ=0.95:   DASH=0.1618   SB=0.2411   LSM=0.2708   (33% better than SB)
+ρ=0.0:    DASH=0.1502   SB=0.1522   LSM=0.1547   (comparable)
+ρ=0.5:    DASH=0.1510   SB=0.1653   LSM=0.1799   (advantage begins)
+ρ=0.7:    DASH=0.1540   SB=0.1973   LSM=0.2021   (growing gap)
+ρ=0.9:    DASH=0.1625   SB=0.2171   LSM=0.2528   (25% better than SB)
+ρ=0.95:   DASH=0.1585   SB=0.2421   LSM=0.2708   (34% better than SB)
 ```
 
-DASH stability is effectively flat across all correlation levels (0.9778-0.9815), while Single Best degrades from 0.9744 to 0.9527 and Large Single Model degrades from 0.9650 to 0.9301. DASH is immune to the correlation-induced instability that plagues single-model explanations because its independent models make their arbitrary choices independently, and averaging cancels the arbitrariness.
+DASH stability is effectively flat across all correlation levels (0.9765-0.9819), while Single Best degrades from 0.9756 to 0.9529 and Large Single Model degrades from 0.9649 to 0.9301. DASH is immune to the correlation-induced instability that plagues single-model explanations because its independent models make their arbitrary choices independently, and averaging cancels the arbitrariness.
 
 ### Key Conclusions
 
-1. **DASH's advantage is specifically about collinearity.** The stability gap widens from +0.0034 at ρ=0.0 to +0.0279 at ρ=0.95. At zero correlation, all methods perform similarly -- DASH is a targeted fix, not a blunt hammer.
+1. **DASH's advantage is specifically about collinearity.** The stability gap widens from +0.0009 at ρ=0.0 to +0.0290 at ρ=0.95. At zero correlation, all methods perform similarly -- DASH is a targeted fix, not a blunt hammer.
 
 2. **Bigger models make explanations worse, not better.** The Large Single Model -- matching DASH's total compute in a single sequential ensemble -- achieves the worst stability (0.9301), worst accuracy (0.9641), and worst equity (0.2708) of any method at ρ=0.95. Model independence, not model size, is what matters.
 
-3. **DASH distributes credit fairly across correlated features.** At ρ=0.95, DASH's within-group CV of 0.1618 is 33% lower than Single Best (0.2411) and 40% lower than Large Single Model (0.2708). Where single models arbitrarily concentrate importance on one member of a correlated group, DASH's consensus reflects the group's collective contribution.
+3. **DASH distributes credit fairly across correlated features.** At ρ=0.95, DASH's within-group CV of 0.1585 is 34% lower than Single Best (0.2421) and 41% lower than Large Single Model (0.2708). Where single models arbitrarily concentrate importance on one member of a correlated group, DASH's consensus reflects the group's collective contribution.
 
-4. **DASH is safe when collinearity is absent.** At ρ=0.0, the accuracy gap between DASH and Single Best is 0.0019 -- effectively zero. DASH does not degrade performance on uncorrelated data.
+4. **DASH is safe when collinearity is absent.** At ρ=0.0, the accuracy gap between DASH and Single Best is 0.0005 -- effectively zero. DASH does not degrade performance on uncorrelated data.
 
-5. **Results strengthen with statistical power.** The prototype (5 reps) shows 4/5 stability wins and 4/5 equity wins across correlation levels. The full run (20 reps) shows 5/5 on both. The directional findings are consistent; the full run eliminates sampling noise.
+5. **DASH also has the best predictive RMSE** at every correlation level, disproving the concern that diversified ensembles sacrifice prediction quality. At ρ=0.9: DASH RMSE=0.5821 vs Single Best=0.6043 vs Large Single Model=0.7177.
+
+6. **Statistical rigor.** 17/26 Wilcoxon signed-rank tests are significant after Bonferroni correction, with large effect sizes (Cohen's d > 1.0) at high correlation levels. DASH's advantages become statistically significant at ρ≥0.7 vs Single Best.
+
+7. **Robust to hyperparameters.** Epsilon sensitivity analysis shows <0.001 variation in stability across a 3× range of ε values (0.03 to 0.10). Ablation studies show diminishing returns past M=200.
 
 ### Success Criteria
 
-The benchmark defines four formal success criteria. Both configurations pass all four, with the full run passing more decisively:
+The benchmark defines nine formal success criteria, all of which pass:
 
-| Criterion | Prototype (5 reps) | Full Run (20 reps) | Threshold |
-|-----------|--------------------|--------------------|-----------|
-| Stability wins (DASH > Single Best) | 4/5 ρ levels | **5/5** ρ levels | >= 80% |
-| Accuracy at ρ=0.9 | 0.9824 | **0.9901** | >= 0.90 |
-| Equity wins (DASH CV < Single Best CV) | 4/5 ρ levels | **5/5** ρ levels | Most |
-| Safety at ρ=0 (accuracy gap) | 0.0006 | 0.0019 | < 0.1 |
-
-The prototype is a reliable proxy for the full run: both reach the same qualitative conclusions and pass the same criteria. The full run's improvements are quantitative refinements (tighter CIs, perfect 5/5 instead of 4/5), not qualitative reversals.
+| # | Criterion | Result | Threshold |
+|---|-----------|--------|-----------|
+| 1 | Stability wins (DASH > SB, linear sweep) | **5/5** ρ levels | >= 80% |
+| 2 | Accuracy at ρ=0.9 (DASH >= SB) | **0.9901 >= 0.9796** | Relative to baseline |
+| 3 | Equity wins (DASH CV < SB CV) | **5/5** ρ levels | >= 80% |
+| 4 | Safety at ρ=0 (accuracy gap) | **0.0005** | < 0.1 |
+| 5 | K_eff increases with ε | **5.8 → 27.1** | Monotonic |
+| 6 | Nonlinear DGP: DASH > SB stability (ρ=0.9) | **0.8955 > 0.8403** | DASH wins |
+| 7 | Breast Cancer: DASH stability > 0.80 | **0.9332** | > 0.80 |
+| 8 | Superconductor: DASH stability > SB | **0.9654 > 0.8477** | DASH wins |
+| 9 | Statistical significance (Bonferroni) | **17/26 = 65%** | >= 50% |
 
 ### Breast Cancer Real-Data Results
 
 The Breast Cancer dataset is a natural showcase for DASH because it contains 30 features with 21 pairs having |r| > 0.9. Features like `mean radius`, `mean perimeter`, and `mean area` are mathematically related and nearly interchangeable.
 
-**DASH pipeline results:**
-- 220 of 500 models pass the performance filter (AUC within 0.02 of best), showing that the Breast Cancer classification task is well-handled by most configurations.
-- 30 models selected by MaxMin diversity selection.
-- Top 5 features identified by consensus importance.
+**Stability across 20 repetitions:**
+
+| Method | Stability |
+|--------|-----------|
+| Single Best | 0.5341 |
+| **DASH (MaxMin)** | **0.9332** |
+
+DASH nearly doubles stability on this heavily collinear dataset (+0.3991). This is the most dramatic improvement across all experiments. Top features by consensus importance: `mean concave points` (0.2314), `worst perimeter` (0.2166), `worst concave points` (0.2011).
 
 **The IS Plot reveals the correlation structure unsupervised:**
 - Features like `worst concave points` and `worst perimeter` appear as **Robust Drivers** (Quadrant I) -- high importance, low FSI, consistently important across all models.
@@ -532,6 +546,26 @@ The Breast Cancer dataset is a natural showcase for DASH because it contains 30 
 - Many of the "SE" (standard error) features appear as **Confirmed Unimportant** (Quadrant III).
 
 **The Local Disagreement Map** for a high-variance patient shows which feature attributions are trustworthy (narrow error bars, e.g., texture and concavity features) and which are model-dependent (wide error bars, e.g., radius vs. perimeter). In a clinical setting, this tells the physician which parts of the explanation are reliable versus uncertain.
+
+### Superconductor UCI Real-Data Results
+
+The Superconductor dataset (21,263 samples, 81 features) provides a larger-scale real-world validation with scale-appropriate epsilon (SC_EPSILON=0.40).
+
+| Method | Stability | RMSE |
+|--------|-----------|------|
+| Single Best | 0.8477 | 9.02±0.09 |
+| Large Single Model | 0.7018 | 9.17±0.08 |
+| **DASH (MaxMin)** | **0.9654** | **8.97±0.08** |
+
+DASH improves stability by +0.1177 over Single Best and +0.2636 over Large Single Model, while also achieving marginally better RMSE.
+
+### Nonlinear DGP Results
+
+DASH's advantage persists under a nonlinear data-generating process with interactions and nonlinear terms. At ρ=0.9: DASH stability=0.8955 vs Single Best=0.8403 (+0.0552). At ρ=0.95: DASH stability=0.8955 vs Single Best=0.8191 (+0.0764). All methods degrade more under nonlinearity (stability drops from ~0.98 to ~0.89), but DASH degrades less.
+
+### Epsilon Sensitivity
+
+DASH is robust to the performance filter threshold ε. Across ε ∈ {0.03, 0.05, 0.08, 0.10} at ρ=0.9, stability varies by <0.001 (0.9794-0.9805). The effective ensemble size K_eff scales with ε (5.8 → 27.1), but performance plateaus early, meaning practitioners don't need to carefully tune ε.
 
 ---
 
@@ -704,13 +738,14 @@ dash-shap/
 ├── notebooks/                         # Interactive demo notebooks
 │   ├── demo_benchmark.ipynb           # Interactive demo notebook
 │   ├── demo_benchmark_1.ipynb         # Prototype benchmark (M=50, K=15, 5 reps)
-│   └── demo_benchmark_2.ipynb         # Full benchmark (M=500, K=30, 20 reps)
+│   ├── demo_benchmark_2.ipynb         # Full benchmark (M=500, K=30, 20 reps)
+│   └── demo_benchmark_4_checkpointed.ipynb  # Authoritative benchmark (M=200, K=30, 20 reps)
 ├── tests/                             # Test suite
 │   ├── __init__.py
 │   ├── test_evaluation.py             # Evaluation metrics tests
 │   ├── test_pipeline.py               # Pipeline integration tests
 │   └── test_synthetic.py              # Synthetic data generator tests
-├── run_experiments.py                 # Full experiment runner (all 4 experiments)
+├── run_experiments.py                 # Full experiment runner (all 9 experiments)
 ├── EXPERIMENT_GUIDE.md                # Detailed experimental design documentation
 ├── requirements.txt                   # Python dependencies
 ├── pyproject.toml                     # Package metadata
