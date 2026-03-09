@@ -15,7 +15,7 @@
 ## 1. Experimental Setup
 
 ### Configuration (`PAPER_CONFIG`)
-- **M=500** models in population, **K=30** max ensemble size
+- **M=200** models in population, **K=30** max ensemble size
 - **N_REPS=20** for all main experiments (ABL_N_REPS=10 for ablations)
 - **ε=0.08** performance filter (scale-appropriate: SC_EPSILON=0.40 for Superconductor, CAL_EPSILON=0.05 for California Housing)
 - **δ=0.05** diversity threshold, **τ=0.3** cluster threshold
