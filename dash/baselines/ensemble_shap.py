@@ -43,8 +43,13 @@ class EnsembleSHAPBaseline:
             X_train, y_train, eval_set=[(X_val, y_val)], verbose=False,
         )
 
-        explainer = shap.TreeExplainer(self.model_)
+        bg = X_ref[:min(100, len(X_ref))]
+        explainer = shap.TreeExplainer(
+            self.model_, data=bg, feature_perturbation="interventional",
+        )
         sv = explainer.shap_values(X_ref)
         self.global_importance_ = compute_global_importance(sv)
-        self.fsi_ = np.zeros_like(self.global_importance_)
+        # FSI is undefined for single-model baselines (no inter-model variation).
+        # Set to NaN rather than zero to avoid misinterpretation as perfect agreement.
+        self.fsi_ = np.full_like(self.global_importance_, np.nan)
         return self

@@ -313,20 +313,20 @@ def experiment_linear_sweep():
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
                 'accuracy_mean': float(np.mean(acc_runs)),
-                'accuracy_se': float(np.std(acc_runs) / np.sqrt(len(acc_runs))),
-                'accuracy_std': float(np.std(acc_runs)),
+                'accuracy_se': float(np.std(acc_runs, ddof=1) / np.sqrt(len(acc_runs))),
+                'accuracy_std': float(np.std(acc_runs, ddof=1)),
                 'equity_mean': float(np.mean(eq_runs)),
-                'equity_se': float(np.std(eq_runs) / np.sqrt(len(eq_runs))),
-                'equity_std': float(np.std(eq_runs)),
+                'equity_se': float(np.std(eq_runs, ddof=1) / np.sqrt(len(eq_runs))),
+                'equity_std': float(np.std(eq_runs, ddof=1)),
                 'rmse_mean': float(np.mean(rmse_runs)),
-                'rmse_std': float(np.std(rmse_runs)),
+                'rmse_std': float(np.std(rmse_runs, ddof=1)),
                 'acc_runs': np.array(acc_runs),
                 'eq_runs': np.array(eq_runs),
                 'rmse_runs': np.array(rmse_runs),
                 'imp_runs': imp_runs,
             }
             log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  "
-                f"acc={np.mean(acc_runs):.4f}±{np.std(acc_runs)/np.sqrt(len(acc_runs)):.4f}  "
+                f"acc={np.mean(acc_runs):.4f}±{np.std(acc_runs, ddof=1)/np.sqrt(len(acc_runs)):.4f}  "
                 f"eq={np.mean(eq_runs):.4f}  RMSE={np.nanmean(rmse_runs):.4f}")
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
@@ -461,7 +461,7 @@ def experiment_nonlinear_sweep():
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
                 'equity_mean': float(np.mean(eq_runs)),
-                'equity_std': float(np.std(eq_runs)),
+                'equity_std': float(np.std(eq_runs, ddof=1)),
                 'eq_runs': np.array(eq_runs),
             }
             log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  eq={np.mean(eq_runs):.4f}")
@@ -528,11 +528,11 @@ def experiment_table2_baselines():
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
             'accuracy_mean': float(np.mean(acc_runs)),
-            'accuracy_se': float(np.std(acc_runs) / np.sqrt(len(acc_runs))),
+            'accuracy_se': float(np.std(acc_runs, ddof=1) / np.sqrt(len(acc_runs))),
             'equity_mean': float(np.mean(eq_runs)),
-            'equity_se': float(np.std(eq_runs) / np.sqrt(len(eq_runs))),
-            'accuracy_std': float(np.std(acc_runs)),
-            'equity_std': float(np.std(eq_runs)),
+            'equity_se': float(np.std(eq_runs, ddof=1) / np.sqrt(len(eq_runs))),
+            'accuracy_std': float(np.std(acc_runs, ddof=1)),
+            'equity_std': float(np.std(eq_runs, ddof=1)),
             'acc_runs': np.array(acc_runs),
             'eq_runs': np.array(eq_runs),
         }
@@ -610,13 +610,17 @@ def experiment_real_california():
             imp_runs.append(imp)
             rmse_runs.append(rmse_val)
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         cal_results[name] = {
-            'stability': importance_stability(imp_runs),
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
             'rmse_mean': float(np.mean(rmse_runs)),
-            'rmse_std': float(np.std(rmse_runs)),
+            'rmse_std': float(np.std(rmse_runs, ddof=1)),
         }
-        log(f"  {name:<22} stab={cal_results[name]['stability']:.4f}  "
-            f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs):.4f}")
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+            f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}")
 
     # IS plot from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — California Housing', annotate_top_k=8)
@@ -685,10 +689,14 @@ def experiment_real_breast_cancer():
 
             imp_runs.append(m.global_importance_)
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         bc_results[name] = {
-            'stability': importance_stability(imp_runs),
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
         }
-        log(f"  {name:<22} stability={bc_results[name]['stability']:.4f}")
+        log(f"  {name:<22} stability={stab:.4f}±{stab_se:.4f}")
 
     # IS plot and disagreement map from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
@@ -779,13 +787,17 @@ def experiment_real_superconductor():
             imp_runs.append(imp)
             rmse_runs.append(rmse_val)
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         sc_results[name] = {
-            'stability': importance_stability(imp_runs),
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
             'rmse_mean': float(np.mean(rmse_runs)),
-            'rmse_std': float(np.std(rmse_runs)),
+            'rmse_std': float(np.std(rmse_runs, ddof=1)),
         }
-        log(f"  {name:<22} stab={sc_results[name]['stability']:.4f}  "
-            f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs):.2f}")
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+            f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}")
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
     elapsed = time.time() - t0
@@ -912,7 +924,7 @@ def experiment_ablation():
                 abl_results[abl_rho][param_name][val] = {
                     'stability': stab,
                     'accuracy_mean': float(np.mean(acc_runs)),
-                    'accuracy_std': float(np.std(acc_runs)),
+                    'accuracy_std': float(np.std(acc_runs, ddof=1)),
                 }
                 log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}")
 
