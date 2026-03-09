@@ -5,7 +5,7 @@ from typing import Dict, List
 __all__ = ["performance_filter"]
 
 
-def performance_filter(val_scores, epsilon=0.02, higher_is_better=True, verbose=True):
+def performance_filter(val_scores, epsilon=0.08, higher_is_better=True, verbose=True):
     """Filter models within epsilon of the best validation score."""
     best_score = (
         max(val_scores.values()) if higher_is_better

@@ -26,7 +26,7 @@ class DASHPipeline:
         self,
         M=200,
         K=20,
-        epsilon=0.02,
+        epsilon=0.08,
         selection_method="maxmin",
         delta=0.1,
         tau=0.3,
