@@ -16,7 +16,7 @@ class SingleBestBaseline:
         self.model_ = None
         self.global_importance_ = None
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None):
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, background_size=100):
         if X_ref is None:
             X_ref = X_val
 
@@ -33,7 +33,10 @@ class SingleBestBaseline:
                 best_score, best_model = score, model
 
         self.model_ = best_model
-        explainer = shap.TreeExplainer(best_model)
+        bg = X_ref[:min(background_size, len(X_ref))]
+        explainer = shap.TreeExplainer(
+            best_model, data=bg, feature_perturbation="interventional",
+        )
         sv = explainer.shap_values(X_ref)
         self.global_importance_ = compute_global_importance(sv)
         return self
