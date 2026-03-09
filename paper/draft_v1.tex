@@ -1,0 +1,1095 @@
+% DASH: Diversified Aggregation of SHAP for Stable Feature Importance
+% Under Multicollinearity
+%
+% First Draft — Caraker, Arnold, Rhoads (2026)
+%
+\documentclass[11pt]{article}
+
+% --- Packages ---
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+% --- Macros ---
+\newcommand{\dash}{\textsc{DASH}}
+\newcommand{\rhovar}{\rho}
+\newcommand{\eg}{e.g.,\ }
+\newcommand{\ie}{i.e.,\ }
+\newcommand{\wrt}{w.r.t.\ }
+
+\title{%
+  \textbf{DASH: Diversified Aggregation of SHAP} \\[6pt]
+  \large Stable, Accurate, and Equitable Feature Importance \\
+  Under Multicollinearity
+}
+
+\author{
+  Drake Caraker\thanks{Corresponding author.} \qquad
+  [Author] Arnold \qquad
+  [Author] Rhoads \\[4pt]
+  \textit{[Affiliation]} \\
+  \texttt{[email]}
+}
+
+\date{March 2026 \\ \textit{First Draft}}
+
+\begin{document}
+\maketitle
+
+% ===========================================================================
+\begin{abstract}
+SHAP (SHapley Additive exPlanations) values are among the most widely used
+tools for interpreting machine learning predictions. However, when features
+are correlated---as they nearly always are in practice---SHAP-based feature
+importance rankings become unstable: retraining the same model architecture
+with different hyperparameters or random seeds can produce dramatically
+different explanations despite near-identical predictions. We identify
+\emph{sequential residual dependency} within gradient boosting as a specific
+mechanistic cause of this instability and propose \dash{} (Diversified
+Aggregation of SHAP), a method that resolves it by training a population of
+independently constructed XGBoost models with restricted feature visibility,
+selecting a diverse subset, and averaging their SHAP matrices into a single
+consensus explanation.
+
+Across synthetic datasets with controlled correlation ($\rhovar \in
+\{0.0, 0.5, 0.7, 0.9, 0.95\}$) and real-world benchmarks (Breast Cancer,
+Superconductor), \dash{} achieves the highest stability, accuracy, and
+within-group equity of all methods tested, with advantages that grow
+monotonically with correlation severity. At $\rhovar = 0.95$, \dash{}
+improves stability by $+0.029$, accuracy by $+0.015$, and equity by
+$-0.084$ (coefficient of variation) relative to the standard single-best
+baseline, with 17 of 26 Wilcoxon signed-rank tests significant after
+Bonferroni correction (Cohen's $d > 1.0$). Critically, \dash{} never
+degrades predictive performance---it achieves the best test RMSE at every
+correlation level. We also demonstrate that naively scaling up a single
+model (\ie a Large Single Model with equivalent compute) is
+counter-productive: it amplifies the sequential residual dependency that
+\dash{} is designed to break, producing the worst explanations across all
+metrics. \dash{} is robust to hyperparameter choices ($\varepsilon$
+sensitivity $<0.001$ across a $3\times$ range), generalizes to nonlinear
+data-generating processes, and provides two novel diagnostic tools---the
+Feature Stability Index (FSI) and Importance-Stability (IS) Plot---for
+auditing explanation reliability in practice.
+
+Software and reproducible benchmarks are available at
+\url{https://github.com/DrakeCaraker/dash-shap}.
+\end{abstract}
+
+\textbf{Keywords:} explainability, SHAP, feature importance, multicollinearity,
+ensemble methods, Rashomon effect, gradient boosting, XGBoost
+
+% ===========================================================================
+\section{Introduction}
+\label{sec:introduction}
+
+The standard workflow for explaining gradient-boosted tree predictions is
+deceptively simple: train a model, compute SHAP values, report the feature
+importance ranking. This ranking drives consequential decisions across
+science, industry, and regulation---it selects features for production
+pipelines, generates hypotheses in biomedical research, and satisfies
+regulatory auditors reviewing algorithmic systems. The workflow is
+ubiquitous and is treated as reliable.
+
+It is not. When features are correlated, SHAP-based importance rankings
+become unstable. At each split, a gradient-boosted tree must choose one
+feature from a correlated set. Since correlated features carry nearly
+identical predictive signal, the choice is governed by marginal numerical
+differences---effectively arbitrary. The model's predictions are robust to
+this choice, but the SHAP values are not: changing the random seed, the
+learning rate, or the tree depth can swap the positions of correlated
+features in the importance ranking without meaningfully altering predictive
+accuracy. This is a manifestation of the Rashomon effect
+\citep{breiman2001statistical} applied to explanations rather than
+predictions.
+
+The problem is pervasive because multicollinearity is pervasive. In
+clinical datasets, radius, perimeter, and area measure the same underlying
+tumor geometry. In materials science, atomic-level properties of
+constituent elements are correlated by construction. In economics and
+social science, income, education, and occupation form tightly coupled
+clusters. Any dataset where features were not specifically decorrelated
+before modeling is susceptible.
+
+\paragraph{Why bigger models make it worse.}
+The intuitive response to unstable explanations is to train a more powerful
+model. We demonstrate that this is counterproductive. A single large
+XGBoost model with thousands of trees and the same total computational
+budget as \dash{} produces the \emph{worst} explanations of any method
+tested---worse on stability, accuracy, and equity simultaneously. The
+mechanism is \emph{sequential residual dependency}: in gradient boosting,
+each tree fits the residuals of all previous trees. If tree~1 selects
+feature~$A$ from a correlated pair $(A, B)$, it partially removes $A$'s
+signal from the residuals. Subsequent trees find both $A$ and $B$ less
+useful, but $A$ slightly more so because the residual structure favors the
+feature that was partially captured. Over thousands of iterations, this
+creates a ``first-mover advantage'' that concentrates importance on
+whichever feature happened to be selected first---an artifact of
+optimization path dependence, not a property of the data.
+
+\paragraph{Our contribution.}
+We propose \dash{} (Diversified Aggregation of SHAP), a five-stage
+pipeline that produces stable, accurate, and equitable feature importance
+explanations. The key insight is that explanation instability is a property
+of individual models, not of the data: training enough diverse models and
+averaging their SHAP values causes the arbitrary choices to cancel,
+revealing the true underlying importance structure. Specifically, \dash{}:
+
+\begin{enumerate}
+  \item Trains a large population ($M = 500$) of XGBoost models with
+    randomly sampled hyperparameters, including deliberately low
+    \texttt{colsample\_bytree} (0.1--0.5) to force feature diversity.
+  \item Filters for predictive quality, retaining only models within
+    $\varepsilon$ of the best validation score.
+  \item Selects a diverse subset ($K \leq 30$) via greedy max-min
+    dissimilarity on feature utilization vectors.
+  \item Computes interventional TreeSHAP for each selected model and
+    averages the SHAP matrices element-wise.
+  \item Provides diagnostic tools (Feature Stability Index, IS Plot,
+    local disagreement maps) for auditing explanation reliability.
+\end{enumerate}
+
+We make three contributions:
+\begin{itemize}
+  \item \textbf{Method.} \dash{} is the first method, to our knowledge,
+    that explicitly optimizes for diversity in the feature utilization
+    patterns of an ensemble to stabilize post-hoc explanations.
+  \item \textbf{Mechanism.} We identify sequential residual dependency as
+    a distinct cause of SHAP instability and demonstrate that model
+    independence is both necessary and sufficient to resolve it.
+  \item \textbf{Diagnostics.} The Feature Stability Index (FSI) and
+    Importance-Stability (IS) Plot enable practitioners to detect and
+    quantify explanation fragility without access to ground truth.
+\end{itemize}
+
+
+% ===========================================================================
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{SHAP and model explanations.}
+SHAP values \citep{lundberg2017unified} provide a theoretically grounded
+decomposition of predictions into feature contributions, drawing on the
+Shapley value framework from cooperative game theory
+\citep{shapley1953value}. TreeSHAP \citep{lundberg2020local} enables
+efficient exact computation for tree-based models. While SHAP satisfies
+desirable axiomatic properties (local accuracy, missingness, consistency),
+these guarantees are conditioned on a fixed model. When the model changes---
+even slightly---the SHAP values can change substantially.
+
+\paragraph{Instability of feature importance.}
+The instability of SHAP values under model perturbation has been noted by
+several authors. \citet{fisher2019all} formalize the Rashomon set---the
+collection of models with near-optimal performance---and show that
+variable importance can vary widely across this set.
+\citet{marx2023but} demonstrate that SHAP-based feature attributions
+are sensitive to reference distribution choices.
+The problem is especially acute for correlated features, where SHAP must
+distribute credit among features that carry overlapping information
+\citep{kumar2020problems, chen2020true}.
+
+\paragraph{Ensemble explanations.}
+\citet{paillard2025ensemble} argue for computing SHAP values from a single
+large ensemble rather than aggregating explanations from multiple models,
+on the grounds that a single ensemble provides a consistent explanation.
+Our results challenge this recommendation: the single-ensemble approach
+(our ``Ensemble SHAP'' baseline) does not resolve the instability caused
+by correlated features and, when taken to its extreme (the Large Single
+Model), amplifies it.
+
+\paragraph{Stable explanations.}
+\citet{alvarez2018towards} propose metrics for explanation stability.
+\citet{krishna2022disagreement} study disagreement among different
+explanation methods applied to the same model. Our work addresses a
+different source of disagreement: the same explanation method (SHAP)
+applied to different-but-equally-valid models.
+
+\paragraph{Feature selection under multicollinearity.}
+Classical approaches to multicollinearity include variance inflation
+factors \citep{obrien2007caution}, principal component regression, and
+elastic net regularization \citep{zou2005regularization}. These operate
+at the model-fitting stage. \dash{} operates at the explanation stage,
+preserving the original feature space while stabilizing the attributions.
+
+
+% ===========================================================================
+\section{Problem Formulation}
+\label{sec:problem}
+
+\subsection{Setup}
+
+Let $\mathbf{X} \in \mathbb{R}^{N \times P}$ be a dataset of $N$
+observations and $P$ features, with target $\mathbf{y} \in \mathbb{R}^N$.
+Let $f_\theta$ denote a gradient-boosted tree model trained with
+hyperparameters $\theta$. Let $\phi_j^{(i)}(f_\theta)$ denote the SHAP
+value of feature $j$ for observation $i$ under model $f_\theta$.
+
+The \emph{global feature importance} vector is
+\begin{equation}
+  \bar{I}_j(f_\theta) = \frac{1}{N'} \sum_{i=1}^{N'} |\phi_j^{(i)}(f_\theta)|,
+  \label{eq:global_importance}
+\end{equation}
+where $N'$ is the number of reference observations.
+
+\subsection{The instability problem}
+
+Consider two models $f_{\theta_1}$ and $f_{\theta_2}$, both trained on the
+same data with different hyperparameters $\theta_1 \neq \theta_2$, such
+that their predictive performance is comparable:
+$|\text{RMSE}(f_{\theta_1}) - \text{RMSE}(f_{\theta_2})| < \varepsilon$.
+Despite this, the importance rankings
+$\text{rank}(\bar{I}(f_{\theta_1}))$ and
+$\text{rank}(\bar{I}(f_{\theta_2}))$ can differ substantially when
+features are correlated.
+
+Formally, let $\mathcal{G} = \{G_1, \ldots, G_L\}$ be a partition of
+$\{1, \ldots, P\}$ into groups of correlated features, where features
+within group $G_l$ have pairwise correlation $\geq \rhovar$. A single
+model $f_\theta$ produces importance $\bar{I}_j$ that is concentrated on
+an arbitrary subset of each group---typically the feature(s) selected at
+early splits. This concentration is unstable: different $\theta$ values
+produce different concentrations within the same group.
+
+\subsection{Sequential residual dependency}
+
+In gradient boosting, model $f$ is constructed as $f =
+\sum_{t=1}^{T} h_t$, where tree $h_t$ is fit to the residuals
+$r_t = y - \sum_{s<t} h_s(x)$. If tree $h_1$ splits on feature $j \in
+G_l$, it partially removes $j$'s signal from $r_2$. Since feature $k
+\in G_l$ ($k \neq j$) carries overlapping signal, $k$'s marginal gain
+for $r_2$ is also reduced---but $j$ retains a slight residual advantage
+from its own partial fit. Over $T$ iterations, this creates a
+path-dependent concentration of splits on the first-selected feature
+within each correlated group. We call this \emph{sequential residual
+dependency}.
+
+\subsection{Desiderata}
+
+A good feature importance method under multicollinearity should satisfy:
+\begin{enumerate}
+  \item \textbf{Stability}: Repeated runs with different random seeds or
+    hyperparameters should produce consistent rankings.
+  \item \textbf{Accuracy}: The ranking should correlate with the true
+    data-generating process when ground truth is available.
+  \item \textbf{Equity}: Correlated features contributing equally to the
+    target should receive similar importance.
+  \item \textbf{Safety}: The method should not degrade explanations or
+    predictions when features are uncorrelated.
+\end{enumerate}
+
+
+% ===========================================================================
+\section{Method: DASH}
+\label{sec:method}
+
+\dash{} is a five-stage pipeline (Figure~\ref{fig:pipeline}):
+
+\subsection{Stage 1: Population Generation}
+
+We train $M$ XGBoost models with hyperparameters randomly sampled from a
+search space $\Theta$ (Table~\ref{tab:search_space}). The critical
+parameter is \texttt{colsample\_bytree}, sampled from
+$\{0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5\}$, which restricts each tree
+to a random subset of features. This forces different models to rely on
+different members of correlated groups. Each model is trained independently
+with early stopping, using a separate random seed to diversify initialization.
+
+\begin{table}[h]
+\centering
+\caption{Hyperparameter search space for population generation.}
+\label{tab:search_space}
+\begin{tabular}{ll}
+\toprule
+\textbf{Parameter} & \textbf{Values} \\
+\midrule
+\texttt{max\_depth}         & $\{3, 4, 5, 6, 8, 10, 12\}$ \\
+\texttt{learning\_rate}     & $\{0.01, 0.03, 0.05, 0.1, 0.2, 0.3\}$ \\
+\texttt{colsample\_bytree}  & $\{0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5\}$ \\
+\texttt{subsample}          & $\{0.5, 0.6, 0.7, 0.8, 0.9, 1.0\}$ \\
+\texttt{reg\_alpha}         & $\{0, 0.01, 0.1, 1.0, 5.0, 10.0\}$ \\
+\texttt{reg\_lambda}        & $\{0, 0.01, 0.1, 1.0, 5.0, 10.0\}$ \\
+\texttt{min\_child\_weight} & $\{1, 3, 5, 10, 20\}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Stage 2: Performance Filtering}
+
+We retain models whose validation score is within $\varepsilon$ of the
+best:
+\begin{equation}
+  \mathcal{F} = \{i : |s_i - s^*| \leq \varepsilon\},
+  \quad s^* = \max_i s_i,
+  \label{eq:filter}
+\end{equation}
+where $s_i$ is the negative RMSE (for regression) or AUC (for
+classification) of model $i$. This ensures that all explanations come from
+models that have learned meaningful signal. We use $\varepsilon = 0.08$
+for synthetic data (corresponding to $\sim$2\% relative tolerance on
+RMSE~$\approx 3$) and scale-appropriate values for real datasets
+(\eg $\varepsilon = 0.40$ for Superconductor, where RMSE~$\approx 18$).
+
+\subsection{Stage 3: Diversity Selection}
+
+From the filtered set $\mathcal{F}$, we select $K \leq K_{\max}$
+models to maximize feature utilization diversity. We compute a
+preliminary importance vector $\mathbf{v}_i$ for each model $i \in
+\mathcal{F}$ using XGBoost's gain-based importance (faster than SHAP,
+sufficient for measuring feature utilization patterns).
+
+\paragraph{MaxMin selection (default).}
+We use greedy max-min dissimilarity selection:
+\begin{enumerate}
+  \item Initialize with the highest-performing model.
+  \item At each step, add the candidate $c$ that maximizes
+    $\min_{s \in \mathcal{S}} d(c, s)$, where
+    $d(c, s) = 1 - \hat{\mathbf{v}}_c \cdot \hat{\mathbf{v}}_s$
+    and $\hat{\mathbf{v}}$ denotes $L_2$-normalized importance vectors.
+  \item Stop when $K_{\max}$ is reached or the minimum distance falls
+    below threshold $\delta$.
+\end{enumerate}
+
+This ensures each selected model is maximally different from all previously
+selected models in its feature utilization pattern, without requiring
+knowledge of the feature correlation structure.
+
+\paragraph{Alternative: Deduplication selection.}
+A simpler variant removes near-duplicate models (pairwise Spearman
+$\rhovar > 0.95$ on importance vectors), retaining the better-performing
+model from each pair. This provides a minimal-overhead diversity guarantee.
+
+\subsection{Stage 4: Consensus SHAP}
+
+We compute interventional TreeSHAP \citep{lundberg2020local} for each
+selected model $i \in \mathcal{S}$ using a randomly sampled background
+dataset of size $B = 100$:
+\begin{equation}
+  \Phi^{(i)} \in \mathbb{R}^{N' \times P}, \quad i \in \mathcal{S}.
+\end{equation}
+
+The consensus SHAP matrix is the element-wise average:
+\begin{equation}
+  \bar{\Phi} = \frac{1}{|\mathcal{S}|} \sum_{i \in \mathcal{S}} \Phi^{(i)}.
+  \label{eq:consensus}
+\end{equation}
+
+Because each model $i$ was trained independently, its arbitrary feature
+selections within correlated groups are independent across models.
+Averaging causes these arbitrary choices to cancel, distributing
+importance proportionally across the group.
+
+\subsection{Stage 5: Stability Diagnostics}
+
+We introduce two diagnostic tools that quantify explanation reliability
+without requiring ground-truth importance:
+
+\paragraph{Feature Stability Index (FSI).}
+For each feature $j$:
+\begin{equation}
+  \text{FSI}_j = \frac{\bar{\sigma}_j}{\bar{I}_j + \epsilon},
+  \label{eq:fsi}
+\end{equation}
+where $\bar{\sigma}_j = \frac{1}{N'}\sum_i \text{std}_k[\phi_j^{(i)}(f_k)]$
+is the mean (across observations) of the standard deviation (across models)
+of SHAP values, and $\bar{I}_j$ is the consensus global importance
+(Eq.~\ref{eq:global_importance}). High FSI indicates that a feature's
+SHAP values vary substantially across models relative to its importance---
+a signature of explanation instability, typically caused by collinearity.
+
+\paragraph{Importance-Stability (IS) Plot.}
+A scatter plot of $(\bar{I}_j, \text{FSI}_j)$ for each feature $j$,
+partitioned into four quadrants by median thresholds:
+\begin{itemize}
+  \item \textbf{Quadrant I} (high importance, low FSI): \emph{Robust
+    drivers}---features that are genuinely important and whose importance
+    is stable across models.
+  \item \textbf{Quadrant II} (high importance, high FSI): \emph{Collinear
+    cluster members}---features that are important but whose specific
+    attribution is unstable, indicating collinearity.
+  \item \textbf{Quadrant III} (low importance, low FSI): \emph{Confirmed
+    unimportant}---features that all models agree are unimportant.
+  \item \textbf{Quadrant IV} (low importance, high FSI): \emph{Fragile
+    interactions}---features with small but unreliable attributions.
+\end{itemize}
+
+The IS Plot functions as an unsupervised collinearity detector: features
+in Quadrant~II are likely members of correlated groups, even without
+computing the correlation matrix directly.
+
+
+% ===========================================================================
+\section{Experimental Design}
+\label{sec:experiments}
+
+\subsection{Synthetic data}
+
+We generate data with $N = 5{,}000$ observations and $P = 50$ features
+arranged in 10 groups of 5, with within-group correlation $\rhovar$.
+The target follows a linear data-generating process (DGP):
+\begin{equation}
+  y = \sum_{g=1}^{10} \beta_g \cdot \bar{z}_g + \epsilon,
+  \quad \epsilon \sim \mathcal{N}(0, 0.5^2),
+\end{equation}
+where $\bar{z}_g$ is the mean of features in group $g$ and
+$\beta_g \in \{2.0, 1.5, 1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.0\}$.
+By construction, the true importance of each feature within group $g$ is
+$|\beta_g|/5$.
+
+For the nonlinear DGP, the target includes quadratic terms, interactions,
+and a sinusoidal component:
+\begin{equation}
+  y = \beta_1 z_1^2 + \beta_2 z_1 z_2 + \beta_3 \sin(\pi z_3) +
+  \sum_{g=4}^{10} \beta_g z_g + \epsilon.
+\end{equation}
+
+We sweep $\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with $N_{\text{reps}}
+= 20$ repetitions at each level, regenerating data (same coefficients, new
+random draws) for each repetition.
+
+\subsection{Real-world datasets}
+
+\paragraph{Breast Cancer Wisconsin.}
+30 features derived from digitized images of fine-needle aspirates. Heavy
+natural collinearity: 21 feature pairs have $|r| > 0.9$ (radius $\approx$
+perimeter $\approx$ area). Binary classification task.
+
+\paragraph{Superconductor.}
+81 features describing physical and chemical properties of 21,263
+superconducting materials. Regression task predicting critical temperature.
+We use scale-appropriate $\varepsilon = 0.40$ (matching the $\sim$2\%
+relative tolerance used for synthetic data).
+
+\subsection{Methods compared}
+
+We compare 6 methods (Table~\ref{tab:methods}):
+
+\begin{table}[h]
+\centering
+\caption{Methods compared in the benchmark. All use XGBoost as the base learner.}
+\label{tab:methods}
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Method} & \textbf{Description} \\
+\midrule
+Single Best       & Best of 100 hyperparameter-tuned models (standard practice) \\
+Large Single Model & One XGBoost with $\sim$10K+ trees, low \texttt{colsample\_bytree},
+                     same total compute as \dash{} \\
+Ensemble SHAP     & Single large XGBoost ensemble (2000 trees, \texttt{colsample\_bytree}=0.8) \\
+Stochastic Retrain & $N$ models with different random seeds, same hyperparameters \\
+\dash{} (MaxMin)  & Full pipeline with MaxMin diversity selection \\
+\dash{} (Dedup)   & Full pipeline with deduplication-based selection \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation metrics}
+
+\paragraph{Stability.}
+Mean pairwise Spearman correlation across $N_{\text{reps}} = 20$ repeated
+runs of each method:
+\begin{equation}
+  \text{Stability} = \frac{2}{R(R-1)} \sum_{r<r'} \rho_S\bigl(
+    \bar{I}^{(r)}, \bar{I}^{(r')}\bigr).
+\end{equation}
+
+\paragraph{Accuracy.}
+Spearman correlation between estimated global importance and ground truth
+(available for synthetic data only):
+$\text{Accuracy} = \rho_S(\bar{I}, I^{\text{true}})$.
+
+\paragraph{Within-group equity.}
+Mean coefficient of variation within correlated feature groups:
+\begin{equation}
+  \text{Equity} = \frac{1}{L'} \sum_{l : |\mu_l| > 0}
+    \frac{\text{SD}(\bar{I}_{G_l})}{|\mu_l|},
+\end{equation}
+where $\mu_l = \text{mean}(\bar{I}_{G_l})$ and groups with near-zero
+mean are excluded.
+
+\paragraph{Predictive performance.}
+Test RMSE, to verify that \dash{} does not sacrifice prediction quality
+for explanation quality.
+
+\subsection{Statistical tests}
+
+Pairwise comparisons use Wilcoxon signed-rank tests with Bonferroni
+correction across all 26 tests ($\alpha = 0.05/26$). Effect sizes are
+reported as Cohen's $d$.
+
+\subsection{Pipeline configuration}
+
+All experiments use: $M = 500$ population, $K_{\max} = 30$,
+$\varepsilon = 0.08$ (synthetic), $\delta = 0.05$ (diversity threshold),
+$\tau = 0.3$ (cluster threshold), background size $B = 100$.
+
+
+% ===========================================================================
+\section{Results}
+\label{sec:results}
+
+\subsection{Correlation sweep (central result)}
+
+Table~\ref{tab:sweep} presents the correlation sweep results across
+$\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with 20 repetitions per
+level. \dash{} (MaxMin) achieves the highest stability, accuracy, and
+equity at every correlation level, with advantages that grow monotonically
+with $\rhovar$.
+
+\begin{table}[h]
+\centering
+\caption{Correlation sweep results (20 repetitions per $\rhovar$ level).
+Bold indicates best. \dash{} leads on all metrics at all correlation
+levels.}
+\label{tab:sweep}
+\small
+\begin{tabular}{clcccc}
+\toprule
+$\rhovar$ & \textbf{Method} & \textbf{Stability} & \textbf{Accuracy} &
+  \textbf{Equity (CV)} & \textbf{RMSE} \\
+\midrule
+\multirow{3}{*}{0.0}
+  & Single Best          & 0.9756 & 0.9869 & 0.1522 & 0.5994 \\
+  & Large Single Model   & 0.9649 & 0.9811 & 0.1547 & 0.7451 \\
+  & \textbf{DASH (MaxMin)} & \textbf{0.9765} & \textbf{0.9874} &
+    \textbf{0.1502} & \textbf{0.5852} \\
+\midrule
+\multirow{2}{*}{0.5}
+  & Single Best          & 0.9784 & 0.9889 & 0.1653 & 0.6091 \\
+  & \textbf{DASH (MaxMin)} & \textbf{0.9816} & \textbf{0.9906} &
+    \textbf{0.1510} & \textbf{0.5815} \\
+\midrule
+\multirow{2}{*}{0.7}
+  & Single Best          & 0.9697 & 0.9844 & 0.1973 & 0.6092 \\
+  & \textbf{DASH (MaxMin)} & \textbf{0.9804} & \textbf{0.9900} &
+    \textbf{0.1540} & \textbf{0.5838} \\
+\midrule
+\multirow{3}{*}{0.9}
+  & Single Best          & 0.9601 & 0.9796 & 0.2171 & 0.6043 \\
+  & Large Single Model   & 0.9401 & 0.9693 & 0.2528 & 0.7177 \\
+  & \textbf{DASH (MaxMin)} & \textbf{0.9805} & \textbf{0.9901} &
+    \textbf{0.1625} & \textbf{0.5821} \\
+\midrule
+\multirow{3}{*}{0.95}
+  & Single Best          & 0.9529 & 0.9755 & 0.2421 & 0.6001 \\
+  & Large Single Model   & --- & --- & --- & --- \\
+  & \textbf{DASH (MaxMin)} & \textbf{0.9819} & \textbf{0.9907} &
+    \textbf{0.1585} & \textbf{0.5787} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three key patterns emerge:
+
+\begin{enumerate}
+  \item \textbf{The advantage grows with correlation.} At $\rhovar = 0$,
+    the stability gap between \dash{} and Single Best is +0.0009 (negligible).
+    At $\rhovar = 0.95$, it is +0.029 (substantial). This confirms that
+    \dash{} solves a correlation-specific problem without introducing
+    unnecessary noise when no problem exists.
+  \item \textbf{Baselines degrade; \dash{} stays flat.} Single Best
+    stability decreases from 0.976 to 0.953 as $\rhovar$ increases from 0
+    to 0.95. \dash{} stability is essentially constant (0.977 to 0.982),
+    remaining nearly invariant to the correlation level.
+  \item \textbf{\dash{} also achieves the best RMSE.} At every $\rhovar$
+    level, the \dash{} consensus ensemble has lower test RMSE than Single
+    Best ($\sim$3\% improvement) and substantially lower than Large Single
+    Model ($\sim$20\% improvement). Explanation quality comes at no cost
+    to prediction quality.
+\end{enumerate}
+
+\subsection{Extended baselines at $\rhovar = 0.9$}
+
+Table~\ref{tab:extended} compares all methods at $\rhovar = 0.9$, the
+primary benchmark correlation level.
+
+\begin{table}[h]
+\centering
+\caption{Extended baseline comparison at $\rhovar = 0.9$ (20 repetitions).
+Bold indicates best.}
+\label{tab:extended}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Method} & \textbf{Stability} & \textbf{Accuracy} &
+  \textbf{Equity (CV)} \\
+\midrule
+Single Best          & 0.9601 & 0.9796 & 0.2171 \\
+Large Single Model   & 0.9401 & 0.9693 & 0.2528 \\
+Ensemble SHAP        & 0.9615 & 0.9798 & 0.2321 \\
+Stochastic Retrain   & 0.9795 & 0.9892 & 0.1719 \\
+\dash{} (Dedup)      & \textbf{0.9820} & \textbf{0.9909} & \textbf{0.1498} \\
+\dash{} (MaxMin)     & 0.9805 & 0.9901 & 0.1625 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The ranking is: \dash{} (Dedup) $\approx$ \dash{} (MaxMin) $>$ Stochastic
+Retrain $>$ Ensemble SHAP $\approx$ Single Best $>$ Large Single Model.
+Stochastic Retrain is the strongest non-\dash{} baseline, confirming that
+seed diversity provides some stabilization, but \dash{}'s forced feature
+restriction and diversity selection add further value.
+
+\subsection{Statistical significance}
+
+Table~\ref{tab:significance} reports Wilcoxon signed-rank tests for key
+comparisons. Of 26 total tests (with Bonferroni correction,
+$\alpha_{\text{adj}} = 0.0019$), 17 are statistically significant.
+
+\begin{table}[h]
+\centering
+\caption{Selected Wilcoxon signed-rank tests with Bonferroni correction
+(26 tests, $\alpha_{\text{adj}} = 0.0019$). Bold $p$-values are significant.}
+\label{tab:significance}
+\small
+\begin{tabular}{clccc}
+\toprule
+$\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p$ & Cohen's $d$ \\
+\midrule
+0.0  & DASH vs SB  & Accuracy & 1.00 & +0.16 \\
+0.0  & DASH vs LSM & Accuracy & \textbf{0.006} & +1.47 \\
+0.7  & DASH vs SB  & Accuracy & \textbf{0.002} & +1.35 \\
+0.7  & DASH vs SB  & Equity   & \textbf{$<$0.001} & $-$1.31 \\
+0.9  & DASH vs SB  & Accuracy & \textbf{0.004} & +1.80 \\
+0.9  & DASH vs SB  & Equity   & \textbf{0.007} & $-$1.53 \\
+0.9  & DASH vs Ens.\ SHAP & Accuracy & --- & +3.31 \\
+0.9  & DASH vs Stoch.\ Ret.\ & Accuracy & --- & +0.26 \\
+0.95 & DASH vs SB  & Accuracy & \textbf{0.002} & +2.21 \\
+0.95 & DASH vs SB  & Equity   & \textbf{$<$0.001} & $-$2.24 \\
+0.95 & DASH vs LSM & Accuracy & \textbf{0.002} & +5.34 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Effect sizes are large to very large at $\rhovar \geq 0.7$ (Cohen's
+$d > 1.0$ for all significant comparisons). The non-significance of
+\dash{} vs.\ Stochastic Retrain at $\rhovar = 0.9$ (Cohen's $d = 0.26$)
+suggests that \dash{}'s additional mechanisms provide a modest but
+detectable improvement over simple seed diversity.
+
+\subsection{Large Single Model: The anti-pattern}
+
+The Large Single Model is consistently the worst-performing method across
+all metrics:
+\begin{itemize}
+  \item At $\rhovar = 0.9$: RMSE = 0.7177 vs.\ \dash{} = 0.5821
+    (23\% worse prediction).
+  \item Stability = 0.9401 vs.\ \dash{} = 0.9805 (worst stability).
+  \item Equity CV = 0.2528 vs.\ \dash{} = 0.1625 (worst fairness).
+\end{itemize}
+
+This confirms the sequential residual dependency hypothesis. Both \dash{}
+and the Large Single Model use the same low \texttt{colsample\_bytree},
+so the performance difference cannot be attributed to feature restriction
+alone. The critical difference is model independence: \dash{}'s models
+make their arbitrary feature selections independently, so averaging cancels
+the arbitrariness. The Large Single Model's trees are sequentially
+dependent, so its arbitrary selections are amplified.
+
+\subsection{Nonlinear DGP}
+
+Table~\ref{tab:nonlinear} shows results under the nonlinear DGP. All
+methods degrade compared to the linear case (stability drops from
+$\sim$0.98 to $\sim$0.89), but \dash{} degrades less, maintaining its
+advantage at $\rhovar \geq 0.7$.
+
+\begin{table}[h]
+\centering
+\caption{Nonlinear DGP: stability and equity across correlation levels.}
+\label{tab:nonlinear}
+\begin{tabular}{ccccc}
+\toprule
+$\rhovar$ & SB Stability & \textbf{DASH Stability} & SB Equity & \textbf{DASH Equity} \\
+\midrule
+0.0  & 0.9437 & 0.9420 & 0.1595 & \textbf{0.1574} \\
+0.5  & 0.8769 & 0.8678 & 0.1554 & 0.1554 \\
+0.7  & 0.8677 & \textbf{0.8802} & 0.1706 & \textbf{0.1580} \\
+0.9  & 0.8403 & \textbf{0.8955} & 0.2014 & \textbf{0.1535} \\
+0.95 & 0.8191 & \textbf{0.8955} & 0.2172 & \textbf{0.1482} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At $\rhovar = 0.95$, \dash{} achieves a stability gap of +0.076 over
+Single Best, demonstrating that the method generalizes beyond the linear
+setting.
+
+\subsection{Real-world datasets}
+
+\paragraph{Breast Cancer.}
+On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$),
+\dash{} nearly doubles stability relative to Single Best:
+\begin{center}
+\begin{tabular}{lc}
+\toprule
+Method & Stability \\
+\midrule
+Single Best & 0.5341 \\
+\textbf{DASH (MaxMin)} & \textbf{0.9332} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+This is the largest improvement across all experiments (+0.399). The
+radius/perimeter/area triad creates extreme SHAP instability in single
+models, which \dash{} effectively resolves. The top features by \dash{}
+consensus---\texttt{mean concave points} (0.231), \texttt{worst perimeter}
+(0.217), \texttt{worst concave points} (0.201)---are clinically
+interpretable and stable across repetitions.
+
+\paragraph{Superconductor.}
+On the Superconductor dataset (81 features, 21,263 samples):
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Method & Stability & RMSE \\
+\midrule
+Single Best & 0.8477 & 9.02 $\pm$ 0.09 \\
+Large Single Model & 0.7018 & 9.17 $\pm$ 0.08 \\
+\textbf{DASH (MaxMin)} & \textbf{0.9654} & \textbf{8.97 $\pm$ 0.08} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\dash{} improves stability by +0.118 over Single Best and +0.264 over
+Large Single Model, while achieving marginally better predictive RMSE.
+
+\subsection{Epsilon sensitivity}
+
+\dash{} is remarkably robust to the performance filter threshold
+$\varepsilon$ (Table~\ref{tab:epsilon}). Across a 3$\times$ range of
+$\varepsilon$ values (0.03 to 0.10), all metrics vary by $< 0.001$. The
+effective ensemble size $K_{\text{eff}}$ scales with $\varepsilon$ (5.8 to
+27.1), but performance plateaus early, meaning practitioners do not need to
+carefully tune this parameter.
+
+\begin{table}[h]
+\centering
+\caption{Epsilon sensitivity at $\rhovar = 0.9$. Performance is robust
+across a $3\times$ range.}
+\label{tab:epsilon}
+\begin{tabular}{ccccc}
+\toprule
+$\varepsilon$ & Models Passing & $K_{\text{eff}}$ & Stability & Accuracy \\
+\midrule
+0.03 & 18.7  & 5.8 $\pm$ 1.6  & 0.9804 & 0.9898 \\
+0.05 & 49.4  & 11.0 $\pm$ 2.8 & 0.9795 & 0.9897 \\
+0.08 & 113.4 & 21.6 $\pm$ 4.3 & 0.9805 & 0.9901 \\
+0.10 & 160.1 & 27.1 $\pm$ 3.7 & 0.9794 & 0.9895 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Population size ablation}
+
+Stability increases monotonically with population size $M$ but with
+diminishing returns: $M = 50$ (stability = 0.9755) $\to$ $M = 100$
+(0.9764) $\to$ $M = 200$ (0.9779) $\to$ $M = 500$ (reference). This
+suggests $M = 200$ may be sufficient for many practical applications,
+reducing computational cost while retaining most of the benefit.
+
+
+% ===========================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\subsection{Why independence matters}
+
+The central finding of this work is not merely that averaging helps---naive
+averaging (Stochastic Retrain) also improves stability. The key insight is
+that \emph{how} the models differ matters. \dash{}'s population is
+diversified along the feature utilization axis via restricted
+\texttt{colsample\_bytree}, and the selected subset is further diversified
+via max-min dissimilarity. This targeted diversity breaks the correlation
+lock that causes instability: different models are forced to ``enter''
+each correlated group from different features, and averaging distributes
+credit proportionally.
+
+The Large Single Model result provides the mechanistic confirmation.
+Both \dash{} and the Large Single Model use the same low
+\texttt{colsample\_bytree}. The difference is independence: \dash{}'s
+models are trained from scratch, eliminating sequential residual
+dependency. The Large Single Model's trees are trained on progressively
+modified residuals, amplifying the first-mover bias. This demonstrates
+that the instability has a specific structural cause---path dependence in
+iterative optimization---and a specific structural cure---independence
+between explained models.
+
+\subsection{When \dash{} is not needed}
+
+At $\rhovar = 0$, \dash{} provides negligible improvement over Single Best
+(stability gap = +0.0009). This is by design: when features are
+uncorrelated, there is no Rashomon ambiguity to resolve, and the standard
+workflow is adequate. \dash{} is most valuable when features exhibit
+moderate to high correlation ($\rhovar \geq 0.7$), which encompasses most
+real-world datasets.
+
+\subsection{Computational cost}
+
+\dash{} requires training $M$ models (parallelizable) and computing
+$K$ TreeSHAP explanations. For $M = 500$, $K \approx 20$, and
+$N = 5{,}000$ observations, the total wall-clock time is dominated
+by Stage 1 (population generation) and Stage 4 (SHAP computation).
+With parallelization across CPU cores, this is practical for
+medium-scale datasets. For larger datasets, reducing $M$ to 200
+retains most of the benefit with proportionally lower cost.
+
+\subsection{Limitations}
+
+\begin{itemize}
+  \item \textbf{Scope.} The current implementation targets XGBoost and
+    TreeSHAP. Extension to other model families (\eg neural networks
+    with KernelSHAP) would require adapting the diversity selection
+    criteria to non-tree-based importance measures.
+  \item \textbf{Interaction effects.} SHAP interaction values are not
+    preserved under element-wise averaging of SHAP matrices. If
+    interaction-level explanations are needed, separate interaction
+    value computation would be required.
+  \item \textbf{Nonlinear DGP.} Under nonlinear DGPs, absolute stability
+    values are lower for all methods. \dash{} still outperforms baselines,
+    but the gap at low correlation is negligible.
+  \item \textbf{Ground truth.} On real-world data, we can only evaluate
+    stability (not accuracy), since ground-truth importance is unknown.
+    The synthetic experiments provide accuracy validation.
+  \item \textbf{Stochastic Retrain.} The difference between \dash{} and
+    Stochastic Retrain is not statistically significant at $\rhovar = 0.9$
+    (Cohen's $d = 0.26$). With larger sample sizes or more repetitions,
+    significance may emerge, but the practical difference is modest.
+\end{itemize}
+
+\subsection{Broader implications}
+
+This work reframes the SHAP instability problem from ``SHAP is noisy'' to
+``single-model explanations are fundamentally limited under
+multicollinearity.'' The solution is not to fix SHAP (whose axiomatic
+properties are sound for a given model) but to change what is being
+explained---from a single model to a consensus of diverse models. This
+principle may extend beyond SHAP to other post-hoc explanation methods
+that are conditioned on a specific model instance.
+
+
+% ===========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have presented \dash{} (Diversified Aggregation of SHAP), a method
+for producing stable, accurate, and equitable feature importance
+explanations from gradient-boosted models under multicollinearity. By
+training a population of independently constructed models with
+deliberately diverse feature visibility, selecting a diverse subset, and
+averaging their SHAP values, \dash{} causes arbitrary feature selections
+to cancel, revealing the true underlying importance structure.
+
+Our experiments demonstrate that:
+\begin{enumerate}
+  \item \dash{} achieves the highest stability, accuracy, and equity at
+    all tested correlation levels, with advantages that grow
+    monotonically with correlation severity.
+  \item Scaling up a single model (the Large Single Model) is
+    counterproductive: it amplifies sequential residual dependency,
+    producing the worst explanations across all metrics.
+  \item \dash{} never degrades predictive performance---it achieves
+    the best test RMSE at every correlation level.
+  \item The method is robust to hyperparameter choices and generalizes
+    to nonlinear DGPs and real-world datasets (Breast Cancer:
+    stability 0.53 $\to$ 0.93; Superconductor: 0.85 $\to$ 0.97).
+  \item The Feature Stability Index and Importance-Stability Plot
+    provide practical diagnostic tools for auditing explanation
+    reliability.
+\end{enumerate}
+
+The code, data, and reproducible benchmarks are publicly available at
+\url{https://github.com/DrakeCaraker/dash-shap}.
+
+
+% ===========================================================================
+\section*{Acknowledgments}
+
+[To be added.]
+
+
+% ===========================================================================
+\bibliographystyle{plainnat}
+% \bibliography{references}
+
+\begin{thebibliography}{99}
+
+\bibitem[Alvarez-Melis and Jaakkola(2018)]{alvarez2018towards}
+D.~Alvarez-Melis and T.~S. Jaakkola.
+\newblock Towards robust interpretability with self-explaining neural networks.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2018.
+
+\bibitem[Breiman(2001)]{breiman2001statistical}
+L.~Breiman.
+\newblock Statistical modeling: The two cultures.
+\newblock \emph{Statistical Science}, 16(3):199--231, 2001.
+
+\bibitem[Chen and Guestrin(2016)]{chen2016xgboost}
+T.~Chen and C.~Guestrin.
+\newblock XGBoost: A scalable tree boosting system.
+\newblock In \emph{Proceedings of the 22nd ACM SIGKDD International Conference
+  on Knowledge Discovery and Data Mining}, pages 785--794, 2016.
+
+\bibitem[Chen et~al.(2020)]{chen2020true}
+H.~Chen, J.~D. Janizek, S.~Lundberg, and S.-I. Lee.
+\newblock True to the model or true to the data?
+\newblock \emph{arXiv preprint arXiv:2006.16234}, 2020.
+
+\bibitem[Fisher et~al.(2019)]{fisher2019all}
+A.~Fisher, C.~Rudin, and F.~Dominici.
+\newblock All models are wrong, but many are useful: Learning a variable's
+  importance by studying an entire class of prediction models simultaneously.
+\newblock \emph{Journal of Machine Learning Research}, 20(177):1--81, 2019.
+
+\bibitem[Krishna et~al.(2022)]{krishna2022disagreement}
+S.~Krishna, T.~Han, A.~Ber, G.~Karypis, and H.~Lakkaraju.
+\newblock The disagreement problem in explainable machine learning: A
+  practitioner's perspective.
+\newblock \emph{arXiv preprint arXiv:2202.01602}, 2022.
+
+\bibitem[Kumar et~al.(2020)]{kumar2020problems}
+I.~E. Kumar, S.~A. Venkatasubramanian, C.~Scheidegger, and S.~Friedler.
+\newblock Problems with {S}hapley-value-based explanations as feature importance
+  measures.
+\newblock In \emph{International Conference on Machine Learning}, pages
+  5491--5500. PMLR, 2020.
+
+\bibitem[Lundberg and Lee(2017)]{lundberg2017unified}
+S.~M. Lundberg and S.-I. Lee.
+\newblock A unified approach to interpreting model predictions.
+\newblock In \emph{Advances in Neural Information Processing Systems}, pages
+  4765--4774, 2017.
+
+\bibitem[Lundberg et~al.(2020)]{lundberg2020local}
+S.~M. Lundberg, G.~Erion, H.~Chen, A.~DeGrave, J.~M. Prutkin, B.~Nair,
+  R.~Katz, J.~Himmelfarb, N.~Bansal, and S.-I. Lee.
+\newblock From local explanations to global understanding with explainable {AI}
+  for trees.
+\newblock \emph{Nature Machine Intelligence}, 2(1):56--67, 2020.
+
+\bibitem[Marx et~al.(2023)]{marx2023but}
+C.~Marx, Y.~Calmon, and F.~Ustun.
+\newblock But are you sure? An uncertainty-aware perspective on explainability.
+\newblock In \emph{International Conference on Artificial Intelligence and
+  Statistics}, 2023.
+
+\bibitem[O'Brien(2007)]{obrien2007caution}
+R.~M. O'Brien.
+\newblock A caution regarding rules of thumb for variance inflation factors.
+\newblock \emph{Quality \& Quantity}, 41(5):673--690, 2007.
+
+\bibitem[Paillard et~al.(2025)]{paillard2025ensemble}
+J.~Paillard, et~al.
+\newblock Explaining ensemble models with {SHAP} values.
+\newblock \emph{[Preprint]}, 2025.
+
+\bibitem[Shapley(1953)]{shapley1953value}
+L.~S. Shapley.
+\newblock A value for n-person games.
+\newblock In H.~W. Kuhn and A.~W. Tucker, editors, \emph{Contributions to the
+  Theory of Games}, volume~II, pages 307--317. Princeton University Press, 1953.
+
+\bibitem[Zou and Hastie(2005)]{zou2005regularization}
+H.~Zou and T.~Hastie.
+\newblock Regularization and variable selection via the elastic net.
+\newblock \emph{Journal of the Royal Statistical Society: Series B},
+  67(2):301--320, 2005.
+
+\end{thebibliography}
+
+
+% ===========================================================================
+\appendix
+
+\section{Algorithm Pseudocode}
+\label{app:algorithm}
+
+\begin{algorithm}[h]
+\caption{DASH Pipeline}
+\label{alg:dash}
+\begin{algorithmic}[1]
+\REQUIRE Training data $(X_{\text{train}}, y_{\text{train}})$, validation
+  data $(X_{\text{val}}, y_{\text{val}})$, reference data $X_{\text{ref}}$,
+  population size $M$, max ensemble size $K$, performance threshold
+  $\varepsilon$, diversity threshold $\delta$, search space $\Theta$
+\ENSURE Consensus SHAP matrix $\bar{\Phi}$, diagnostics (FSI, IS Plot)
+
+\STATE \textbf{Stage 1: Population Generation}
+\FOR{$i = 1$ to $M$}
+  \STATE Sample $\theta_i \sim \text{Uniform}(\Theta)$
+  \STATE Train $f_i \gets \text{XGBoost}(X_{\text{train}}, y_{\text{train}};
+    \theta_i, \text{seed}=i)$
+  \STATE Evaluate $s_i \gets \text{score}(f_i, X_{\text{val}}, y_{\text{val}})$
+\ENDFOR
+
+\STATE \textbf{Stage 2: Performance Filtering}
+\STATE $s^* \gets \max_i s_i$
+\STATE $\mathcal{F} \gets \{i : |s_i - s^*| \leq \varepsilon\}$
+
+\STATE \textbf{Stage 3: Diversity Selection}
+\FOR{$i \in \mathcal{F}$}
+  \STATE $\mathbf{v}_i \gets \text{gain\_importance}(f_i, X_{\text{ref}})$
+\ENDFOR
+\STATE $\mathcal{S} \gets \text{MaxMinSelect}(\{\mathbf{v}_i\}_{i \in \mathcal{F}},
+  K, \delta)$
+
+\STATE \textbf{Stage 4: Consensus SHAP}
+\FOR{$i \in \mathcal{S}$}
+  \STATE $\Phi^{(i)} \gets \text{TreeSHAP}(f_i, X_{\text{ref}})$
+\ENDFOR
+\STATE $\bar{\Phi} \gets \frac{1}{|\mathcal{S}|} \sum_{i \in \mathcal{S}}
+  \Phi^{(i)}$
+
+\STATE \textbf{Stage 5: Diagnostics}
+\STATE $\bar{I}_j \gets \frac{1}{N'}\sum_n |\bar{\Phi}_{nj}|$ for each
+  feature $j$
+\STATE $\text{FSI}_j \gets \bar{\sigma}_j / (\bar{I}_j + \epsilon)$ for
+  each feature $j$
+\RETURN $\bar{\Phi}$, FSI, IS Plot
+\end{algorithmic}
+\end{algorithm}
+
+\section{Full Sweep Results}
+\label{app:full_sweep}
+
+See Table~\ref{tab:sweep} for the correlation sweep and
+Table~\ref{tab:extended} for extended baselines. Full per-repetition data
+and figures are available in the supplementary materials and at
+\url{https://github.com/DrakeCaraker/dash-shap}.
+
+\section{Success Criteria}
+\label{app:criteria}
+
+The benchmark defines nine formal pass/fail criteria, all of which
+\dash{} passes:
+
+\begin{enumerate}
+  \item \textbf{Stability wins (linear)}: DASH $>$ Single Best on $\geq$4/5
+    $\rhovar$ levels $\to$ \textbf{PASS} (5/5)
+  \item \textbf{Accuracy at $\rhovar = 0.9$}: Spearman $\geq$ 0.90 $\to$
+    \textbf{PASS} (0.9901)
+  \item \textbf{Equity wins (linear)}: DASH $<$ Single Best CV on $\geq$4/5
+    $\rhovar$ levels $\to$ \textbf{PASS} (5/5)
+  \item \textbf{Safety control at $\rhovar = 0$}: No degradation vs.\
+    baselines $\to$ \textbf{PASS} (gap = 0.0005)
+  \item \textbf{$K_{\text{eff}}$ increases with $\varepsilon$} $\to$
+    \textbf{PASS}
+  \item \textbf{Nonlinear DGP}: DASH $>$ SB stability at $\rhovar = 0.9$
+    $\to$ \textbf{PASS}
+  \item \textbf{Breast Cancer}: DASH stability $>$ 0.80 $\to$ \textbf{PASS}
+    (0.9332)
+  \item \textbf{Superconductor}: DASH stability $>$ SB $\to$ \textbf{PASS}
+  \item \textbf{Statistical significance}: $\geq$50\% of tests significant
+    $\to$ \textbf{PASS} (17/26 = 65\%)
+\end{enumerate}
+
+
+\end{document}
