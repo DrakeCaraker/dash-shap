@@ -21,6 +21,7 @@
 - [Benchmark Results](#benchmark-results)
   - [Key Conclusions](#key-conclusions)
   - [Success Criteria](#success-criteria)
+- [Methodology Notes](#methodology-notes)
 - [API Reference](#api-reference)
 - [Project Structure](#project-structure)
 - [Requirements](#requirements)
@@ -55,7 +56,7 @@ The ranking is not wrong -- it captures real signal -- but it is partially arbit
 
 ## Why Bigger Models Make It Worse
 
-The natural response to "my explanations are unstable" is "train a more powerful model." We tested that. The result is the most counterintuitive finding of this work: **a single large model with the same total compute as DASH produces the worst explanations of any method tested** -- worse than a simple tuned model, worse than naive averaging, worse on stability, accuracy, and equity simultaneously.
+The natural response to "my explanations are unstable" is "train a more powerful model." We tested that. The result is the most counterintuitive finding of this work: **a single large model with the same total compute as DASH produces the worst explanations of any method tested** -- worse than a simple tuned model, worse than naive averaging, worse on stability, DGP agreement, and equity simultaneously.
 
 This happens because of a specific mechanism we call **sequential residual dependency**.
 
@@ -66,7 +67,7 @@ Low `colsample_bytree` makes this worse, not better. When each tree sees fewer f
 A single XGBoost model with 10,000-15,000 trees and the same low `colsample_bytree` that DASH uses -- matching DASH's total compute budget in a single sequential model -- amplifies this path dependence to its extreme. In our full benchmark (20 repetitions at ρ=0.95), this Large Single Model configuration achieved:
 
 - **Worst stability** (0.9301 vs. 0.9819 for DASH)
-- **Worst accuracy** (0.9641 vs. 0.9907 for DASH)
+- **Worst DGP agreement** (0.9641 vs. 0.9907 for DASH)
 - **Worst equity** (CV of 0.2708 vs. 0.1585 for DASH)
 
 The ranking that emerges from a large sequential model is not a better version of the truth. It is a more committed version of an arbitrary initial choice.
@@ -93,9 +94,9 @@ Not all models in the population are equally useful. DASH filters for high-perfo
 
 ### What DASH Shows
 
-DASH's 0.982 stability, 0.991 accuracy, and 0.159 equity numbers at high collinearity (ρ=0.95, 20 repetitions) demonstrate that independence helps. The lasting contribution is the identification that explanation instability has a specific mechanistic cause -- sequential path dependence in iterative optimization -- and a structural mitigation -- independence between explained models. Because DASH's independent models make their arbitrary choices independently, averaging cancels the arbitrariness. The consensus reflects what the data supports -- which *group* of correlated features matters -- rather than which individual feature one optimization path happened to favor. This reframes the problem from "SHAP is noisy" to "single-model explanations are fundamentally limited."
+DASH's 0.982 stability, 0.991 DGP agreement, and 0.159 equity numbers at high collinearity (ρ=0.95, 20 repetitions) demonstrate that independence helps. The lasting contribution is the identification that explanation instability has a specific mechanistic cause -- sequential path dependence in iterative optimization -- and a structural mitigation -- independence between explained models. Because DASH's independent models make their arbitrary choices independently, averaging cancels the arbitrariness. The consensus reflects what the data supports -- which *group* of correlated features matters -- rather than which individual feature one optimization path happened to favor. This reframes the problem from "SHAP is noisy" to "single-model explanations are fundamentally limited."
 
-**Important caveats:** (1) The simplest form of independence -- Stochastic Retrain (same hyperparameters, different seeds) -- achieves stability within 0.001 of DASH at ρ=0.9, and the difference is not statistically significant. DASH's marginal value over seed averaging lies in its diagnostics (FSI, IS Plot) and equity improvements rather than raw stability. (2) The accuracy metric uses a ground-truth definition (uniform within-group importance) that presupposes equitable credit distribution, making it partially circular with the equity metric. (3) Under nonlinear DGPs, DASH shows marginally lower stability than Single Best at low correlation (ρ ≤ 0.5), so it should be applied when moderate-to-high correlation is suspected.
+**Important caveats:** (1) The simplest form of independence -- Stochastic Retrain (same hyperparameters, different seeds) -- achieves stability within 0.001 of DASH at ρ=0.9, and the difference is not statistically significant. DASH's marginal value over seed averaging lies in its diagnostics (FSI, IS Plot) and equity improvements rather than raw stability. (2) The "DGP agreement" metric (formerly "accuracy") uses a ground-truth definition (uniform within-group importance) that presupposes equitable credit distribution, making it partially circular with the equity metric. It is reported as a sanity check, not the primary evaluation criterion. (3) Under nonlinear DGPs, DASH shows marginally lower stability than Single Best at low correlation (ρ ≤ 0.5), so it should be applied when moderate-to-high correlation is suspected. (4) Stability confidence intervals use bias-corrected and accelerated (BCa) bootstrap, which corrects for both bias and skewness in the bootstrap distribution. (5) Synthetic experiments use a four-way data split (train / val / explain / test) so that the SHAP reference set (`X_explain`) is separate from the RMSE evaluation set (`X_test`).
 
 ---
 
@@ -160,8 +161,8 @@ pipeline = DASHPipeline(
     task="regression",          # "regression", "binary", or "multiclass"
 )
 
-# Fit on your data (use X_test as X_ref to avoid data leakage)
-pipeline.fit(X_train, y_train, X_val, y_val, X_ref=X_test)
+# Fit on your data (use a held-out explain set as X_ref, separate from X_test)
+pipeline.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 
 # Get consensus feature importance (mean |SHAP| per feature)
 importance = pipeline.global_importance_
@@ -403,14 +404,14 @@ The central experiment. Tests DASH across five levels of feature correlation.
 - Within each group, features have pairwise correlation `rho`
 - The target variable is a linear combination of group means: `y = sum(z_g * beta_g) + noise`
 - Ground-truth betas: `[2.0, 1.5, 1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.0]`
-- True per-feature importance: `|beta_g| / group_size` (within each group, all features are defined as equally important). **Note:** This ground-truth definition presupposes equitable credit distribution within correlated groups, which is the property DASH optimizes for. The accuracy metric is therefore partially circular with the equity metric -- it measures agreement with the equitable decomposition rather than "correctness" in an absolute sense
+- True per-feature importance: `|beta_g| / group_size` (within each group, all features are defined as equally important). **Note:** This ground-truth definition presupposes equitable credit distribution within correlated groups, which is the property DASH optimizes for. The DGP agreement metric is therefore partially circular with the equity metric -- it measures agreement with the equitable decomposition rather than "correctness" in an absolute sense. Under collinearity, SHAP may legitimately distribute credit unevenly depending on the model's internal structure.
 
 **Sweep:** `rho` in {0.0, 0.5, 0.7, 0.9, 0.95}, with 20 repetitions at each level.
 
 **Metrics:**
-- **Stability:** Mean pairwise Spearman correlation of importance vectors across the 20 repetitions. Measures: "If I run this method twice, do I get the same ranking?"
-- **Accuracy:** Spearman correlation between estimated importance and ground truth. Measures: "Is the ranking correct?"
-- **Within-group equity:** Average coefficient of variation (std/mean) of importance values within each correlated group. Measures: "Do correlated features get similar importance, as they should?"
+- **Stability:** Mean pairwise Spearman correlation of importance vectors across the 20 repetitions. Measures: "If I run this method twice, do I get the same ranking?" Confidence intervals use BCa bootstrap.
+- **DGP Agreement** (formerly "Accuracy")**:** Spearman correlation between estimated importance and DGP-derived ground truth. Reported as a sanity check alongside stability and equity, not as the primary evaluation criterion.
+- **Within-group equity:** Average coefficient of variation (std/mean) of importance values within each correlated group. Measures: "Do correlated features get similar importance, as they should?" Groups with near-zero mean importance can optionally be scored via `include_zero_groups=True`.
 
 ### Experiment 2: Overlapping Correlation Structure
 
@@ -422,7 +423,7 @@ Tests DASH on a nonlinear data-generating process:
 ```
 y = z1^2 + 0.8 * z1 * z2 + 1.2 * sin(pi * z3) + linear terms + noise
 ```
-where `z_g` is the mean of group `g`'s features. Accuracy against ground truth is not measured here (because Sobol indices and SHAP distribute nonlinear variance differently), so the focus is on stability and equity.
+where `z_g` is the mean of group `g`'s features. DGP agreement against ground truth is not measured here (because Sobol indices and SHAP distribute nonlinear variance differently), so the focus is on stability and equity.
 
 ### Experiment 4: Real Data
 
@@ -438,6 +439,8 @@ Validates DASH on three real datasets:
 
 All numbers cited in this README come from `demo_benchmark_4_checkpointed.ipynb` (M=200, K=30, 20 repetitions), the authoritative benchmark. The prototype notebook (`demo_benchmark_1.ipynb`, M=50, K=15, 5 reps) confirms directional findings and runs in minutes.
 
+> **Note on methodology fixes (A1-A5):** The benchmark numbers below were produced before five methodology refinements were applied to the evaluation code: BCa bootstrap (A3), four-way data split (A4), DGP agreement rename with circularity caveat (A5), zero-group equity handling (A2), and model-selection uncertainty documentation (A1). The code now incorporates all five fixes. Directional findings are expected to hold; exact numbers may shift slightly when re-run. See [Methodology Notes](#methodology-notes) for details.
+
 ### Benchmark Configuration
 
 | Parameter | Value |
@@ -448,6 +451,7 @@ All numbers cited in this README come from `demo_benchmark_4_checkpointed.ipynb`
 | Performance filter (ε) | 0.08 |
 | Diversity threshold (δ) | 0.05 |
 | Notebook | `demo_benchmark_4_checkpointed.ipynb` |
+| Data split | train / val / explain / test (four-way) |
 
 The benchmark runs 9 experiments: proof of concept at high collinearity, full baseline comparison, stability across repetitions, correlation sweep (ρ=0.0 to 0.95), nonlinear DGP sweep, extended baselines (Table 2), real-world datasets (California Housing, Breast Cancer, Superconductor), epsilon sensitivity, and ablation studies.
 
@@ -456,7 +460,7 @@ The benchmark runs 9 experiments: proof of concept at high collinearity, full ba
 The most demanding test: 50 features in 10 correlated groups at ρ=0.95, averaged across 20 repetitions. Each method is run independently from scratch at each repetition, and stability measures the mean pairwise Spearman correlation of importance rankings across runs.
 
 ```
-Method                Stability   Accuracy (ρ)    Equity (CV)
+Method                Stability   DGP Agreement (ρ)  Equity (CV)
 =============================================================
 Single Best              0.9529         0.9755         0.2421
 Large Single Model       0.9301         0.9641         0.2708
@@ -467,7 +471,7 @@ DASH (MaxMin) leads on all three metrics at the highest collinearity level:
 
 - **Stability:** 0.9819 vs. 0.9529 for Single Best (+0.0290). DASH produces nearly identical importance rankings across 20 independent runs. Single Best's ranking shifts substantially depending on which arbitrary feature choices a given seed produces.
 
-- **Accuracy:** 0.9907 vs. 0.9755 for Single Best. DASH's consensus ranking is closer to the known ground truth because averaging cancels the arbitrary feature-selection noise that biases any single model's ranking.
+- **DGP Agreement:** 0.9907 vs. 0.9755 for Single Best. DASH's consensus ranking is closer to the DGP-derived ground truth because averaging cancels the arbitrary feature-selection noise that biases any single model's ranking. (Note: this metric presupposes equitable within-group credit; see [Methodology Notes](#methodology-notes).)
 
 - **Equity:** CV of 0.1585 vs. 0.2421 for Single Best (34% lower) and 0.2708 for Large Single Model (41% lower). Within each correlated group, DASH distributes importance fairly across all members rather than concentrating it on whichever feature one model happened to grab.
 
@@ -501,28 +505,28 @@ DASH stability is effectively flat across all correlation levels (0.9765-0.9819)
 
 1. **DASH's advantage is specifically about collinearity.** The stability gap widens from +0.0009 at ρ=0.0 to +0.0290 at ρ=0.95. At zero correlation, all methods perform similarly -- DASH is a targeted fix, not a blunt hammer.
 
-2. **Bigger models make explanations worse, not better.** The Large Single Model -- matching DASH's total compute in a single sequential ensemble -- achieves the worst stability (0.9301), worst accuracy (0.9641), and worst equity (0.2708) of any method at ρ=0.95. Model independence, not model size, is what matters.
+2. **Bigger models make explanations worse, not better.** The Large Single Model -- matching DASH's total compute in a single sequential ensemble -- achieves the worst stability (0.9301), worst DGP agreement (0.9641), and worst equity (0.2708) of any method at ρ=0.95. Model independence, not model size, is what matters.
 
 3. **DASH distributes credit fairly across correlated features.** At ρ=0.95, DASH's within-group CV of 0.1585 is 34% lower than Single Best (0.2421) and 41% lower than Large Single Model (0.2708). Where single models arbitrarily concentrate importance on one member of a correlated group, DASH's consensus reflects the group's collective contribution.
 
-4. **DASH is safe when collinearity is absent (linear DGP).** At ρ=0.0, the accuracy gap between DASH and Single Best is 0.0005 -- effectively zero under the linear DGP. However, under nonlinear DGPs, DASH shows marginally lower stability at ρ=0.0 and ρ=0.5, so the safety guarantee is conditional on the DGP type.
+4. **DASH is safe when collinearity is absent (linear DGP).** At ρ=0.0, the DGP agreement gap between DASH and Single Best is 0.0005 -- effectively zero under the linear DGP. However, under nonlinear DGPs, DASH shows marginally lower stability at ρ=0.0 and ρ=0.5, so the safety guarantee is conditional on the DGP type.
 
 5. **DASH also has the best predictive RMSE** at every correlation level, disproving the concern that diversified ensembles sacrifice prediction quality. At ρ=0.9: DASH RMSE=0.5821 vs Single Best=0.6043 vs Large Single Model=0.7177.
 
-6. **Statistical rigor.** Wilcoxon signed-rank tests with Bonferroni correction show statistically significant improvements over Single Best at ρ≥0.7, with large effect sizes (Cohen's d > 1.0). However, the comparison against Stochastic Retrain (the strongest baseline) is not statistically significant at ρ=0.9 (Cohen's d = 0.26, stability gap = 0.001), indicating that DASH's marginal improvement over simple seed averaging is modest.
+6. **Statistical rigor.** Wilcoxon signed-rank tests with Bonferroni correction show statistically significant improvements over Single Best at ρ≥0.7, with large effect sizes (Cohen's d > 1.0). Stability confidence intervals use BCa (bias-corrected and accelerated) bootstrap, which corrects for both bias and skewness. However, the comparison against Stochastic Retrain (the strongest baseline) is not statistically significant at ρ=0.9 (Cohen's d = 0.26, stability gap = 0.001), indicating that DASH's marginal improvement over simple seed averaging is modest.
 
 7. **Robust to hyperparameters.** Epsilon sensitivity analysis shows <0.001 variation in stability across a 3× range of ε values (0.03 to 0.10). Ablation studies show diminishing returns past M=200.
 
 ### Success Criteria
 
-The benchmark defines nine formal success criteria, all of which pass:
+The benchmark defines nine formal success criteria, all of which pass. (These were evaluated pre-methodology-fix; directional results are expected to hold.)
 
 | # | Criterion | Result | Threshold |
 |---|-----------|--------|-----------|
 | 1 | Stability wins (DASH > SB, linear sweep) | **5/5** ρ levels | >= 80% |
-| 2 | Accuracy at ρ=0.9 (DASH >= SB) | **0.9901 >= 0.9796** | Relative to baseline |
+| 2 | DGP agreement at ρ=0.9 (DASH >= SB) | **0.9901 >= 0.9796** | Relative to baseline |
 | 3 | Equity wins (DASH CV < SB CV) | **5/5** ρ levels | >= 80% |
-| 4 | Safety at ρ=0 (accuracy gap) | **0.0005** | < 0.1 |
+| 4 | Safety at ρ=0 (DGP agreement gap) | **0.0005** | < 0.1 |
 | 5 | K_eff increases with ε | **5.8 → 27.1** | Monotonic |
 | 6 | Nonlinear DGP: DASH > SB stability (ρ=0.9) | **0.8955 > 0.8403** | DASH wins |
 | 7 | Breast Cancer: DASH stability > 0.80 | **0.9332** | > 0.80 |
@@ -573,6 +577,20 @@ DASH is robust to the performance filter threshold ε. Across ε ∈ {0.03, 0.05
 
 ---
 
+## Methodology Notes
+
+Five methodology refinements (A1-A5) were applied to the evaluation code and experiment infrastructure after the initial benchmark run. The fixes improve statistical rigor and reduce circularity concerns. Directional conclusions are unchanged.
+
+| ID | Fix | Description | Impact |
+|----|-----|-------------|--------|
+| A1 | Model-selection uncertainty | Bootstrap CIs capture run-to-run variability but not hyperparameter search variability. Documented as a caveat in experiment code. | Interpretation only; no change to numbers. |
+| A2 | Zero-group equity handling | `within_group_equity` now accepts `include_zero_groups=True`. Groups with near-zero mean importance score CV=0 (if all values near-zero) or `inf` (otherwise). Default behavior unchanged. | Potential minor shift in equity numbers for DGPs with inactive groups. |
+| A3 | BCa bootstrap | `stability_bootstrap_ci` now uses bias-corrected and accelerated (BCa) bootstrap instead of the percentile method, correcting for both bias and skewness. | Tighter, more accurate confidence intervals. Point estimates unchanged. |
+| A4 | Four-way data split | Synthetic generators now return an 11-tuple with a dedicated `X_explain` set (10% of data). SHAP reference data (`X_ref`) is separate from the RMSE evaluation set (`X_test`). | Removes concern of using the same data for SHAP computation and predictive evaluation. |
+| A5 | DGP agreement rename | `importance_accuracy` renamed to `dgp_agreement` (backward-compatible alias retained). Docstring now explicitly notes that the metric presupposes equitable within-group credit distribution and should be reported as a sanity check, not the primary criterion. | Terminology and framing change; no change to the underlying computation. |
+
+---
+
 ## API Reference
 
 ### `DASHPipeline`
@@ -603,7 +621,7 @@ pipeline = DASHPipeline(
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `fit(X_train, y_train, X_val, y_val, X_ref=None, feature_names=None)` | self | Runs all 5 stages. `X_ref` defaults to `X_val`. **Recommended:** pass a held-out reference set (e.g., `X_test`) as `X_ref` to avoid computing SHAP on data used for filtering. |
+| `fit(X_train, y_train, X_val, y_val, X_ref=None, feature_names=None)` | self | Runs all 5 stages. `X_ref` defaults to `X_val`. **Recommended:** pass a dedicated explain set (e.g., `X_explain`) as `X_ref`, separate from `X_test`, so that SHAP reference data and RMSE evaluation data do not overlap. |
 | `get_fsi()` | `FeatureStabilityIndex` | Feature Stability Index object with quadrant labels. |
 | `plot_importance_stability(groups=None, **kwargs)` | matplotlib Figure | Generates the IS Plot. Pass `groups` to color by feature group. |
 | `get_importance_ranking()` | np.array | Feature indices sorted by descending importance. |
@@ -676,8 +694,9 @@ fig = local_disagreement_map(
 ```python
 from dash.experiments.synthetic import generate_synthetic_linear, generate_synthetic_nonlinear
 
-# Linear DGP with controllable correlation
-X_train, y_train, X_val, y_val, X_test, y_test, groups, true_importance, meta = \
+# Linear DGP with controllable correlation (11-tuple return with four-way split)
+X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, \
+    groups, true_importance, meta = \
     generate_synthetic_linear(
         N=5000,           # Total observations
         P=50,             # Number of features
@@ -687,28 +706,45 @@ X_train, y_train, X_val, y_val, X_test, y_test, groups, true_importance, meta = 
         seed=42,
         test_size=0.15,
         val_size=0.15,
+        explain_size=0.10, # Dedicated SHAP reference set
         structure="block", # "block" or "overlapping"
     )
 
 # Nonlinear DGP (same interface, adds quadratic/interaction/sin terms)
-X_train, y_train, X_val, y_val, X_test, y_test, groups, true_importance, meta = \
+X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, \
+    groups, true_importance, meta = \
     generate_synthetic_nonlinear(N=5000, P=50, group_size=5, rho=0.9)
 ```
+
+The four-way split ensures `X_explain` (used as `X_ref` for SHAP) is separate from `X_test` (used only for RMSE evaluation).
 
 ### Evaluation Metrics
 
 ```python
-from dash.evaluation import importance_accuracy, importance_stability, within_group_equity
+from dash.evaluation import (
+    dgp_agreement,             # formerly importance_accuracy (alias retained)
+    importance_stability,
+    stability_bootstrap_ci,    # BCa bootstrap CI for stability
+    within_group_equity,
+)
 
-# Accuracy vs. ground truth
-spearman_rho, mse = importance_accuracy(estimated_importance, true_importance)
+# DGP agreement vs. ground truth (sanity check, not primary criterion)
+spearman_rho, mse = dgp_agreement(estimated_importance, true_importance)
 
 # Stability across repetitions
 stability = importance_stability([importance_run1, importance_run2, ...])
 
-# Within-group equity
-mean_cv = within_group_equity(importance_vector, group_assignments)
+# BCa bootstrap confidence interval for stability
+point, se, ci_lo, ci_hi = stability_bootstrap_ci(
+    [importance_run1, importance_run2, ...], n_boot=1000, ci=0.95
+)
+
+# Within-group equity (optionally score zero-importance groups)
+mean_cv = within_group_equity(importance_vector, group_assignments,
+                              include_zero_groups=False)
 ```
+
+> `importance_accuracy` is retained as a backward-compatible alias for `dgp_agreement`.
 
 ---
 
@@ -734,7 +770,7 @@ dash-shap/
 │   ├── experiments/
 │   │   └── synthetic.py               # Linear & nonlinear data generators
 │   ├── evaluation/
-│   │   └── __init__.py                # Metrics: accuracy, stability, equity
+│   │   └── __init__.py                # Metrics: DGP agreement, stability, equity
 │   └── utils/
 │       ├── __init__.py                # Utils package init
 │       ├── io.py                      # I/O utilities
@@ -788,7 +824,7 @@ DASH is Paper 1 of a five-paper research program that builds from a practical to
 
 Practical tool and empirical validation. The core claim: DASH produces more stable, accurate, and equitable SHAP importance rankings than single-model or single-ensemble approaches, with the advantage growing as feature collinearity increases. The key mechanistic insight is that sequential residual dependency within a single boosting ensemble amplifies collinearity-induced instability, and only independence between models resolves it.
 
-**Results to date:** DASH stability exceeds Single Best at 5/5 correlation levels (full run). Accuracy at ρ=0.9: Spearman ρ = 0.990. Equity 33% better than Single Best at ρ=0.95. Large Single Model degrades faster than Single Best at all ρ levels, confirming the first-mover hypothesis. FSI correctly identifies known collinear clusters on Breast Cancer data without supervision.
+**Results to date:** DASH stability exceeds Single Best at 5/5 correlation levels (full run). DGP agreement at ρ=0.9: Spearman ρ = 0.990. Equity 33% better than Single Best at ρ=0.95. Large Single Model degrades faster than Single Best at all ρ levels, confirming the first-mover hypothesis. FSI correctly identifies known collinear clusters on Breast Cancer data without supervision.
 
 **Remaining work:** Full experiments at M=200, K=20, N_REPS=10 across all ρ levels, both DGPs, and all 8 methods. UCI benchmarks (Superconductor, Communities & Crime). UCR time series + tsfresh experiments (5 datasets). Ablation studies (M, K, ε, δ, colsample range, importance proxy). Statistical testing: Friedman omnibus + Wilcoxon with Bonferroni correction.
 
