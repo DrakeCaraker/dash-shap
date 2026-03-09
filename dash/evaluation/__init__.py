@@ -6,6 +6,7 @@ from typing import List, Tuple
 __all__ = [
     "importance_accuracy",
     "importance_stability",
+    "stability_bootstrap_ci",
     "within_group_equity",
     "cohens_d",
     "compare_methods",
@@ -33,6 +34,30 @@ def importance_stability(vectors):
             rho, _ = spearmanr(vectors[i], vectors[j])
             corrs.append(rho)
     return float(np.mean(corrs))
+
+
+def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
+    """Bootstrap confidence interval for importance_stability.
+
+    Resamples the list of importance vectors with replacement, recomputes
+    stability on each bootstrap sample, and returns (point, se, ci_lo, ci_hi).
+    """
+    rng = np.random.RandomState(seed)
+    n = len(vectors)
+    if n < 2:
+        return 1.0, 0.0, 1.0, 1.0
+    point = importance_stability(vectors)
+    boots = []
+    for _ in range(n_boot):
+        idx = rng.choice(n, size=n, replace=True)
+        sample = [vectors[i] for i in idx]
+        boots.append(importance_stability(sample))
+    boots = np.array(boots)
+    se = float(np.std(boots, ddof=1))
+    alpha = 1 - ci
+    ci_lo = float(np.percentile(boots, 100 * alpha / 2))
+    ci_hi = float(np.percentile(boots, 100 * (1 - alpha / 2)))
+    return point, se, ci_lo, ci_hi
 
 
 def within_group_equity(importance_vector, groups):
