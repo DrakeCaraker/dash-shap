@@ -62,8 +62,8 @@ from dash.baselines import (
     StochasticRetrainBaseline, EnsembleSHAPBaseline,
 )
 from dash.evaluation import (
-    importance_accuracy, importance_stability, within_group_equity,
-    compare_methods, friedman_test,
+    importance_accuracy, importance_stability, stability_bootstrap_ci,
+    within_group_equity, compare_methods, friedman_test,
 )
 from dash.utils.io import save_json
 
@@ -115,6 +115,7 @@ def _ensure_dirs():
 COLORS = {
     'Single Best': '#95a5a6',
     'Large Single Model': '#e74c3c',
+    'LSM (Tuned)': '#c0392b',
     'Ensemble SHAP': '#9b59b6',
     'Naive Top-N': '#f39c12',
     'Stochastic Retrain': '#e67e22',
@@ -126,6 +127,7 @@ COLORS = {
 MARKERS = {
     'Single Best': 's',
     'Large Single Model': 'X',
+    'LSM (Tuned)': 'x',
     'Ensemble SHAP': 'D',
     'Naive Top-N': '^',
     'Stochastic Retrain': 'v',
@@ -231,15 +233,23 @@ def experiment_linear_sweep():
     """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Matches notebook Section 4 — uses X_ref=Xte (D1 fix), saves per-rep arrays
-    for downstream significance tests, and collects RMSE.
+    for downstream significance tests, collects RMSE, and reports bootstrap CI
+    for stability.
+
+    Includes LSM (Tuned) — a tuned variant of the Large Single Model that
+    searches over max_depth and learning_rate, making the comparison fair.
     """
     _ensure_dirs()
+    t0 = time.time()
     log("=" * 70)
     log("EXPERIMENT: Synthetic Linear DGP — Correlation Sweep")
     log("=" * 70)
 
     rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
-    sweep_methods = ['Single Best', 'Large Single Model', 'Stochastic Retrain', 'DASH (MaxMin)']
+    sweep_methods = [
+        'Single Best', 'Large Single Model', 'LSM (Tuned)',
+        'Stochastic Retrain', 'DASH (MaxMin)',
+    ]
     sweep_results = {rho: {} for rho in rho_levels}
 
     for rho in rho_levels:
@@ -259,7 +269,15 @@ def experiment_linear_sweep():
                 elif name == 'Large Single Model':
                     m = LargeSingleModelBaseline(
                         K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
-                        colsample_bytree=0.2, seed=rep_seed,
+                        colsample_bytree=0.2, seed=rep_seed, tune=False,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
+                    imp = m.global_importance_
+                    preds = m.model_.predict(Xte)
+                elif name == 'LSM (Tuned)':
+                    m = LargeSingleModelBaseline(
+                        K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
+                        colsample_bytree=0.2, seed=rep_seed, tune=True,
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
                     imp = m.global_importance_
@@ -288,12 +306,17 @@ def experiment_linear_sweep():
                 imp_runs.append(imp)
                 rmse_runs.append(rmse_val)
 
-            stab = importance_stability(imp_runs)
+            stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
             sweep_results[rho][name] = {
                 'stability': stab,
+                'stability_se': stab_se,
+                'stability_ci_lo': stab_ci_lo,
+                'stability_ci_hi': stab_ci_hi,
                 'accuracy_mean': float(np.mean(acc_runs)),
+                'accuracy_se': float(np.std(acc_runs) / np.sqrt(len(acc_runs))),
                 'accuracy_std': float(np.std(acc_runs)),
                 'equity_mean': float(np.mean(eq_runs)),
+                'equity_se': float(np.std(eq_runs) / np.sqrt(len(eq_runs))),
                 'equity_std': float(np.std(eq_runs)),
                 'rmse_mean': float(np.mean(rmse_runs)),
                 'rmse_std': float(np.std(rmse_runs)),
@@ -302,13 +325,16 @@ def experiment_linear_sweep():
                 'rmse_runs': np.array(rmse_runs),
                 'imp_runs': imp_runs,
             }
-            log(f"  {name:<20} stab={stab:.4f}  acc={np.mean(acc_runs):.4f}  "
-                f"eq={np.mean(eq_runs):.4f}  RMSE={np.mean(rmse_runs):.4f}")
+            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  "
+                f"acc={np.mean(acc_runs):.4f}±{np.std(acc_runs)/np.sqrt(len(acc_runs)):.4f}  "
+                f"eq={np.mean(eq_runs):.4f}  RMSE={np.nanmean(rmse_runs):.4f}")
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
 
+    elapsed = time.time() - t0
+    log(f"  Linear sweep completed in {elapsed/60:.1f} min")
     return sweep_results
 
 
@@ -318,6 +344,7 @@ def experiment_linear_sweep():
 
 def experiment_overlapping():
     """Overlapping correlation structure at rho=0.9."""
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Overlapping Correlation Structure")
     log("=" * 70)
@@ -361,6 +388,9 @@ def experiment_overlapping():
         stab = importance_stability(stability_vectors[name])
         log(f"    {name:<20} stability={stab:.4f}")
 
+    elapsed = time.time() - t0
+    log(f"  Overlapping completed in {elapsed/60:.1f} min")
+
 
 ###############################################################################
 # EXPERIMENT: Nonlinear DGP Correlation Sweep
@@ -370,14 +400,19 @@ def experiment_nonlinear_sweep():
     """Nonlinear DGP sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Evaluates stability and equity (no ground-truth accuracy for nonlinear DGP).
+    Includes LSM (Tuned) for fair comparison.
     """
     _ensure_dirs()
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Nonlinear DGP — Correlation Sweep")
     log("=" * 70)
 
     nl_rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
-    nl_methods = ['Single Best', 'Large Single Model', 'Stochastic Retrain', 'DASH (MaxMin)']
+    nl_methods = [
+        'Single Best', 'Large Single Model', 'LSM (Tuned)',
+        'Stochastic Retrain', 'DASH (MaxMin)',
+    ]
     nl_sweep = {rho: {} for rho in nl_rho_levels}
 
     for rho in nl_rho_levels:
@@ -393,10 +428,11 @@ def experiment_nonlinear_sweep():
                     m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
                     imp = m.global_importance_
-                elif name == 'Large Single Model':
+                elif name in ('Large Single Model', 'LSM (Tuned)'):
                     m = LargeSingleModelBaseline(
                         K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
                         colsample_bytree=0.2, seed=rep_seed,
+                        tune=(name == 'LSM (Tuned)'),
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xte)
                     imp = m.global_importance_
@@ -418,18 +454,23 @@ def experiment_nonlinear_sweep():
                 eq_runs.append(within_group_equity(imp, grps))
                 imp_runs.append(imp)
 
-            stab = importance_stability(imp_runs)
+            stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
             nl_sweep[rho][name] = {
                 'stability': stab,
+                'stability_se': stab_se,
+                'stability_ci_lo': stab_ci_lo,
+                'stability_ci_hi': stab_ci_hi,
                 'equity_mean': float(np.mean(eq_runs)),
                 'equity_std': float(np.std(eq_runs)),
                 'eq_runs': np.array(eq_runs),
             }
-            log(f"  {name:<20} stab={stab:.4f}  eq={np.mean(eq_runs):.4f}")
+            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  eq={np.mean(eq_runs):.4f}")
 
     save_json(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json")
     log(f"  Saved: {OUT}/tables/nonlinear_sweep.json")
 
+    elapsed = time.time() - t0
+    log(f"  Nonlinear sweep completed in {elapsed/60:.1f} min")
     return nl_sweep
 
 
@@ -440,6 +481,7 @@ def experiment_nonlinear_sweep():
 def experiment_table2_baselines():
     """Extended baselines at rho=0.9: Ensemble SHAP, Stochastic Retrain, DASH (Dedup)."""
     _ensure_dirs()
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Table 2 — Extended Baselines at ρ=0.9")
     log("=" * 70)
@@ -479,21 +521,29 @@ def experiment_table2_baselines():
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         table2_results[name] = {
-            'stability': importance_stability(imp_runs),
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
             'accuracy_mean': float(np.mean(acc_runs)),
-            'accuracy_std': float(np.std(acc_runs)),
+            'accuracy_se': float(np.std(acc_runs) / np.sqrt(len(acc_runs))),
             'equity_mean': float(np.mean(eq_runs)),
+            'equity_se': float(np.std(eq_runs) / np.sqrt(len(eq_runs))),
+            'accuracy_std': float(np.std(acc_runs)),
             'equity_std': float(np.std(eq_runs)),
             'acc_runs': np.array(acc_runs),
             'eq_runs': np.array(eq_runs),
         }
-        log(f"  {name:<22} stab={table2_results[name]['stability']:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
     log(f"  Saved: {OUT}/tables/table2_baselines.json")
 
+    elapsed = time.time() - t0
+    log(f"  Table 2 baselines completed in {elapsed/60:.1f} min")
     return table2_results
 
 
@@ -504,6 +554,7 @@ def experiment_table2_baselines():
 def experiment_real_california():
     """California Housing benchmark with scale-appropriate epsilon."""
     _ensure_dirs()
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Real Data — California Housing")
     log("=" * 70)
@@ -574,6 +625,8 @@ def experiment_real_california():
     log(f"  Saved: figures/is_plot_california.png")
 
     save_json(cal_results, f"{OUT}/tables/california_housing.json")
+    elapsed = time.time() - t0
+    log(f"  California Housing completed in {elapsed/60:.1f} min")
     return cal_results
 
 
@@ -582,8 +635,9 @@ def experiment_real_california():
 ###############################################################################
 
 def experiment_real_breast_cancer():
-    """Breast Cancer benchmark (binary classification)."""
+    """Breast Cancer benchmark (binary classification, N_REPS=20)."""
     _ensure_dirs()
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Real Data — Breast Cancer")
     log("=" * 70)
@@ -651,6 +705,8 @@ def experiment_real_breast_cancer():
     log(f"  Saved: is_plot_breast_cancer.png, disagreement_breast_cancer.png")
 
     save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
+    elapsed = time.time() - t0
+    log(f"  Breast Cancer completed in {elapsed/60:.1f} min")
     return bc_results
 
 
@@ -661,6 +717,7 @@ def experiment_real_breast_cancer():
 def experiment_real_superconductor():
     """Superconductor UCI benchmark with scale-appropriate epsilon."""
     _ensure_dirs()
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Real Data — Superconductor UCI")
     log("=" * 70)
@@ -731,6 +788,8 @@ def experiment_real_superconductor():
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs):.2f}")
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
+    elapsed = time.time() - t0
+    log(f"  Superconductor completed in {elapsed/60:.1f} min")
     return sc_results
 
 
@@ -741,6 +800,7 @@ def experiment_real_superconductor():
 def experiment_epsilon_sensitivity():
     """Epsilon sensitivity sweep: epsilon ∈ {0.03, 0.05, 0.08, 0.10}."""
     _ensure_dirs()
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Epsilon Sensitivity")
     log("=" * 70)
@@ -789,6 +849,8 @@ def experiment_epsilon_sensitivity():
             f"{np.mean(eps_results[eps]['acc_runs']):>10.4f}")
 
     save_json(eps_results, f"{OUT}/tables/epsilon_sensitivity.json")
+    elapsed = time.time() - t0
+    log(f"  Epsilon sensitivity completed in {elapsed/60:.1f} min")
     return eps_results
 
 
@@ -799,6 +861,7 @@ def experiment_epsilon_sensitivity():
 def experiment_ablation():
     """Ablation studies: one parameter at a time, across multiple rho levels."""
     _ensure_dirs()
+    t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Ablation Studies")
     log("=" * 70)
@@ -855,6 +918,8 @@ def experiment_ablation():
 
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
+    elapsed = time.time() - t0
+    log(f"  Ablation completed in {elapsed/60:.1f} min")
     return abl_results
 
 

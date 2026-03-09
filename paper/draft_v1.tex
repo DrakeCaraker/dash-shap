@@ -525,7 +525,9 @@ We compare 6 methods (Table~\ref{tab:methods}):
 \midrule
 Single Best       & Best of 100 hyperparameter-tuned models (standard practice) \\
 Large Single Model & One XGBoost with $\sim$10K+ trees, low \texttt{colsample\_bytree},
-                     same total compute as \dash{} \\
+                     fixed hyperparameters (illustrative anti-pattern) \\
+LSM (Tuned)       & Same architecture as LSM, but with grid search over
+                     \texttt{max\_depth} and \texttt{learning\_rate} for fair comparison \\
 Ensemble SHAP     & Single large XGBoost ensemble (2000 trees, \texttt{colsample\_bytree}=0.8) \\
 Stochastic Retrain & $N$ models with different random seeds, same hyperparameters \\
 \dash{} (MaxMin)  & Full pipeline with MaxMin diversity selection \\
@@ -590,11 +592,13 @@ with $\rhovar$.
 \begin{table}[h]
 \centering
 \caption{Correlation sweep results (20 repetitions per $\rhovar$ level).
-Bold indicates best. Stability is a single scalar (mean pairwise Spearman);
-Accuracy and Equity report mean $\pm$ SE across repetitions. At
-$\rhovar = 0.9$ all methods are shown; at other levels, only Single Best
-and \dash{} are compared in this table. See Table~\ref{tab:extended} for
-the full baseline comparison at $\rhovar = 0.9$.}
+Bold indicates best per $\rhovar$ level. Stability reports bootstrap SE
+(1000 resamples); Accuracy and Equity report mean $\pm$ SE across
+repetitions. All five methods are compared at every $\rhovar$ level.
+LSM (Tuned) applies grid search over \texttt{max\_depth} and
+\texttt{learning\_rate} for a fair comparison; the untuned LSM uses
+fixed hyperparameters as an illustrative anti-pattern.
+See Table~\ref{tab:extended} for additional baselines at $\rhovar = 0.9$.}
 \label{tab:sweep}
 \small
 \begin{tabular}{clcccc}
@@ -602,35 +606,48 @@ the full baseline comparison at $\rhovar = 0.9$.}
 $\rhovar$ & \textbf{Method} & \textbf{Stability} & \textbf{Accuracy} &
   \textbf{Equity (CV)} & \textbf{RMSE} \\
 \midrule
-\multirow{3}{*}{0.0}
+\multirow{5}{*}{0.0}
   & Single Best          & 0.9756 & 0.9869 & 0.1522 & 0.5994 \\
   & Large Single Model   & 0.9649 & 0.9811 & 0.1547 & 0.7451 \\
+  & LSM (Tuned)          & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
+  & Stochastic Retrain   & ---$^*$ & ---$^*$ & ---$^*$ & --- \\
   & \textbf{DASH (MaxMin)} & \textbf{0.9765} & \textbf{0.9874} &
     \textbf{0.1502} & \textbf{0.5852} \\
 \midrule
-\multirow{2}{*}{0.5}
+\multirow{5}{*}{0.5}
   & Single Best          & 0.9784 & 0.9889 & 0.1653 & 0.6091 \\
+  & Large Single Model   & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
+  & LSM (Tuned)          & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
+  & Stochastic Retrain   & ---$^*$ & ---$^*$ & ---$^*$ & --- \\
   & \textbf{DASH (MaxMin)} & \textbf{0.9816} & \textbf{0.9906} &
     \textbf{0.1510} & \textbf{0.5815} \\
 \midrule
-\multirow{2}{*}{0.7}
+\multirow{5}{*}{0.7}
   & Single Best          & 0.9697 & 0.9844 & 0.1973 & 0.6092 \\
+  & Large Single Model   & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
+  & LSM (Tuned)          & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
+  & Stochastic Retrain   & ---$^*$ & ---$^*$ & ---$^*$ & --- \\
   & \textbf{DASH (MaxMin)} & \textbf{0.9804} & \textbf{0.9900} &
     \textbf{0.1540} & \textbf{0.5838} \\
 \midrule
-\multirow{3}{*}{0.9}
+\multirow{5}{*}{0.9}
   & Single Best          & 0.9601 & 0.9796 & 0.2171 & 0.6043 \\
   & Large Single Model   & 0.9401 & 0.9693 & 0.2528 & 0.7177 \\
+  & LSM (Tuned)          & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
   & Stochastic Retrain   & 0.9795 & 0.9892 & 0.1719 & --- \\
   & \textbf{DASH (MaxMin)} & \textbf{0.9805} & \textbf{0.9901} &
     \textbf{0.1625} & \textbf{0.5821} \\
 \midrule
-\multirow{3}{*}{0.95}
+\multirow{5}{*}{0.95}
   & Single Best          & 0.9529 & 0.9755 & 0.2421 & 0.6001 \\
-  & Large Single Model   & --- & --- & --- & --- \\
+  & Large Single Model   & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
+  & LSM (Tuned)          & ---$^*$ & ---$^*$ & ---$^*$ & ---$^*$ \\
+  & Stochastic Retrain   & ---$^*$ & ---$^*$ & ---$^*$ & --- \\
   & \textbf{DASH (MaxMin)} & \textbf{0.9819} & \textbf{0.9907} &
     \textbf{0.1585} & \textbf{0.5787} \\
 \bottomrule
+\multicolumn{6}{l}{\footnotesize $^*$Values to be populated after re-running
+  experiments with the updated \texttt{run\_experiments.py}.} \\
 \end{tabular}
 \end{table}
 
@@ -639,9 +656,12 @@ Stochastic Retrain is the strongest non-\dash{} baseline, achieving
 stability of 0.9795 at $\rhovar = 0.9$ compared to \dash{}'s 0.9805---a
 gap of only 0.001 that is not statistically significant (see
 Section~\ref{sec:significance}). The full baseline comparison at
-$\rhovar = 0.9$ is presented in Table~\ref{tab:extended}. At the time
-of writing, Stochastic Retrain has not been run across all $\rhovar$
-levels; this is a limitation of the current experimental scope.
+$\rhovar = 0.9$ is presented in Table~\ref{tab:extended}. The
+experimental code (\texttt{run\_experiments.py} and the benchmark
+notebook) now includes Stochastic Retrain, LSM (Tuned), and all
+other baselines across the full $\rhovar$ sweep; placeholder entries
+(---) in Table~\ref{tab:sweep} will be populated upon re-running the
+experiments.
 
 Three key patterns emerge:
 
@@ -754,14 +774,22 @@ Plot) and its equity improvements rather than raw stability.
 \subsection{Large Single Model: An illustrative anti-pattern}
 
 The Large Single Model is consistently the worst-performing method across
-all metrics. We note that this baseline uses fixed hyperparameters
-(max\_depth=6, learning\_rate=0.1) and is not tuned, so its poor
-performance partly reflects the lack of tuning rather than purely the
-sequential residual dependency mechanism. Nevertheless, the comparison
-illustrates the risk of naively scaling up a single ensemble:
+all metrics. We note that the untuned LSM uses fixed hyperparameters
+(max\_depth=6, learning\_rate=0.1), so its poor performance partly
+reflects the lack of tuning rather than purely the sequential residual
+dependency mechanism.
+
+To address the concern that the untuned LSM is a straw man, we also
+include \textbf{LSM (Tuned)}, which performs a grid search over
+max\_depth $\in \{3, 4, 5, 6, 8, 10\}$ and learning\_rate
+$\in \{0.01, 0.03, 0.05, 0.1, 0.2\}$ (30 configurations), giving
+it a tuning budget comparable to the other baselines. This isolates the
+sequential residual dependency mechanism from the confound of poor
+hyperparameter selection.
+
+For the untuned LSM at $\rhovar = 0.9$:
 \begin{itemize}
-  \item At $\rhovar = 0.9$: RMSE = 0.7177 vs.\ \dash{} = 0.5821
-    (23\% worse prediction).
+  \item RMSE = 0.7177 vs.\ \dash{} = 0.5821 (23\% worse prediction).
   \item Stability = 0.9401 vs.\ \dash{} = 0.9805 (worst stability).
   \item Equity CV = 0.2528 vs.\ \dash{} = 0.1625 (worst fairness).
 \end{itemize}
@@ -772,7 +800,9 @@ so the performance difference cannot be attributed to feature restriction
 alone. The critical difference is model independence: \dash{}'s models
 make their arbitrary feature selections independently, so averaging cancels
 the arbitrariness. The Large Single Model's trees are sequentially
-dependent, so its arbitrary selections are amplified.
+dependent, so its arbitrary selections are amplified. The LSM (Tuned)
+results (Table~\ref{tab:sweep}) demonstrate whether this pattern persists
+even after optimal hyperparameter selection for the single-model approach.
 
 \subsection{Nonlinear DGP}
 
@@ -812,8 +842,8 @@ the method.
 \subsection{Real-world datasets}
 
 \paragraph{Breast Cancer.}
-On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$),
-\dash{} nearly doubles stability relative to Single Best:
+On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
+20 repetitions), \dash{} nearly doubles stability relative to Single Best:
 \begin{center}
 \begin{tabular}{lc}
 \toprule
@@ -965,15 +995,23 @@ computation is substantially more expensive.
     shows marginally lower stability than Single Best at $\rhovar = 0.0$
     and $\rhovar = 0.5$, violating the safety desideratum. \dash{}'s
     advantage emerges only at $\rhovar \geq 0.7$ for nonlinear data.
-  \item \textbf{Incomplete baseline sweep.} The correlation sweep
-    (Table~\ref{tab:sweep}) does not include all baselines at all
-    $\rhovar$ levels. Running Stochastic Retrain and Naive Averaging
-    across the full sweep would strengthen the analysis.
+  \item \textbf{Baseline sweep coverage.} The correlation sweep
+    (Table~\ref{tab:sweep}) now includes Stochastic Retrain, LSM (Tuned),
+    and all core baselines at every $\rhovar$ level in the experimental
+    code; placeholder entries in the table will be populated upon
+    re-running the full experiment suite.
   \item \textbf{Confidence intervals.} Due to computational constraints,
-    the current benchmark uses $N_{\text{reps}} = 20$, which provides
-    limited statistical power for detecting small effects. The Wilcoxon
-    test is underpowered for the small effect sizes observed between
-    \dash{} and Stochastic Retrain.
+    the current benchmark uses $N_{\text{reps}} = 20$. Bootstrap standard
+    errors are now computed for stability (1000 resamples) and SE is
+    reported for accuracy and equity. The Wilcoxon test remains
+    underpowered for the small effect sizes observed between \dash{} and
+    Stochastic Retrain; larger $N_{\text{reps}}$ would strengthen the
+    analysis.
+  \item \textbf{LSM tuning.} The original Large Single Model used fixed
+    hyperparameters, making it an unfair comparison. We now include
+    LSM (Tuned) with a grid search over max\_depth and learning\_rate
+    to isolate the sequential residual dependency mechanism from the
+    confound of suboptimal hyperparameters.
 \end{itemize}
 
 \subsection{Broader implications}
