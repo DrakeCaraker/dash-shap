@@ -164,6 +164,13 @@ class DASHPipeline:
             )
         return self
 
+    @property
+    def selected_models_(self):
+        """Return list of selected models (convenience property)."""
+        if self.selected_indices_ is None:
+            return None
+        return [self.models_[i] for i in self.selected_indices_]
+
     def get_fsi(self):
         return FeatureStabilityIndex(
             self.fsi_, self.global_importance_, self.feature_names_,
