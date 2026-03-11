@@ -49,6 +49,7 @@ from dash.core.consensus import compute_consensus
 from dash.core.diagnostics import compute_diagnostics
 from dash.core.diversity import (
     get_preliminary_importance,
+    greedy_maxmin_selection,
     cluster_coverage_selection,
     deduplication_selection,
 )
@@ -275,56 +276,52 @@ def experiment_linear_sweep():
     for rho in rho_levels:
         log(f"\n--- ρ = {rho} ---")
         for name in sweep_methods:
-            acc_runs, grp_acc_runs = [], []  # F3: both metrics
-            eq_runs, eq_zero_runs, imp_runs, rmse_runs = [], [], [], []
-            method_times = []  # m4: timing
+            t_method = time.time()
+            acc_runs, eq_runs, imp_runs, rmse_runs, gacc_runs = [], [], [], [], []
             for rep in range(N_REPS):
                 rep_seed = SEED + rep
                 Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
                     generate_synthetic_linear(N=5000, rho=rho, seed=rep_seed)
 
-                t_method = time.time()
                 if name == 'Single Best':
                     m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)  # M4
-                    imp = m.global_importance_
-                    preds = m.model_.predict(Xte)
-                elif name == 'Single Best (M=200)':
-                    m = SingleBestBaseline(n_trials=M, seed=rep_seed)  # M3
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
-                elif name == 'Large Single Model':
-                    m = LargeSingleModelBaseline(
-                        K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
-                        colsample_bytree=0.2, seed=rep_seed, tune=False,
-                    )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)  # M4
+                    rmse_val = rmse_score(yte, preds)
+                elif name == 'Single Best (M=200)':
+                    m = SingleBestBaseline(n_trials=M, seed=rep_seed)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
-                elif name == 'LSM (Tuned)':
+                    rmse_val = rmse_score(yte, preds)
+                elif name in ('Large Single Model', 'LSM (Tuned)'):
                     m = LargeSingleModelBaseline(
                         K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
-                        colsample_bytree=0.2, seed=rep_seed, tune=True,
+                        colsample_bytree=0.2, seed=rep_seed,
+                        tune=(name == 'LSM (Tuned)'),
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)  # M4
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
+                    rmse_val = rmse_score(yte, preds)
                 elif name == 'Stochastic Retrain':
                     m = StochasticRetrainBaseline(
                         N=K, task='regression', n_jobs=-1, seed=rep_seed,
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
+                    rmse_val = rmse_score(yte, preds)
                 elif name == 'Random Selection':
-                    m = RandomSelectionBaseline(  # M2
-                        M=M, K=K, epsilon=EPSILON,
+                    m = RandomSelectionBaseline(
+                        M=M, K=K, epsilon=EPSILON, delta=DELTA,
                         n_jobs=-1, seed=rep_seed, verbose=False,
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
+                    rmse_val = rmse_score(yte, preds)
                 else:  # DASH MaxMin
                     m = DASHPipeline(
                         M=M, K=K, epsilon=EPSILON, delta=DELTA,
@@ -334,51 +331,45 @@ def experiment_linear_sweep():
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
-                method_times.append(time.time() - t_method)
+                    rmse_val = rmse_score(yte, preds)
 
-                rmse_val = rmse_score(yte, preds) if preds is not None else np.nan
-                r, _ = dgp_agreement(imp, true_imp)
+                r, _ = importance_accuracy(imp, true_imp)
                 acc_runs.append(r)
-                grp_acc_runs.append(group_level_accuracy(imp, true_imp, grps))  # F3
+                gacc_runs.append(group_level_accuracy(imp, true_imp, grps))
                 eq_runs.append(within_group_equity(imp, grps))
-                eq_zero_runs.append(within_group_equity(imp, grps, include_zero_groups=True))
                 imp_runs.append(imp)
                 rmse_runs.append(rmse_val)
 
+            # M8 fix: bootstrap CI for stability
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+            n_reps = len(acc_runs)
+            elapsed_method = time.time() - t_method
             sweep_results[rho][name] = {
                 'stability': stab,
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
-                'dgp_agreement_mean': float(np.mean(acc_runs)),
-                'dgp_agreement_se': float(np.std(acc_runs, ddof=1) / np.sqrt(len(acc_runs))),
-                'dgp_agreement_std': float(np.std(acc_runs, ddof=1)),
-                # F3: group-level accuracy (not confounded with equity)
-                'group_accuracy_mean': float(np.mean(grp_acc_runs)),
-                'group_accuracy_std': float(np.std(grp_acc_runs, ddof=1)),
-                'group_acc_runs': np.array(grp_acc_runs),
-                # Backward-compatible aliases
-                'accuracy_mean': float(np.mean(acc_runs)),
-                'accuracy_se': float(np.std(acc_runs, ddof=1) / np.sqrt(len(acc_runs))),
-                'accuracy_std': float(np.std(acc_runs, ddof=1)),
-                'equity_mean': float(np.mean(eq_runs)),
-                'equity_se': float(np.std(eq_runs, ddof=1) / np.sqrt(len(eq_runs))),
-                'equity_std': float(np.std(eq_runs, ddof=1)),
-                'equity_incl_zero_mean': float(np.mean(eq_zero_runs)),
-                'equity_incl_zero_std': float(np.std(eq_zero_runs, ddof=1)),
-                'rmse_mean': float(np.mean(rmse_runs)),
-                'rmse_std': float(np.std(rmse_runs, ddof=1)),
-                'mean_time_s': float(np.mean(method_times)),  # m4: timing
+                'accuracy_mean': np.mean(acc_runs),
+                'accuracy_se': np.std(acc_runs) / np.sqrt(n_reps),
+                'accuracy_std': np.std(acc_runs),
+                'group_accuracy_mean': np.mean(gacc_runs),
+                'group_accuracy_std': np.std(gacc_runs),
+                'equity_mean': np.mean(eq_runs),
+                'equity_se': np.std(eq_runs) / np.sqrt(n_reps),
+                'equity_std': np.std(eq_runs),
+                'rmse_mean': np.mean(rmse_runs),
+                'rmse_std': np.std(rmse_runs),
+                'elapsed_s': elapsed_method,
+                # Save per-rep arrays for significance tests
                 'acc_runs': np.array(acc_runs),
                 'eq_runs': np.array(eq_runs),
                 'rmse_runs': np.array(rmse_runs),
                 'imp_runs': imp_runs,
             }
-            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f} [{stab_ci_lo:.4f},{stab_ci_hi:.4f}]  "
-                f"dgp={np.mean(acc_runs):.4f}  grp_acc={np.mean(grp_acc_runs):.4f}  "
-                f"eq={np.mean(eq_runs):.4f}  RMSE={np.nanmean(rmse_runs):.4f}  "
-                f"time={np.mean(method_times):.1f}s")
+            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+                f"acc={np.mean(acc_runs):.4f}  gacc={np.mean(gacc_runs):.4f}  "
+                f"eq={np.mean(eq_runs):.4f}  RMSE={np.mean(rmse_runs):.4f}  "
+                f"({elapsed_method:.1f}s)")
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
@@ -504,7 +495,7 @@ def experiment_nonlinear_sweep():
 
                 if name == 'Single Best':
                     m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
                 elif name in ('Large Single Model', 'LSM (Tuned)'):
@@ -513,7 +504,7 @@ def experiment_nonlinear_sweep():
                         colsample_bytree=0.2, seed=rep_seed,
                         tune=(name == 'LSM (Tuned)'),
                     )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                     preds = m.model_.predict(Xte)
                 elif name == 'Stochastic Retrain':
@@ -544,8 +535,7 @@ def experiment_nonlinear_sweep():
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
-                'equity_mean': float(np.mean(eq_runs)),
-                'equity_std': float(np.std(eq_runs, ddof=1)),
+                'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs),
                 'eq_runs': np.array(eq_runs),
                 'rmse_mean': float(np.mean(rmse_runs)),
                 'rmse_std': float(np.std(rmse_runs, ddof=1)),
@@ -579,7 +569,7 @@ def experiment_table2_baselines():
     feature_names = make_feature_names()
 
     for name in table2_methods:
-        imp_runs, acc_runs, grp_acc_runs, eq_runs = [], [], [], []
+        imp_runs, acc_runs, eq_runs = [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
             Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
@@ -590,7 +580,7 @@ def experiment_table2_baselines():
                     n_estimators=PAPER_CONFIG['N_ESTIMATORS_ESHAP'],
                     task='regression', seed=rep_seed,
                 )
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)  # M4
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                 imp = m.global_importance_
             elif name == 'Stochastic Retrain':
                 m = StochasticRetrainBaseline(N=K, task='regression', n_jobs=-1, seed=rep_seed)
@@ -607,30 +597,17 @@ def experiment_table2_baselines():
 
             r, _ = dgp_agreement(imp, true_imp)
             acc_runs.append(r)
-            grp_acc_runs.append(group_level_accuracy(imp, true_imp, grps))  # F3
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
 
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         table2_results[name] = {
-            'stability': stab,
-            'stability_se': stab_se,
-            'stability_ci_lo': stab_ci_lo,
-            'stability_ci_hi': stab_ci_hi,
-            'accuracy_mean': float(np.mean(acc_runs)),
-            'accuracy_se': float(np.std(acc_runs, ddof=1) / np.sqrt(len(acc_runs))),
-            'group_accuracy_mean': float(np.mean(grp_acc_runs)),
-            'group_accuracy_std': float(np.std(grp_acc_runs, ddof=1)),
-            'equity_mean': float(np.mean(eq_runs)),
-            'equity_se': float(np.std(eq_runs, ddof=1) / np.sqrt(len(eq_runs))),
-            'accuracy_std': float(np.std(acc_runs, ddof=1)),
-            'equity_std': float(np.std(eq_runs, ddof=1)),
-            'acc_runs': np.array(acc_runs),
-            'eq_runs': np.array(eq_runs),
+            'stability': importance_stability(imp_runs),
+            'accuracy_mean': np.mean(acc_runs), 'accuracy_std': np.std(acc_runs, ddof=1),
+            'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
+            'acc_runs': np.array(acc_runs), 'eq_runs': np.array(eq_runs),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
-            f"acc={np.mean(acc_runs):.4f}  grp_acc={np.mean(grp_acc_runs):.4f}  "
-            f"eq={np.mean(eq_runs):.4f}")
+        log(f"  {name:<22} stab={table2_results[name]['stability']:.4f}  "
+            f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
     log(f"  Saved: {OUT}/tables/table2_baselines.json")
@@ -691,13 +668,13 @@ def experiment_real_california():
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)  # M4
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_cal_test, imp, top_k=3)  # M5
+                abl = feature_ablation_score(m.model_, Xte_r, y_cal_test, imp)
             else:
                 m = DASHPipeline(
-                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,  # F2: relative
+                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
                     epsilon_mode=REAL_EPSILON_MODE,
                     selection_method='maxmin', n_jobs=-1,
                     seed=rep_seed, verbose=False,
@@ -706,26 +683,20 @@ def experiment_real_california():
                 imp = m.global_importance_
                 preds = m.get_consensus_ensemble_predictions(Xte_r)
                 rmse_val = rmse_score(y_cal_test, preds)
-                # M5: ablation uses the first selected model as a proxy
-                proxy_model = m.models_[m.selected_indices_[0]]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp, top_k=3)
+                proxy_model = m.selected_models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
 
             imp_runs.append(imp)
             rmse_runs.append(rmse_val)
             ablation_runs.append(abl)
 
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         cal_results[name] = {
-            'stability': stab,
-            'stability_se': stab_se,
-            'stability_ci_lo': stab_ci_lo,
-            'stability_ci_hi': stab_ci_hi,
-            'rmse_mean': float(np.mean(rmse_runs)),
-            'rmse_std': float(np.std(rmse_runs, ddof=1)),
-            'ablation_mean': float(np.mean(ablation_runs)),  # M5
-            'ablation_std': float(np.std(ablation_runs, ddof=1)),
+            'stability': importance_stability(imp_runs),
+            'stability_se': stability_bootstrap_ci(imp_runs)[1],
+            'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
+            'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={cal_results[name]['stability']:.4f}  "
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
 
@@ -763,9 +734,15 @@ def experiment_real_breast_cancer():
     n_high = (np.sum(corr > 0.9) - len(bc_names)) // 2
     log(f"  {len(bc_names)} features, {n_high} pairs with |r|>0.9")
 
-    X_bc_pool, X_bc_test, y_bc_pool, y_bc_test = train_test_split(
-        X_bc, y_bc, test_size=0.2, random_state=SEED,
-    )
+    # Initial split and scale (matches notebook cell 19)
+    Xtr, Xte, ytr, yte = train_test_split(X_bc, y_bc, test_size=0.2, random_state=SEED)
+    Xtr, Xv, ytr, yv = train_test_split(Xtr, ytr, test_size=0.2, random_state=SEED)
+    Xtr, Xexp, ytr, yexp = train_test_split(Xtr, ytr, test_size=0.12, random_state=SEED)
+    scaler = StandardScaler().fit(Xtr)
+    Xtr = scaler.transform(Xtr)
+    Xv = scaler.transform(Xv)
+    Xexp = scaler.transform(Xexp)
+    Xte = scaler.transform(Xte)
 
     bc_methods = ['Single Best', 'DASH (MaxMin)']
     bc_results = {}
@@ -775,26 +752,22 @@ def experiment_real_breast_cancer():
         for rep in range(N_REPS):
             rep_seed = SEED + rep
 
-            # A4: Separate explain set from test
+            # Re-split from stacked scaled train+val (matches notebook cell 24)
             Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
-                X_bc_pool, y_bc_pool, test_size=0.2, random_state=rep_seed,
+                np.vstack([Xtr, Xv]), np.concatenate([ytr, yv]),
+                test_size=0.2, random_state=rep_seed,
             )
+            # A4: Separate explain set from train
             Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
                 Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed,
             )
-            scaler_r = StandardScaler().fit(Xtr_r)
-            Xtr_r = scaler_r.transform(Xtr_r)
-            Xv_r = scaler_r.transform(Xv_r)
-            Xexp_r = scaler_r.transform(Xexp_r)
-            Xte_r = scaler_r.transform(X_bc_test)
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, task='binary', seed=rep_seed)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)  # M4
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
             else:
                 m = DASHPipeline(
-                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,  # F2: relative
-                    epsilon_mode=REAL_EPSILON_MODE,
+                    M=M, K=K, epsilon=EPSILON, delta=DELTA,
                     selection_method='maxmin', task='binary',
                     n_jobs=-1, seed=rep_seed, verbose=False,
                 )
@@ -802,14 +775,11 @@ def experiment_real_breast_cancer():
 
             imp_runs.append(m.global_importance_)
 
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         bc_results[name] = {
-            'stability': stab,
-            'stability_se': stab_se,
-            'stability_ci_lo': stab_ci_lo,
-            'stability_ci_hi': stab_ci_hi,
+            'stability': importance_stability(imp_runs),
+            'stability_se': stability_bootstrap_ci(imp_runs)[1],
         }
-        log(f"  {name:<22} stability={stab:.4f}±{stab_se:.4f}")
+        log(f"  {name:<22} stab={bc_results[name]['stability']:.4f}")
 
     # IS plot and disagreement map from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
@@ -880,22 +850,22 @@ def experiment_real_superconductor():
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)  # M4
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp, top_k=5)
+                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
             elif name == 'Large Single Model':
                 m = LargeSingleModelBaseline(
                     K=SC_K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
                     colsample_bytree=0.2, seed=rep_seed,
                 )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)  # M4
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp, top_k=5)
+                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
             else:
                 m = DASHPipeline(
-                    M=SC_M, K=SC_K, epsilon=REAL_EPSILON, delta=DELTA,  # F2: relative
+                    M=SC_M, K=SC_K, epsilon=REAL_EPSILON, delta=DELTA,
                     epsilon_mode=REAL_EPSILON_MODE,
                     selection_method='maxmin', n_jobs=-1,
                     seed=rep_seed, verbose=False,
@@ -904,27 +874,22 @@ def experiment_real_superconductor():
                 imp = m.global_importance_
                 preds = m.get_consensus_ensemble_predictions(Xte_r)
                 rmse_val = rmse_score(y_sc_test, preds)
-                proxy_model = m.models_[m.selected_indices_[0]]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp, top_k=5)
+                proxy_model = m.selected_models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
 
             imp_runs.append(imp)
             rmse_runs.append(rmse_val)
             ablation_runs.append(abl)
 
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         sc_results[name] = {
-            'stability': stab,
-            'stability_se': stab_se,
-            'stability_ci_lo': stab_ci_lo,
-            'stability_ci_hi': stab_ci_hi,
-            'rmse_mean': float(np.mean(rmse_runs)),
-            'rmse_std': float(np.std(rmse_runs, ddof=1)),
-            'ablation_mean': float(np.mean(ablation_runs)),  # M5
-            'ablation_std': float(np.std(ablation_runs, ddof=1)),
+            'stability': importance_stability(imp_runs),
+            'stability_se': stability_bootstrap_ci(imp_runs)[1],
+            'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
+            'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={sc_results[name]['stability']:.4f}  "
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
-            f"ablation={np.mean(ablation_runs):.2f}")
+            f"ablation={np.mean(ablation_runs):.4f}")
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
     elapsed = time.time() - t0
@@ -937,7 +902,11 @@ def experiment_real_superconductor():
 ###############################################################################
 
 def experiment_epsilon_sensitivity():
-    """Epsilon sensitivity sweep: epsilon ∈ {0.03, 0.05, 0.08, 0.10}."""
+    """Epsilon sensitivity sweep: epsilon ∈ {0.03, 0.05, 0.08, 0.10}.
+
+    Trains population ONCE per rep, then varies epsilon on the same models
+    to properly isolate the effect of the filtering threshold.
+    """
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -945,8 +914,11 @@ def experiment_epsilon_sensitivity():
     log("=" * 70)
 
     from dash.core.population import generate_model_population
+    from dash.core.filtering import performance_filter
+    from dash.core.diversity import greedy_maxmin_selection
 
     EPS_VALUES = [0.03, 0.05, 0.08, 0.10]
+    EPS_M = M
     eps_results = {eps: {
         'n_passing': [], 'k_eff': [],
         'acc_runs': [], 'eq_runs': [], 'imp_runs': [],
@@ -959,18 +931,34 @@ def experiment_epsilon_sensitivity():
         Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
             generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed)
 
+        # Train population ONCE per rep
+        models, val_scores, configs = generate_model_population(
+            Xtr, ytr, Xv, yv, M=EPS_M, task='regression',
+            n_jobs=-1, seed=rep_seed, verbose=False,
+        )
+
         for eps in EPS_VALUES:
-            dm = DASHPipeline(
-                M=M, K=K, epsilon=eps, delta=DELTA,
-                selection_method='maxmin', n_jobs=-1,
-                seed=rep_seed, verbose=False,
-            )
-            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
-            imp = dm.global_importance_
+            # Stage 2: Filter at this epsilon
+            filtered = performance_filter(val_scores, epsilon=eps,
+                                          higher_is_better=True, verbose=False)
+            eps_results[eps]['n_passing'].append(len(filtered))
+
+            if len(filtered) < 2:
+                log(f"  eps={eps}: only {len(filtered)} passed, skipping")
+                continue
+
+            # Stage 3: MaxMin diversity selection
+            imp_vecs = get_preliminary_importance(models, filtered, Xte, method='gain')
+            filt_scores = {i: val_scores[i] for i in filtered}
+            selected = greedy_maxmin_selection(imp_vecs, filt_scores,
+                                              K=K, delta=DELTA, verbose=False)
+            eps_results[eps]['k_eff'].append(len(selected))
+
+            # Stage 4-5: Consensus SHAP
+            cons, all_shap = compute_consensus(models, selected, Xte, seed=rep_seed, verbose=False)
+            _, _, _, imp = compute_diagnostics(all_shap)
 
             r, _ = dgp_agreement(imp, true_imp)
-            eps_results[eps]['n_passing'].append(len(dm.filtered_indices_))
-            eps_results[eps]['k_eff'].append(len(dm.selected_indices_))
             eps_results[eps]['acc_runs'].append(r)
             eps_results[eps]['eq_runs'].append(within_group_equity(imp, grps))
             eps_results[eps]['imp_runs'].append(imp)
@@ -1005,7 +993,7 @@ def experiment_ablation():
     log("EXPERIMENT: Ablation Studies")
     log("=" * 70)
 
-    ABL_N_REPS = N_REPS  # m8 fix: match main experiment reps for statistical power
+    ABL_N_REPS = 10  # C(10,2)=45 pairwise comparisons for stability estimation
     ABL_DEFAULTS = {'M': M, 'K': K, 'eps': EPSILON, 'delta': DELTA}
     ABL_RHOS = [0.0, 0.9, 0.95]
 
@@ -1030,7 +1018,7 @@ def experiment_ablation():
                 p[param_name] = val
                 log(f"  {param_name}={val}  ", )
 
-                imp_runs, acc_runs, gacc_runs = [], [], []
+                imp_runs, acc_runs = [], []
                 for rep in range(ABL_N_REPS):
                     rep_seed = SEED + rep
                     Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
@@ -1045,18 +1033,15 @@ def experiment_ablation():
                     imp = dm.global_importance_
                     r, _ = dgp_agreement(imp, true_imp)
                     acc_runs.append(r)
-                    gacc_runs.append(group_level_accuracy(imp, true_imp, grps))
                     imp_runs.append(imp)
 
                 stab = importance_stability(imp_runs)
                 abl_results[abl_rho][param_name][val] = {
                     'stability': stab,
-                    'accuracy_mean': float(np.mean(acc_runs)),
-                    'accuracy_std': float(np.std(acc_runs, ddof=1)),
-                    'group_accuracy_mean': float(np.mean(gacc_runs)),
-                    'group_accuracy_std': float(np.std(gacc_runs, ddof=1)),
+                    'accuracy_mean': np.mean(acc_runs),
+                    'accuracy_std': np.std(acc_runs, ddof=1),
                 }
-                log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}  gacc={np.mean(gacc_runs):.4f}")
+                log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}")
 
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
