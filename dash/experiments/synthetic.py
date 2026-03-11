@@ -160,6 +160,12 @@ def generate_synthetic_nonlinear(
         y += bg * group_means[:, g_idx + 3]
     y += rng.normal(0, sigma_noise, N)
 
+    # NOTE: These are *approximate* group-level importance rankings, not exact
+    # analytic marginal effects.  The nonlinear DGP (z1^2, z1*z2, sin(π*z3))
+    # has interaction/non-additive structure whose true SHAP values depend on
+    # the joint feature distribution.  The coefficients below (1.5, 0.8, 1.2)
+    # reflect relative magnitude of the DGP terms and should be interpreted as
+    # ordinal rankings rather than cardinal ground truth.
     true_importance = np.zeros(P)
     approx = np.zeros(n_groups)
     approx[0], approx[1], approx[2] = 1.5, 0.8, 1.2
