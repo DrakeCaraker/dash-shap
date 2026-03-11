@@ -350,15 +350,15 @@ def experiment_linear_sweep():
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
                 'accuracy_mean': np.mean(acc_runs),
-                'accuracy_se': np.std(acc_runs) / np.sqrt(n_reps),
-                'accuracy_std': np.std(acc_runs),
+                'accuracy_se': np.std(acc_runs, ddof=1) / np.sqrt(n_reps),
+                'accuracy_std': np.std(acc_runs, ddof=1),
                 'group_accuracy_mean': np.mean(gacc_runs),
-                'group_accuracy_std': np.std(gacc_runs),
+                'group_accuracy_std': np.std(gacc_runs, ddof=1),
                 'equity_mean': np.mean(eq_runs),
-                'equity_se': np.std(eq_runs) / np.sqrt(n_reps),
-                'equity_std': np.std(eq_runs),
+                'equity_se': np.std(eq_runs, ddof=1) / np.sqrt(n_reps),
+                'equity_std': np.std(eq_runs, ddof=1),
                 'rmse_mean': np.mean(rmse_runs),
-                'rmse_std': np.std(rmse_runs),
+                'rmse_std': np.std(rmse_runs, ddof=1),
                 'elapsed_s': elapsed_method,
                 # Save per-rep arrays for significance tests
                 'acc_runs': np.array(acc_runs),
@@ -448,6 +448,7 @@ def experiment_overlapping():
 
     log(f"\n  {'Method':<20} {'Stability':>10} {'DGP Agree':>10} {'Grp Acc':>10} {'Equity':>10} {'RMSE':>10}")
     log("  " + "=" * 75)
+    overlap_results = {}
     for name in method_names:
         stab = importance_stability(results[name]['imp_runs'])
         acc = np.mean(results[name]['acc_runs'])
@@ -455,9 +456,20 @@ def experiment_overlapping():
         eq = np.mean(results[name]['eq_runs'])
         rmse = np.mean(results[name]['rmse_runs'])
         log(f"  {name:<20} {stab:>10.4f} {acc:>10.4f} {grp:>10.4f} {eq:>10.4f} {rmse:>10.4f}")
+        overlap_results[name] = {
+            'stability': stab,
+            'accuracy_mean': acc, 'accuracy_std': float(np.std(results[name]['acc_runs'])),
+            'group_accuracy_mean': grp,
+            'equity_mean': eq, 'equity_std': float(np.std(results[name]['eq_runs'])),
+            'rmse_mean': rmse, 'rmse_std': float(np.std(results[name]['rmse_runs'])),
+        }
+
+    save_json(overlap_results, f"{OUT}/tables/overlapping.json")
+    log(f"  Saved: {OUT}/tables/overlapping.json")
 
     elapsed = time.time() - t0
     log(f"  Overlapping completed in {elapsed/60:.1f} min")
+    return overlap_results
 
 
 ###############################################################################
@@ -535,7 +547,7 @@ def experiment_nonlinear_sweep():
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
-                'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs),
+                'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
                 'eq_runs': np.array(eq_runs),
                 'rmse_mean': float(np.mean(rmse_runs)),
                 'rmse_std': float(np.std(rmse_runs, ddof=1)),
@@ -600,13 +612,17 @@ def experiment_table2_baselines():
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         table2_results[name] = {
-            'stability': importance_stability(imp_runs),
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
             'accuracy_mean': np.mean(acc_runs), 'accuracy_std': np.std(acc_runs, ddof=1),
             'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
             'acc_runs': np.array(acc_runs), 'eq_runs': np.array(eq_runs),
         }
-        log(f"  {name:<22} stab={table2_results[name]['stability']:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
@@ -734,37 +750,38 @@ def experiment_real_breast_cancer():
     n_high = (np.sum(corr > 0.9) - len(bc_names)) // 2
     log(f"  {len(bc_names)} features, {n_high} pairs with |r|>0.9")
 
-    # Initial split and scale (matches notebook cell 19)
-    Xtr, Xte, ytr, yte = train_test_split(X_bc, y_bc, test_size=0.2, random_state=SEED)
-    Xtr, Xv, ytr, yv = train_test_split(Xtr, ytr, test_size=0.2, random_state=SEED)
-    Xtr, Xexp, ytr, yexp = train_test_split(Xtr, ytr, test_size=0.12, random_state=SEED)
-    scaler = StandardScaler().fit(Xtr)
-    Xtr = scaler.transform(Xtr)
-    Xv = scaler.transform(Xv)
-    Xexp = scaler.transform(Xexp)
-    Xte = scaler.transform(Xte)
+    # Hold out test set from raw data, re-split and re-scale per rep (D2 fix)
+    X_bc_pool, X_bc_test, y_bc_pool, y_bc_test = train_test_split(
+        X_bc, y_bc, test_size=0.2, random_state=SEED,
+    )
 
     bc_methods = ['Single Best', 'DASH (MaxMin)']
     bc_results = {}
 
     for name in bc_methods:
-        imp_runs = []
+        imp_runs, ablation_runs = [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
 
-            # Re-split from stacked scaled train+val (matches notebook cell 24)
+            # D2: Re-split and re-fit scaler per rep (avoids scaler leakage)
             Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
-                np.vstack([Xtr, Xv]), np.concatenate([ytr, yv]),
-                test_size=0.2, random_state=rep_seed,
+                X_bc_pool, y_bc_pool, test_size=0.2, random_state=rep_seed,
             )
             # A4: Separate explain set from train
             Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
                 Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed,
             )
+            scaler_r = StandardScaler().fit(Xtr_r)
+            Xtr_r = scaler_r.transform(Xtr_r)
+            Xv_r = scaler_r.transform(Xv_r)
+            Xexp_r = scaler_r.transform(Xexp_r)
+            Xte_r = scaler_r.transform(X_bc_test)
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, task='binary', seed=rep_seed)
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
             else:
                 m = DASHPipeline(
                     M=M, K=K, epsilon=EPSILON, delta=DELTA,
@@ -772,14 +789,24 @@ def experiment_real_breast_cancer():
                     n_jobs=-1, seed=rep_seed, verbose=False,
                 )
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=bc_names)
+                imp = m.global_importance_
+                proxy_model = m.selected_models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
 
-            imp_runs.append(m.global_importance_)
+            imp_runs.append(imp)
+            ablation_runs.append(abl)
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         bc_results[name] = {
-            'stability': importance_stability(imp_runs),
-            'stability_se': stability_bootstrap_ci(imp_runs)[1],
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
+            'ablation_mean': np.mean(ablation_runs),
+            'ablation_std': np.std(ablation_runs, ddof=1),
         }
-        log(f"  {name:<22} stab={bc_results[name]['stability']:.4f}")
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+            f"ablation={np.mean(ablation_runs):.4f}")
 
     # IS plot and disagreement map from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
@@ -948,14 +975,14 @@ def experiment_epsilon_sensitivity():
                 continue
 
             # Stage 3: MaxMin diversity selection
-            imp_vecs = get_preliminary_importance(models, filtered, Xte, method='gain')
+            imp_vecs = get_preliminary_importance(models, filtered, Xexp, method='gain')
             filt_scores = {i: val_scores[i] for i in filtered}
             selected = greedy_maxmin_selection(imp_vecs, filt_scores,
                                               K=K, delta=DELTA, verbose=False)
             eps_results[eps]['k_eff'].append(len(selected))
 
-            # Stage 4-5: Consensus SHAP
-            cons, all_shap = compute_consensus(models, selected, Xte, seed=rep_seed, verbose=False)
+            # Stage 4-5: Consensus SHAP (use Xexp, not Xte, to avoid data leakage)
+            cons, all_shap = compute_consensus(models, selected, Xexp, seed=rep_seed, verbose=False)
             _, _, _, imp = compute_diagnostics(all_shap)
 
             r, _ = dgp_agreement(imp, true_imp)
