@@ -296,7 +296,7 @@ def experiment_linear_sweep():
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
-                    preds = None  # StochasticRetrain doesn't expose predictions
+                    preds = m.get_consensus_ensemble_predictions(Xte)
                 else:  # DASH MaxMin
                     m = DASHPipeline(
                         M=M, K=K, epsilon=EPSILON, delta=DELTA,
@@ -432,7 +432,7 @@ def experiment_nonlinear_sweep():
     for rho in nl_rho_levels:
         log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
         for name in nl_methods:
-            eq_runs, imp_runs = [], []
+            eq_runs, imp_runs, rmse_runs = [], [], []
             for rep in range(N_REPS):
                 rep_seed = SEED + rep
                 Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = \
@@ -442,6 +442,7 @@ def experiment_nonlinear_sweep():
                     m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
+                    preds = m.model_.predict(Xte)
                 elif name in ('Large Single Model', 'LSM (Tuned)'):
                     m = LargeSingleModelBaseline(
                         K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
@@ -450,12 +451,14 @@ def experiment_nonlinear_sweep():
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
+                    preds = m.model_.predict(Xte)
                 elif name == 'Stochastic Retrain':
                     m = StochasticRetrainBaseline(
                         N=K, task='regression', n_jobs=-1, seed=rep_seed,
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
+                    preds = m.get_consensus_ensemble_predictions(Xte)
                 else:  # DASH MaxMin
                     m = DASHPipeline(
                         M=M, K=K, epsilon=EPSILON, delta=DELTA,
@@ -464,9 +467,12 @@ def experiment_nonlinear_sweep():
                     )
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
                     imp = m.global_importance_
+                    preds = m.get_consensus_ensemble_predictions(Xte)
 
+                rmse_val = rmse_score(yte, preds)
                 eq_runs.append(within_group_equity(imp, grps))
                 imp_runs.append(imp)
+                rmse_runs.append(rmse_val)
 
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
             nl_sweep[rho][name] = {
@@ -477,8 +483,12 @@ def experiment_nonlinear_sweep():
                 'equity_mean': float(np.mean(eq_runs)),
                 'equity_std': float(np.std(eq_runs, ddof=1)),
                 'eq_runs': np.array(eq_runs),
+                'rmse_mean': float(np.mean(rmse_runs)),
+                'rmse_std': float(np.std(rmse_runs, ddof=1)),
+                'rmse_runs': np.array(rmse_runs),
             }
-            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  eq={np.mean(eq_runs):.4f}")
+            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  eq={np.mean(eq_runs):.4f}  "
+                f"RMSE={np.mean(rmse_runs):.4f}")
 
     save_json(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json")
     log(f"  Saved: {OUT}/tables/nonlinear_sweep.json")
