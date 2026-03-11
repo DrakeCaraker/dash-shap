@@ -27,6 +27,7 @@ class DASHPipeline:
         M=200,
         K=20,
         epsilon=0.08,
+        epsilon_mode="absolute",
         selection_method="maxmin",
         delta=0.1,
         tau=0.3,
@@ -41,6 +42,7 @@ class DASHPipeline:
         self.M = M
         self.K = K
         self.epsilon = epsilon
+        self.epsilon_mode = epsilon_mode
         self.selection_method = selection_method
         self.delta = delta
         self.tau = tau
@@ -91,7 +93,8 @@ class DASHPipeline:
             print(f"\nDASH Stage 2: Performance Filtering (epsilon={self.epsilon})")
         self.filtered_indices_ = performance_filter(
             self.val_scores_, epsilon=self.epsilon,
-            higher_is_better=True, verbose=self.verbose,
+            higher_is_better=True, mode=self.epsilon_mode,
+            verbose=self.verbose,
         )
         self.timing_["stage2_filtering"] = time.time() - t0
         if len(self.filtered_indices_) < 2:

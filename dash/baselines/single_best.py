@@ -16,7 +16,17 @@ class SingleBestBaseline:
         self.model_ = None
         self.global_importance_ = None
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, background_size=100):
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None,
+            background_size=100, seed=None):
+        """Fit the baseline.
+
+        Parameters
+        ----------
+        seed : int or None
+            If provided, randomly samples SHAP background rows from X_ref
+            (matching ``compute_consensus`` behaviour).  If None, uses the
+            first ``background_size`` rows deterministically (legacy).
+        """
         if X_ref is None:
             X_ref = X_val
 
@@ -33,7 +43,13 @@ class SingleBestBaseline:
                 best_score, best_model = score, model
 
         self.model_ = best_model
-        bg = X_ref[:min(background_size, len(X_ref))]
+        n_bg = min(background_size, len(X_ref))
+        if seed is not None:
+            rng = np.random.RandomState(seed)
+            bg_idx = rng.choice(len(X_ref), size=n_bg, replace=False)
+            bg = X_ref[bg_idx]
+        else:
+            bg = X_ref[:n_bg]
         explainer = shap.TreeExplainer(
             best_model, data=bg, feature_perturbation="interventional",
         )
