@@ -17,7 +17,14 @@ class EnsembleSHAPBaseline:
         self.global_importance_ = None
         self.fsi_ = None
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None):
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, seed=None):
+        """Fit the baseline.
+
+        Parameters
+        ----------
+        seed : int or None
+            If provided, randomly samples SHAP background rows from X_ref.
+        """
         if X_ref is None:
             X_ref = X_val
 
@@ -43,7 +50,13 @@ class EnsembleSHAPBaseline:
             X_train, y_train, eval_set=[(X_val, y_val)], verbose=False,
         )
 
-        bg = X_ref[:min(100, len(X_ref))]
+        n_bg = min(100, len(X_ref))
+        if seed is not None:
+            rng = np.random.RandomState(seed)
+            bg_idx = rng.choice(len(X_ref), size=n_bg, replace=False)
+            bg = X_ref[bg_idx]
+        else:
+            bg = X_ref[:n_bg]
         explainer = shap.TreeExplainer(
             self.model_, data=bg, feature_perturbation="interventional",
         )
