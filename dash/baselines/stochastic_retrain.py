@@ -46,9 +46,22 @@ class StochasticRetrainBaseline:
             delayed(_train)(i) for i in range(self.N)
         )
         models = {i: model for i, model, _ in results}
+        self.models_ = models
+        self.selected_indices_ = list(models.keys())
 
         consensus, all_shap = compute_consensus(
             models, list(models.keys()), X_ref, seed=self.seed, verbose=False,
         )
         _, _, self.fsi_, self.global_importance_ = compute_diagnostics(all_shap)
         return self
+
+    def get_consensus_ensemble_predictions(self, X):
+        """Average predictions across all retrained models."""
+        preds = []
+        for idx in self.selected_indices_:
+            model = self.models_[idx]
+            if self.task == "regression":
+                preds.append(model.predict(X))
+            else:
+                preds.append(model.predict_proba(X))
+        return np.mean(preds, axis=0)
