@@ -1,14 +1,10 @@
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 .ipynb_checkpoints/
-results/figures/
 *.egg-info/
-.pytest_cache/
+results/figures/
 dist/
 build/
-__pycache__/
-*.pyc
-__pycache__/
-*.pyc
 checkpoints/
