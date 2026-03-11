@@ -66,7 +66,8 @@ from dash.baselines import (
 from dash.evaluation import (
     dgp_agreement, importance_accuracy, group_level_accuracy,
     importance_stability, stability_bootstrap_ci, within_group_equity,
-    compare_methods, friedman_test, holm_bonferroni, feature_ablation_score,
+    compare_methods, cohens_d, friedman_test, holm_bonferroni,
+    feature_ablation_score,
 )
 from dash.utils.io import save_json
 
@@ -237,6 +238,39 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
 
 
 ###############################################################################
+# Helpers
+###############################################################################
+
+def _log_pairwise_significance(results, dash_name, method_names, dataset_label):
+    """Log Wilcoxon signed-rank tests and Cohen's d for DASH vs each baseline.
+
+    Requires that each method in *results* stores 'rmse_runs' and optionally
+    'ablation_runs' as numpy arrays of per-rep values.
+    """
+    baselines = [n for n in method_names if n != dash_name]
+    if not baselines or dash_name not in results:
+        return
+    dash = results[dash_name]
+    log(f"\n  Significance tests ({dataset_label}): {dash_name} vs baselines")
+    log(f"  {'Baseline':<22} {'Metric':<12} {'Wilcoxon p':>12} {'Cohen d':>10}")
+    log("  " + "-" * 60)
+    sig_results = {}
+    for bname in baselines:
+        bl = results[bname]
+        sig_results[bname] = {}
+        for metric in ('rmse_runs', 'ablation_runs'):
+            if metric not in dash or metric not in bl:
+                continue
+            label = metric.replace('_runs', '')
+            _, pval = compare_methods(dash[metric], bl[metric])
+            d = cohens_d(dash[metric], bl[metric])
+            log(f"  {bname:<22} {label:<12} {pval:>12.4g} {d:>10.3f}")
+            sig_results[bname][label] = {'p': pval, 'cohens_d': d}
+    # Store in results for JSON serialisation
+    results['_significance'] = sig_results
+
+
+###############################################################################
 # EXPERIMENT: Synthetic Linear — Correlation Sweep
 ###############################################################################
 
@@ -277,7 +311,8 @@ def experiment_linear_sweep():
         log(f"\n--- ρ = {rho} ---")
         for name in sweep_methods:
             t_method = time.time()
-            acc_runs, eq_runs, imp_runs, rmse_runs, gacc_runs = [], [], [], [], []
+            acc_runs, eq_runs, imp_runs, rmse_runs, gacc_runs, keff_runs = \
+                [], [], [], [], [], []
             for rep in range(N_REPS):
                 rep_seed = SEED + rep
                 Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
@@ -339,6 +374,9 @@ def experiment_linear_sweep():
                 eq_runs.append(within_group_equity(imp, grps))
                 imp_runs.append(imp)
                 rmse_runs.append(rmse_val)
+                # F2: Track effective K for ensemble methods
+                if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
+                    keff_runs.append(len(m.selected_indices_))
 
             # M8 fix: bootstrap CI for stability
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
@@ -349,16 +387,18 @@ def experiment_linear_sweep():
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
+                'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
                 'accuracy_mean': np.mean(acc_runs),
-                'accuracy_se': np.std(acc_runs) / np.sqrt(n_reps),
-                'accuracy_std': np.std(acc_runs),
+                'accuracy_se': np.std(acc_runs, ddof=1) / np.sqrt(n_reps),
+                'accuracy_std': np.std(acc_runs, ddof=1),
                 'group_accuracy_mean': np.mean(gacc_runs),
-                'group_accuracy_std': np.std(gacc_runs),
+                'group_accuracy_std': np.std(gacc_runs, ddof=1),
                 'equity_mean': np.mean(eq_runs),
-                'equity_se': np.std(eq_runs) / np.sqrt(n_reps),
-                'equity_std': np.std(eq_runs),
+                'equity_se': np.std(eq_runs, ddof=1) / np.sqrt(n_reps),
+                'equity_std': np.std(eq_runs, ddof=1),
                 'rmse_mean': np.mean(rmse_runs),
-                'rmse_std': np.std(rmse_runs),
+                'rmse_std': np.std(rmse_runs, ddof=1),
                 'elapsed_s': elapsed_method,
                 # Save per-rep arrays for significance tests
                 'acc_runs': np.array(acc_runs),
@@ -448,6 +488,7 @@ def experiment_overlapping():
 
     log(f"\n  {'Method':<20} {'Stability':>10} {'DGP Agree':>10} {'Grp Acc':>10} {'Equity':>10} {'RMSE':>10}")
     log("  " + "=" * 75)
+    overlap_results = {}
     for name in method_names:
         stab = importance_stability(results[name]['imp_runs'])
         acc = np.mean(results[name]['acc_runs'])
@@ -455,9 +496,20 @@ def experiment_overlapping():
         eq = np.mean(results[name]['eq_runs'])
         rmse = np.mean(results[name]['rmse_runs'])
         log(f"  {name:<20} {stab:>10.4f} {acc:>10.4f} {grp:>10.4f} {eq:>10.4f} {rmse:>10.4f}")
+        overlap_results[name] = {
+            'stability': stab,
+            'accuracy_mean': acc, 'accuracy_std': float(np.std(results[name]['acc_runs'])),
+            'group_accuracy_mean': grp,
+            'equity_mean': eq, 'equity_std': float(np.std(results[name]['eq_runs'])),
+            'rmse_mean': rmse, 'rmse_std': float(np.std(results[name]['rmse_runs'])),
+        }
+
+    save_json(overlap_results, f"{OUT}/tables/overlapping.json")
+    log(f"  Saved: {OUT}/tables/overlapping.json")
 
     elapsed = time.time() - t0
     log(f"  Overlapping completed in {elapsed/60:.1f} min")
+    return overlap_results
 
 
 ###############################################################################
@@ -468,6 +520,8 @@ def experiment_nonlinear_sweep():
     """Nonlinear DGP sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Evaluates stability and equity (no ground-truth accuracy for nonlinear DGP).
+    NOTE: true_importance for the nonlinear DGP is an approximate ordinal
+    ranking, not exact analytic SHAP.  See generate_synthetic_nonlinear().
     Includes LSM (Tuned) for fair comparison.
     """
     _ensure_dirs()
@@ -487,7 +541,7 @@ def experiment_nonlinear_sweep():
     for rho in nl_rho_levels:
         log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
         for name in nl_methods:
-            eq_runs, imp_runs, rmse_runs = [], [], []
+            eq_runs, imp_runs, rmse_runs, keff_runs = [], [], [], []
             for rep in range(N_REPS):
                 rep_seed = SEED + rep
                 Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = \
@@ -528,6 +582,8 @@ def experiment_nonlinear_sweep():
                 eq_runs.append(within_group_equity(imp, grps))
                 imp_runs.append(imp)
                 rmse_runs.append(rmse_val)
+                if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
+                    keff_runs.append(len(m.selected_indices_))
 
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
             nl_sweep[rho][name] = {
@@ -535,7 +591,9 @@ def experiment_nonlinear_sweep():
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
-                'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs),
+                'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
+                'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
+                'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
                 'eq_runs': np.array(eq_runs),
                 'rmse_mean': float(np.mean(rmse_runs)),
                 'rmse_std': float(np.std(rmse_runs, ddof=1)),
@@ -600,13 +658,17 @@ def experiment_table2_baselines():
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         table2_results[name] = {
-            'stability': importance_stability(imp_runs),
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
             'accuracy_mean': np.mean(acc_runs), 'accuracy_std': np.std(acc_runs, ddof=1),
             'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
             'acc_runs': np.array(acc_runs), 'eq_runs': np.array(eq_runs),
         }
-        log(f"  {name:<22} stab={table2_results[name]['stability']:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
@@ -648,7 +710,7 @@ def experiment_real_california():
     cal_results = {}
 
     for name in cal_methods:
-        imp_runs, rmse_runs, ablation_runs = [], [], []
+        imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
 
@@ -689,16 +751,28 @@ def experiment_real_california():
             imp_runs.append(imp)
             rmse_runs.append(rmse_val)
             ablation_runs.append(abl)
+            if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
+                keff_runs.append(len(m.selected_indices_))
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         cal_results[name] = {
-            'stability': importance_stability(imp_runs),
-            'stability_se': stability_bootstrap_ci(imp_runs)[1],
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
+            'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
+            'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
             'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
+            'rmse_runs': np.array(rmse_runs),
+            'ablation_runs': np.array(ablation_runs),
         }
-        log(f"  {name:<22} stab={cal_results[name]['stability']:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
+
+    # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
+    _log_pairwise_significance(cal_results, 'DASH (MaxMin)', cal_methods, 'California Housing')
 
     # IS plot from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — California Housing', annotate_top_k=8)
@@ -734,37 +808,38 @@ def experiment_real_breast_cancer():
     n_high = (np.sum(corr > 0.9) - len(bc_names)) // 2
     log(f"  {len(bc_names)} features, {n_high} pairs with |r|>0.9")
 
-    # Initial split and scale (matches notebook cell 19)
-    Xtr, Xte, ytr, yte = train_test_split(X_bc, y_bc, test_size=0.2, random_state=SEED)
-    Xtr, Xv, ytr, yv = train_test_split(Xtr, ytr, test_size=0.2, random_state=SEED)
-    Xtr, Xexp, ytr, yexp = train_test_split(Xtr, ytr, test_size=0.12, random_state=SEED)
-    scaler = StandardScaler().fit(Xtr)
-    Xtr = scaler.transform(Xtr)
-    Xv = scaler.transform(Xv)
-    Xexp = scaler.transform(Xexp)
-    Xte = scaler.transform(Xte)
+    # Hold out test set from raw data, re-split and re-scale per rep (D2 fix)
+    X_bc_pool, X_bc_test, y_bc_pool, y_bc_test = train_test_split(
+        X_bc, y_bc, test_size=0.2, random_state=SEED,
+    )
 
     bc_methods = ['Single Best', 'DASH (MaxMin)']
     bc_results = {}
 
     for name in bc_methods:
-        imp_runs = []
+        imp_runs, ablation_runs, keff_runs = [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
 
-            # Re-split from stacked scaled train+val (matches notebook cell 24)
+            # D2: Re-split and re-fit scaler per rep (avoids scaler leakage)
             Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
-                np.vstack([Xtr, Xv]), np.concatenate([ytr, yv]),
-                test_size=0.2, random_state=rep_seed,
+                X_bc_pool, y_bc_pool, test_size=0.2, random_state=rep_seed,
             )
             # A4: Separate explain set from train
             Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
                 Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed,
             )
+            scaler_r = StandardScaler().fit(Xtr_r)
+            Xtr_r = scaler_r.transform(Xtr_r)
+            Xv_r = scaler_r.transform(Xv_r)
+            Xexp_r = scaler_r.transform(Xexp_r)
+            Xte_r = scaler_r.transform(X_bc_test)
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, task='binary', seed=rep_seed)
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
             else:
                 m = DASHPipeline(
                     M=M, K=K, epsilon=EPSILON, delta=DELTA,
@@ -772,14 +847,32 @@ def experiment_real_breast_cancer():
                     n_jobs=-1, seed=rep_seed, verbose=False,
                 )
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=bc_names)
+                imp = m.global_importance_
+                proxy_model = m.selected_models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
 
-            imp_runs.append(m.global_importance_)
+            imp_runs.append(imp)
+            ablation_runs.append(abl)
+            if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
+                keff_runs.append(len(m.selected_indices_))
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         bc_results[name] = {
-            'stability': importance_stability(imp_runs),
-            'stability_se': stability_bootstrap_ci(imp_runs)[1],
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
+            'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
+            'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
+            'ablation_mean': np.mean(ablation_runs),
+            'ablation_std': np.std(ablation_runs, ddof=1),
+            'ablation_runs': np.array(ablation_runs),
         }
-        log(f"  {name:<22} stab={bc_results[name]['stability']:.4f}")
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+            f"ablation={np.mean(ablation_runs):.4f}")
+
+    # C7+F1: Wilcoxon signed-rank test and Cohen's d
+    _log_pairwise_significance(bc_results, 'DASH (MaxMin)', bc_methods, 'Breast Cancer')
 
     # IS plot and disagreement map from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
@@ -831,7 +924,7 @@ def experiment_real_superconductor():
     sc_results = {}
 
     for name in sc_methods:
-        imp_runs, rmse_runs, ablation_runs = [], [], []
+        imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
 
@@ -880,16 +973,28 @@ def experiment_real_superconductor():
             imp_runs.append(imp)
             rmse_runs.append(rmse_val)
             ablation_runs.append(abl)
+            if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
+                keff_runs.append(len(m.selected_indices_))
 
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         sc_results[name] = {
-            'stability': importance_stability(imp_runs),
-            'stability_se': stability_bootstrap_ci(imp_runs)[1],
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
+            'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
+            'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
             'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
+            'rmse_runs': np.array(rmse_runs),
+            'ablation_runs': np.array(ablation_runs),
         }
-        log(f"  {name:<22} stab={sc_results[name]['stability']:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
+
+    # C7+F1: Wilcoxon signed-rank test and Cohen's d
+    _log_pairwise_significance(sc_results, 'DASH (MaxMin)', sc_methods, 'Superconductor')
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
     elapsed = time.time() - t0
@@ -948,14 +1053,14 @@ def experiment_epsilon_sensitivity():
                 continue
 
             # Stage 3: MaxMin diversity selection
-            imp_vecs = get_preliminary_importance(models, filtered, Xte, method='gain')
+            imp_vecs = get_preliminary_importance(models, filtered, Xexp, method='gain')
             filt_scores = {i: val_scores[i] for i in filtered}
             selected = greedy_maxmin_selection(imp_vecs, filt_scores,
                                               K=K, delta=DELTA, verbose=False)
             eps_results[eps]['k_eff'].append(len(selected))
 
-            # Stage 4-5: Consensus SHAP
-            cons, all_shap = compute_consensus(models, selected, Xte, seed=rep_seed, verbose=False)
+            # Stage 4-5: Consensus SHAP (use Xexp, not Xte, to avoid data leakage)
+            cons, all_shap = compute_consensus(models, selected, Xexp, seed=rep_seed, verbose=False)
             _, _, _, imp = compute_diagnostics(all_shap)
 
             r, _ = dgp_agreement(imp, true_imp)
@@ -993,7 +1098,7 @@ def experiment_ablation():
     log("EXPERIMENT: Ablation Studies")
     log("=" * 70)
 
-    ABL_N_REPS = 10  # C(10,2)=45 pairwise comparisons for stability estimation
+    ABL_N_REPS = N_REPS  # Match main sweep for comparable stability estimates
     ABL_DEFAULTS = {'M': M, 'K': K, 'eps': EPSILON, 'delta': DELTA}
     ABL_RHOS = [0.0, 0.9, 0.95]
 
@@ -1117,16 +1222,29 @@ def experiment_variance_decomposition():
             log(f"  {cond:<16} {m:<20} {stab:>10.4f}")
 
     # Variance decomposition ratios
-    log(f"\n  Variance Decomposition Ratios:")
+    # CAVEAT: (1 - stability) is a proxy for instability, not a proper
+    # variance.  Stability is pairwise Spearman ρ, so the "ratios" below
+    # are indicative of relative contribution but do not satisfy an exact
+    # additive decomposition (model_var + data_var ≠ total_var in general).
+    log(f"\n  Variance Decomposition Ratios (indicative — see caveat in code):")
     for m in methods:
         total_var = 1.0 - summary['both_varied'][m]['stability']
         model_var = 1.0 - summary['data_fixed'][m]['stability']
         data_var = 1.0 - summary['model_fixed'][m]['stability']
+        summary_ratios = {}
         if total_var > 0:
-            log(f"    {m}: model-selection={model_var/total_var:.1%}, "
-                f"data-sampling={data_var/total_var:.1%} of total instability")
+            model_frac = model_var / total_var
+            data_frac = data_var / total_var
+            log(f"    {m}: model-selection={model_frac:.1%}, "
+                f"data-sampling={data_frac:.1%} of total instability")
+            summary_ratios = {
+                'model_selection_frac': model_frac,
+                'data_sampling_frac': data_frac,
+            }
         else:
             log(f"    {m}: total variance ≈ 0 (perfectly stable)")
+        for cond in conditions:
+            summary[cond][m]['decomposition'] = summary_ratios
 
     save_json(summary, f"{OUT}/tables/variance_decomposition.json")
     elapsed = time.time() - t0
