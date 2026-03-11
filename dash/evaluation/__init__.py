@@ -6,12 +6,15 @@ from typing import List, Tuple
 __all__ = [
     "dgp_agreement",
     "importance_accuracy",
+    "group_level_accuracy",
     "importance_stability",
     "stability_bootstrap_ci",
     "within_group_equity",
     "cohens_d",
     "compare_methods",
     "friedman_test",
+    "holm_bonferroni",
+    "feature_ablation_score",
 ]
 
 
@@ -35,11 +38,25 @@ def dgp_agreement(estimated, true):
 importance_accuracy = dgp_agreement
 
 
+def group_level_accuracy(estimated, true_importance, groups):
+    """Accuracy at group level — sums importance within groups, Spearman vs group betas.
+
+    This avoids confounding accuracy with within-group equity: dgp_agreement
+    penalises unequal within-group attribution even when the group-level ranking
+    is correct.  group_level_accuracy measures only the ranking of groups.
+    """
+    group_ids = np.unique(groups)
+    est_group = np.array([np.sum(estimated[groups == g]) for g in group_ids])
+    true_group = np.array([np.sum(true_importance[groups == g]) for g in group_ids])
+    rho, _ = spearmanr(est_group, true_group)
+    return float(rho)
+
+
 def importance_stability(vectors):
     """Compute mean pairwise Spearman correlation across importance vectors."""
     n = len(vectors)
     if n < 2:
-        return 1.0
+        return float('nan')
     corrs = []
     for i in range(n):
         for j in range(i + 1, n):
@@ -60,7 +77,7 @@ def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
     rng = np.random.RandomState(seed)
     n = len(vectors)
     if n < 2:
-        return 1.0, 0.0, 1.0, 1.0
+        return float('nan'), 0.0, float('nan'), float('nan')
     point = importance_stability(vectors)
 
     # Bootstrap distribution
@@ -143,3 +160,51 @@ def friedman_test(*method_scores):
     from scipy.stats import friedmanchisquare
     stat, pval = friedmanchisquare(*method_scores)
     return float(stat), float(pval)
+
+
+def holm_bonferroni(p_values):
+    """Holm-Bonferroni step-down correction.
+
+    Less conservative than Bonferroni while still controlling the family-wise
+    error rate.  Returns an array of adjusted p-values (same length as input).
+    """
+    p_values = np.asarray(p_values, dtype=float)
+    n = len(p_values)
+    sorted_idx = np.argsort(p_values)
+    adjusted = np.zeros(n)
+    for rank, idx in enumerate(sorted_idx):
+        adjusted[idx] = min(p_values[idx] * (n - rank), 1.0)
+    # Enforce monotonicity (adjusted values must be non-decreasing in sorted order)
+    for i in range(1, n):
+        idx = sorted_idx[i]
+        prev_idx = sorted_idx[i - 1]
+        adjusted[idx] = max(adjusted[idx], adjusted[prev_idx])
+    return adjusted
+
+
+def feature_ablation_score(model, X, y, importance, top_k=5, metric_fn=None):
+    """Zero out top-K important features and measure prediction degradation.
+
+    A proxy for explanation quality on real data without ground truth.
+    Returns the increase in error when ablating the top-K features identified
+    by ``importance``.  Higher values mean the explanation correctly identified
+    important features.
+
+    Parameters
+    ----------
+    model : fitted model with .predict()
+    X : array-like (n_samples, n_features)
+    y : array-like (n_samples,)
+    importance : array-like (n_features,), absolute feature importance
+    top_k : int, number of features to ablate
+    metric_fn : callable(y_true, y_pred) → float, default RMSE
+    """
+    if metric_fn is None:
+        from sklearn.metrics import root_mean_squared_error
+        metric_fn = root_mean_squared_error
+    baseline_score = metric_fn(y, model.predict(X))
+    top_features = np.argsort(importance)[-top_k:][::-1]
+    X_ablated = np.array(X, dtype=float, copy=True)
+    X_ablated[:, top_features] = 0.0
+    ablated_score = metric_fn(y, model.predict(X_ablated))
+    return float(ablated_score - baseline_score)
