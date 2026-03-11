@@ -18,7 +18,7 @@ class StochasticRetrainBaseline:
         self.global_importance_ = None
         self.fsi_ = None
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, best_config=None):
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, best_config=None, seed=None):
         if X_ref is None:
             X_ref = X_val
 

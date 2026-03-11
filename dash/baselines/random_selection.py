@@ -22,6 +22,7 @@ class RandomSelectionBaseline:
         K=20,
         epsilon=0.08,
         epsilon_mode="absolute",
+        delta=0.1,
         task="regression",
         search_space=None,
         background_size=100,
