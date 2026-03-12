@@ -391,9 +391,10 @@ python run_experiments.py
 
 Or interactively via the demo notebooks:
 
+- **`notebooks/demo_benchmark_6.ipynb`** -- **Authoritative run** (M=200, K=30, 20 reps) with checkpointing. 59 cells, 15 sections, 10 methods, 11 success criteria. Includes all experiments: correlation sweep, overlapping structure, nonlinear DGP, extended baselines (Table 2), real-world datasets (California Housing, Breast Cancer, Superconductor), epsilon sensitivity, ablation studies, variance decomposition, and statistical significance tests. Supersedes all prior notebooks.
+- **`notebooks/demo_benchmark_4_checkpointed.ipynb`** -- Prior version (M=200, K=30, 20 reps). Historical reference; results cited in Benchmark Results below come from this notebook. Superseded by v6.
 - **`notebooks/demo_benchmark_1.ipynb`** -- Prototype run (M=50, K=15, 5 reps). Runs in minutes. Use for quick validation and development iteration.
-- **`notebooks/demo_benchmark_2.ipynb`** -- Full run (M=500, K=30, 20 reps). Earlier full-scale benchmark.
-- **`notebooks/demo_benchmark_4_checkpointed.ipynb`** -- Authoritative run (M=200, K=30, 20 reps) with checkpointing. Produces the results cited throughout this README. Includes all 9 experiments: correlation sweep, overlapping structure, nonlinear DGP, extended baselines, real-world datasets (California Housing, Breast Cancer, Superconductor), epsilon sensitivity, and ablation studies.
+- **`notebooks/demo_benchmark_2.ipynb`** -- Earlier full-scale benchmark (M=500, K=30, 20 reps). Historical reference.
 
 ### Experiment 1: Synthetic Linear -- Correlation Sweep
 
@@ -425,21 +426,39 @@ y = z1^2 + 0.8 * z1 * z2 + 1.2 * sin(pi * z3) + linear terms + noise
 ```
 where `z_g` is the mean of group `g`'s features. DGP agreement against ground truth is not measured here (because Sobol indices and SHAP distribute nonlinear variance differently), so the focus is on stability and equity.
 
+**Caveat (C4):** The `true_importance` values for the nonlinear DGP are approximate ordinal rankings, not exact analytic SHAP values. Absolute DGP agreement numbers under this DGP should not be compared with those from the linear DGP.
+
 ### Experiment 4: Real Data
 
 Validates DASH on three real datasets:
 
-- **California Housing** (8 features, regression): Natural collinearity between median income and house value, number of rooms and bedrooms, latitude and longitude.
-- **Breast Cancer Wisconsin** (30 features, binary classification): Heavy collinearity -- radius, perimeter, and area are mathematically related (perimeter ~ 2*pi*radius, area ~ pi*radius^2). Mean, standard error, and worst-case versions of each measurement create ~21 feature pairs with |r| > 0.9.
-- **Superconductor UCI** (81 features, regression): Large-scale real-world benchmark with 21,263 samples. Uses scale-appropriate epsilon (SC_EPSILON=0.40) due to higher RMSE scale (~18).
+- **California Housing** (8 features, regression): Natural collinearity between median income and house value, number of rooms and bedrooms, latitude and longitude. Uses relative epsilon mode (`REAL_EPSILON=0.05`, relative to each rep's best validation RMSE).
+- **Breast Cancer Wisconsin** (30 features, binary classification): Heavy collinearity -- radius, perimeter, and area are mathematically related (perimeter ~ 2*pi*radius, area ~ pi*radius^2). Mean, standard error, and worst-case versions of each measurement create ~21 feature pairs with |r| > 0.9. 20-rep stability analysis with feature ablation scores.
+- **Superconductor UCI** (81 features, regression): Large-scale real-world benchmark with 21,263 samples. Uses relative epsilon mode. Scaler re-fit per repetition to avoid data leakage (D2 fix).
+
+All real-world experiments use a separate explain set for SHAP computation (A4 fix), Wilcoxon signed-rank tests with Cohen's d effect sizes for pairwise significance (C7/F1 fixes), and BCa bootstrap confidence intervals.
+
+### Experiment 5: Epsilon Sensitivity
+
+Sweeps ε ∈ {0.03, 0.05, 0.08, 0.10} at ρ=0.9 with a shared model population per repetition, isolating the filter threshold effect from training stochasticity. Reports K_eff (effective ensemble size) at each ε.
+
+### Experiment 6: Ablation Studies
+
+One-at-a-time variation of M, K, ε, and δ across three correlation levels (ρ ∈ {0.0, 0.9, 0.95}), N_REPS=20 repetitions. Identifies diminishing returns and sensitivity to each hyperparameter.
+
+### Experiment 7: Variance Decomposition
+
+Decomposes importance instability into data-sampling variance vs. model-selection variance using three conditions: same data + different models, different data + same model selection, different data + different models. **Caveat (C5):** `1 - stability` is used as a proxy for variance but is not a proper variance decomposition — the components are not guaranteed to sum to the total.
+
+### Experiment 8: Statistical Significance
+
+Formal hypothesis testing: Wilcoxon signed-rank tests for DASH vs. each baseline at every ρ level, with Holm-Bonferroni correction for multiple comparisons. Reports signed Cohen's d with direction indicator ("favors" column). Separately tests accuracy, stability, and equity.
 
 ---
 
 ## Benchmark Results
 
-All numbers cited in this README come from `demo_benchmark_4_checkpointed.ipynb` (M=200, K=30, 20 repetitions), the authoritative benchmark. The prototype notebook (`demo_benchmark_1.ipynb`, M=50, K=15, 5 reps) confirms directional findings and runs in minutes.
-
-> **Note on methodology fixes (A1-A5):** The benchmark numbers below were produced before five methodology refinements were applied to the evaluation code: BCa bootstrap (A3), four-way data split (A4), DGP agreement rename with circularity caveat (A5), zero-group equity handling (A2), and model-selection uncertainty documentation (A1). The code now incorporates all five fixes. Directional findings are expected to hold; exact numbers may shift slightly when re-run. See [Methodology Notes](#methodology-notes) for details.
+All numbers cited below come from `demo_benchmark_4_checkpointed.ipynb` (M=200, K=30, 20 repetitions). The authoritative notebook is now `demo_benchmark_6.ipynb`, which incorporates all methodology fixes (A-series, N-series, and v6 review fixes). Directional findings are expected to hold; exact numbers may shift slightly when re-run with v6. See [Methodology Notes](#methodology-notes) for the full list of fixes.
 
 ### Benchmark Configuration
 
@@ -448,12 +467,13 @@ All numbers cited in this README come from `demo_benchmark_4_checkpointed.ipynb`
 | Population size (M) | 200 |
 | Selected models (K) | 30 |
 | Repetitions (N_REPS) | 20 |
-| Performance filter (ε) | 0.08 |
+| Performance filter (ε) | 0.08 (synthetic); REAL_EPSILON=0.05 relative (real-world) |
 | Diversity threshold (δ) | 0.05 |
-| Notebook | `demo_benchmark_4_checkpointed.ipynb` |
+| Notebook (numbers below) | `demo_benchmark_4_checkpointed.ipynb` |
+| Authoritative notebook | `demo_benchmark_6.ipynb` (59 cells, 15 sections, 10 methods) |
 | Data split | train / val / explain / test (four-way) |
 
-The benchmark runs 9 experiments: proof of concept at high collinearity, full baseline comparison, stability across repetitions, correlation sweep (ρ=0.0 to 0.95), nonlinear DGP sweep, extended baselines (Table 2), real-world datasets (California Housing, Breast Cancer, Superconductor), epsilon sensitivity, and ablation studies.
+The benchmark runs 15 sections covering: correlation sweep, overlapping structure, nonlinear DGP, extended baselines (Table 2 with 10 methods), real-world datasets (California Housing, Breast Cancer, Superconductor), epsilon sensitivity, ablation studies, variance decomposition, and statistical significance tests.
 
 ### Baseline Comparison at ρ=0.95
 
@@ -519,10 +539,10 @@ DASH stability is effectively flat across all correlation levels (0.9765-0.9819)
 
 ### Success Criteria
 
-The benchmark defines nine formal success criteria, all of which pass. (These were evaluated pre-methodology-fix; directional results are expected to hold.)
+The v6 benchmark defines 11 formal success criteria (expanded from 9 in v4). The v4 results below are directional; v6 adds criteria 10-11.
 
-| # | Criterion | Result | Threshold |
-|---|-----------|--------|-----------|
+| # | Criterion | v4 Result | Threshold |
+|---|-----------|-----------|-----------|
 | 1 | Stability wins (DASH > SB, linear sweep) | **5/5** ρ levels | >= 80% |
 | 2 | DGP agreement at ρ=0.9 (DASH >= SB) | **0.9901 >= 0.9796** | Relative to baseline |
 | 3 | Equity wins (DASH CV < SB CV) | **5/5** ρ levels | >= 80% |
@@ -532,6 +552,8 @@ The benchmark defines nine formal success criteria, all of which pass. (These we
 | 7 | Breast Cancer: DASH stability > 0.80 | **0.9332** | > 0.80 |
 | 8 | Superconductor: DASH stability > SB | **0.9654 > 0.8477** | DASH wins |
 | 9 | Statistical significance (Bonferroni) | **17/26 = 65%** | >= 50% |
+| 10 | Ablation robustness (M, K, ε, δ) | *(v6 only)* | Stability ≥ 0.95 across settings |
+| 11 | Real-world ablation scores (DASH ≥ SB) | *(v6 only)* | DASH matches or exceeds |
 
 ### Breast Cancer Real-Data Results
 
@@ -579,7 +601,9 @@ DASH is robust to the performance filter threshold ε. Across ε ∈ {0.03, 0.05
 
 ## Methodology Notes
 
-Five methodology refinements (A1-A5) were applied to the evaluation code and experiment infrastructure after the initial benchmark run. The fixes improve statistical rigor and reduce circularity concerns. Directional conclusions are unchanged.
+### Initial Fixes (A-series)
+
+Five methodology refinements applied to the evaluation code after the initial benchmark run:
 
 | ID | Fix | Description | Impact |
 |----|-----|-------------|--------|
@@ -588,6 +612,23 @@ Five methodology refinements (A1-A5) were applied to the evaluation code and exp
 | A3 | BCa bootstrap | `stability_bootstrap_ci` now uses bias-corrected and accelerated (BCa) bootstrap instead of the percentile method, correcting for both bias and skewness. | Tighter, more accurate confidence intervals. Point estimates unchanged. |
 | A4 | Four-way data split | Synthetic generators now return an 11-tuple with a dedicated `X_explain` set (10% of data). SHAP reference data (`X_ref`) is separate from the RMSE evaluation set (`X_test`). | Removes concern of using the same data for SHAP computation and predictive evaluation. |
 | A5 | DGP agreement rename | `importance_accuracy` renamed to `dgp_agreement` (backward-compatible alias retained). Docstring now explicitly notes that the metric presupposes equitable within-group credit distribution and should be reported as a sanity check, not the primary criterion. | Terminology and framing change; no change to the underlying computation. |
+
+### v6 Methodology Improvements
+
+Additional fixes implemented in `demo_benchmark_6.ipynb` and `run_experiments.py`:
+
+| ID | Fix | Description |
+|----|-----|-------------|
+| C1 | Wilcoxon power documentation | N_REPS=20 gives minimum achievable corrected p ≈ 0.04; power limitation documented |
+| C4 | Nonlinear DGP caveat | `true_importance` values are approximate ordinal rankings, not exact analytic SHAP values |
+| C5 | Variance decomposition caveat | `1 - stability` used as proxy; not a proper variance decomposition |
+| C7 | Pairwise significance for real-world | Wilcoxon + Cohen's d for DASH vs. each baseline on real-world datasets |
+| D2 | Superconductor scaler re-fit | `StandardScaler` re-fit per repetition to avoid data leakage |
+| F1 | Cohen's d with direction | Signed Cohen's d with "favors" column in all significance tables |
+| F2 | Relative epsilon for real-world | `REAL_EPSILON=0.05` relative to each rep's best RMSE (scale-appropriate) |
+| F3 | Holm-Bonferroni correction | Less conservative than Bonferroni while controlling family-wise error rate |
+| B7 | Single Best (M=200) baseline | Matched compute budget baseline added to Table 2 |
+| M2 | Random Selection baseline | Isolates the value of MaxMin diversity selection |
 
 ---
 
