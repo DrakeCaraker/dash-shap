@@ -1,5 +1,7 @@
 # Audit: `notebooks/demo_benchmark_4.ipynb`
 
+> **Superseded:** `demo_benchmark_6.ipynb` is now the authoritative experimental notebook. It incorporates all F1–F3 and A1–A10 findings from this audit, plus additional methodology improvements (C1, C4, C5, C7, D2, F1–F3, B7, M2). See `EXPERIMENT_GUIDE.md` for the full v6 methodology.
+
 **Date**: 2026-03-06 (re-audit)
 **Scope**: Structure, rigor, reproducibility, and statistical methodology
 **Prior audits**: `AUDIT_demo_benchmark_3.md` (20 findings, all remediated); first v4 audit (14 findings N1–N14, all fixed)
