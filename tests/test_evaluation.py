@@ -181,6 +181,28 @@ def test_group_level_accuracy_inverted():
     assert rho < 0
 
 
+def test_group_level_mse_nonzero_when_proportions_differ():
+    """Group-level MSE should be > 0 when group proportions don't match."""
+    from dash.evaluation import group_level_mse
+    groups = np.array([0, 0, 0, 1, 1, 1])
+    true = np.array([0.5, 0.5, 0.5, 0.1, 0.1, 0.1])
+    # Group sums: est=[1.5, 0.1], true=[1.5, 0.3] — proportions differ
+    estimated = np.array([0.3, 0.4, 0.8, 0.05, 0.02, 0.03])
+    mse = group_level_mse(estimated, true, groups)
+    assert mse > 0
+
+
+def test_group_level_mse_zero_when_proportions_match():
+    """Group-level MSE should be ~0 when group proportions match."""
+    from dash.evaluation import group_level_mse
+    groups = np.array([0, 0, 1, 1])
+    true = np.array([0.6, 0.6, 0.2, 0.2])
+    # Same group proportions (3:1 ratio)
+    estimated = np.array([0.9, 0.9, 0.3, 0.3])
+    mse = group_level_mse(estimated, true, groups)
+    assert mse < 1e-10
+
+
 def test_holm_bonferroni_basic():
     """Holm-Bonferroni adjusted p-values are >= raw and smallest survives."""
     from dash.evaluation import holm_bonferroni

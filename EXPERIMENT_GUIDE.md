@@ -96,6 +96,12 @@ Single Best, Single Best (M=200), Large Single Model, LSM (Tuned), Stochastic Re
 
 **RMSE**: Test-set prediction error. Verifies that stability gains do not come at the cost of prediction quality.
 
+### Group-level metrics
+
+**Group-level accuracy (gacc)**: Spearman ρ of group-level importance sums vs. true group betas. Separates "does the method rank groups correctly?" from "does it distribute credit within groups fairly?" **Caveat (C8):** With 10 groups and true betas spanning a 20x range (`[2.0, 1.5, ..., 0.1, 0.0]`), Spearman rank order is trivially preserved by almost any model, causing gacc to saturate at 1.0. This metric only discriminates methods when group betas are close in magnitude.
+
+**Group-level MSE (gmse)**: Normalized MSE of group-level importance proportions vs. true group proportions. Unlike gacc, this captures magnitude accuracy — how well the estimated group-level budget matches the true budget, not just its rank order. This is the discriminative complement to gacc at high ρ where gacc saturates.
+
 ### Additional tracking
 
 - **K_eff**: Effective ensemble size (how many models MaxMin actually selects) is tracked per rep for all DASH and ensemble methods.
@@ -316,6 +322,7 @@ Criteria 1-4 are the headline claims. Criterion 4 is the safety check. Criteria 
 | F2 | K_eff tracked for all experiments | Ensemble size reporting |
 | F3 | Wall-clock timing table | Compute cost comparison |
 | B7 | Breast cancer scaler leakage + ablation | Correct real-world results |
+| C8 | Group-level accuracy saturation caveat | gacc (Spearman) saturates at 1.0 with well-separated betas; group_level_mse added as discriminative complement |
 
 ---
 
