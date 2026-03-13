@@ -7,6 +7,7 @@ __all__ = [
     "dgp_agreement",
     "importance_accuracy",
     "group_level_accuracy",
+    "group_level_mse",
     "importance_stability",
     "stability_bootstrap_ci",
     "within_group_equity",
@@ -44,12 +45,34 @@ def group_level_accuracy(estimated, true_importance, groups):
     This avoids confounding accuracy with within-group equity: dgp_agreement
     penalises unequal within-group attribution even when the group-level ranking
     is correct.  group_level_accuracy measures only the ranking of groups.
+
+    Note (C8): this metric saturates to 1.0 when true group betas are
+    well-separated (e.g., spanning a 20x range across 10 groups), because
+    Spearman rank correlation is trivially preserved even by poor models.
+    Use group_level_mse for a discriminative complement.
     """
     group_ids = np.unique(groups)
     est_group = np.array([np.sum(estimated[groups == g]) for g in group_ids])
     true_group = np.array([np.sum(true_importance[groups == g]) for g in group_ids])
     rho, _ = spearmanr(est_group, true_group)
     return float(rho)
+
+
+def group_level_mse(estimated, true_importance, groups):
+    """Normalized MSE at group level — measures magnitude accuracy, not just ranking.
+
+    Unlike group_level_accuracy (Spearman), this captures how well the estimated
+    group-level importance magnitudes match the true values, not just their rank
+    order.  Discriminates between methods even when rank order is trivially correct
+    (e.g., when true betas are well-separated).
+    """
+    group_ids = np.unique(groups)
+    est_group = np.array([np.sum(estimated[groups == g]) for g in group_ids])
+    true_group = np.array([np.sum(true_importance[groups == g]) for g in group_ids])
+    # Normalize to proportions (same approach as dgp_agreement)
+    est_norm = est_group / (est_group.sum() + 1e-10)
+    true_norm = true_group / (true_group.sum() + 1e-10)
+    return float(np.mean((est_norm - true_norm) ** 2))
 
 
 def importance_stability(vectors):

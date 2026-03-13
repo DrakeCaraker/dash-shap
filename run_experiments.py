@@ -64,7 +64,7 @@ from dash.baselines import (
     StochasticRetrainBaseline, EnsembleSHAPBaseline, RandomSelectionBaseline,
 )
 from dash.evaluation import (
-    dgp_agreement, importance_accuracy, group_level_accuracy,
+    dgp_agreement, importance_accuracy, group_level_accuracy, group_level_mse,
     importance_stability, stability_bootstrap_ci, within_group_equity,
     compare_methods, cohens_d, friedman_test, holm_bonferroni,
     feature_ablation_score,
@@ -311,8 +311,8 @@ def experiment_linear_sweep():
         log(f"\n--- ρ = {rho} ---")
         for name in sweep_methods:
             t_method = time.time()
-            acc_runs, eq_runs, imp_runs, rmse_runs, gacc_runs, keff_runs = \
-                [], [], [], [], [], []
+            acc_runs, eq_runs, imp_runs, rmse_runs, gacc_runs, gmse_runs, keff_runs = \
+                [], [], [], [], [], [], []
             for rep in range(N_REPS):
                 rep_seed = SEED + rep
                 Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
@@ -371,6 +371,7 @@ def experiment_linear_sweep():
                 r, _ = importance_accuracy(imp, true_imp)
                 acc_runs.append(r)
                 gacc_runs.append(group_level_accuracy(imp, true_imp, grps))
+                gmse_runs.append(group_level_mse(imp, true_imp, grps))
                 eq_runs.append(within_group_equity(imp, grps))
                 imp_runs.append(imp)
                 rmse_runs.append(rmse_val)
@@ -394,6 +395,8 @@ def experiment_linear_sweep():
                 'accuracy_std': np.std(acc_runs, ddof=1),
                 'group_accuracy_mean': np.mean(gacc_runs),
                 'group_accuracy_std': np.std(gacc_runs, ddof=1),
+                'group_mse_mean': np.mean(gmse_runs),
+                'group_mse_std': np.std(gmse_runs, ddof=1),
                 'equity_mean': np.mean(eq_runs),
                 'equity_se': np.std(eq_runs, ddof=1) / np.sqrt(n_reps),
                 'equity_std': np.std(eq_runs, ddof=1),
@@ -407,7 +410,7 @@ def experiment_linear_sweep():
                 'imp_runs': imp_runs,
             }
             log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
-                f"acc={np.mean(acc_runs):.4f}  gacc={np.mean(gacc_runs):.4f}  "
+                f"acc={np.mean(acc_runs):.4f}  gacc={np.mean(gacc_runs):.4f}  gmse={np.mean(gmse_runs):.6f}  "
                 f"eq={np.mean(eq_runs):.4f}  RMSE={np.mean(rmse_runs):.4f}  "
                 f"({elapsed_method:.1f}s)")
 
@@ -436,7 +439,7 @@ def experiment_overlapping():
     log("=" * 70)
 
     method_names = ['Single Best', 'DASH (MaxMin)', 'DASH (Cluster)']
-    results = {n: {'imp_runs': [], 'acc_runs': [], 'grp_acc_runs': [],
+    results = {n: {'imp_runs': [], 'acc_runs': [], 'grp_acc_runs': [], 'gmse_runs': [],
                     'eq_runs': [], 'rmse_runs': []} for n in method_names}
     feature_names = make_feature_names()
 
@@ -453,6 +456,7 @@ def experiment_overlapping():
         r, _ = dgp_agreement(sb.global_importance_, true_imp)
         results['Single Best']['acc_runs'].append(r)
         results['Single Best']['grp_acc_runs'].append(group_level_accuracy(sb.global_importance_, true_imp, grps))
+        results['Single Best']['gmse_runs'].append(group_level_mse(sb.global_importance_, true_imp, grps))
         results['Single Best']['eq_runs'].append(within_group_equity(sb.global_importance_, grps))
         results['Single Best']['rmse_runs'].append(rmse_score(yte, sb.model_.predict(Xte)))
 
@@ -465,6 +469,7 @@ def experiment_overlapping():
         r, _ = dgp_agreement(dm.global_importance_, true_imp)
         results['DASH (MaxMin)']['acc_runs'].append(r)
         results['DASH (MaxMin)']['grp_acc_runs'].append(group_level_accuracy(dm.global_importance_, true_imp, grps))
+        results['DASH (MaxMin)']['gmse_runs'].append(group_level_mse(dm.global_importance_, true_imp, grps))
         results['DASH (MaxMin)']['eq_runs'].append(within_group_equity(dm.global_importance_, grps))
         results['DASH (MaxMin)']['rmse_runs'].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
 
@@ -482,24 +487,27 @@ def experiment_overlapping():
         r, _ = dgp_agreement(imp_c, true_imp)
         results['DASH (Cluster)']['acc_runs'].append(r)
         results['DASH (Cluster)']['grp_acc_runs'].append(group_level_accuracy(imp_c, true_imp, grps))
+        results['DASH (Cluster)']['gmse_runs'].append(group_level_mse(imp_c, true_imp, grps))
         results['DASH (Cluster)']['eq_runs'].append(within_group_equity(imp_c, grps))
         # Cluster uses same models as DASH, so use DASH predictions for RMSE
         results['DASH (Cluster)']['rmse_runs'].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
 
-    log(f"\n  {'Method':<20} {'Stability':>10} {'DGP Agree':>10} {'Grp Acc':>10} {'Equity':>10} {'RMSE':>10}")
-    log("  " + "=" * 75)
+    log(f"\n  {'Method':<20} {'Stability':>10} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}")
+    log("  " + "=" * 85)
     overlap_results = {}
     for name in method_names:
         stab = importance_stability(results[name]['imp_runs'])
         acc = np.mean(results[name]['acc_runs'])
         grp = np.mean(results[name]['grp_acc_runs'])
+        gmse = np.mean(results[name]['gmse_runs'])
         eq = np.mean(results[name]['eq_runs'])
         rmse = np.mean(results[name]['rmse_runs'])
-        log(f"  {name:<20} {stab:>10.4f} {acc:>10.4f} {grp:>10.4f} {eq:>10.4f} {rmse:>10.4f}")
+        log(f"  {name:<20} {stab:>10.4f} {acc:>10.4f} {grp:>10.4f} {gmse:>10.6f} {eq:>10.4f} {rmse:>10.4f}")
         overlap_results[name] = {
             'stability': stab,
             'accuracy_mean': acc, 'accuracy_std': float(np.std(results[name]['acc_runs'])),
             'group_accuracy_mean': grp,
+            'group_mse_mean': gmse, 'group_mse_std': float(np.std(results[name]['gmse_runs'], ddof=1)),
             'equity_mean': eq, 'equity_std': float(np.std(results[name]['eq_runs'])),
             'rmse_mean': rmse, 'rmse_std': float(np.std(results[name]['rmse_runs'])),
         }
