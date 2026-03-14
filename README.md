@@ -1,6 +1,6 @@
 # DASH: Diversified Aggregation of SHAP
 
-Machine learning models can make predictions, but they can also tell you *why* -- which factors mattered most. That explanation should be consistent: if you build the model a second time on the same data and get equally good predictions, the explanation should be the same. But it isn't. Small, meaningless changes in setup -- like the arbitrary starting point of a randomized algorithm -- can completely change which factors the model calls "most important," even when the predictions don't change at all. This is especially bad when your data contains related measurements that carry overlapping information. DASH fixes this by combining explanations from many independently built models into a single stable consensus.
+Machine learning models can make predictions, but they can also tell you *why* they made those predictions -- which factors mattered most. Those explanation should be consistent: if you build the model a second time on the same data and get equally good predictions, the explanation should be the same. But it isn't. Small, seemingly meaningless changes in setup -- like the arbitrary starting point of a randomized algorithm -- can completely change which factors the model calls "most important," even when the predictions don't change at all. This is especially bad when your data contains related measurements that carry overlapping information. DASH fixes this by combining explanations from many independently built models into a single stable consensus.
 
 > Caraker, Arnold, Rhoads (2026)
 
@@ -14,7 +14,7 @@ Machine learning models can make predictions, but they can also tell you *why* -
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [The Problem in Detail](#the-problem-in-detail)
-- [Why Bigger Models Make It Worse](#why-bigger-models-make-it-worse)
+- [Why Not Just Use a More Powerful Model?](#why-not-just-use-a-more-powerful-model)
 - [How DASH Works -- Technical Details](#how-dash-works----technical-details)
 - [Beyond XGBoost and SHAP](#beyond-xgboost-and-shap)
 - [The Five-Stage Pipeline](#the-five-stage-pipeline)
@@ -31,16 +31,16 @@ Machine learning models can make predictions, but they can also tell you *why* -
 
 ## The Explanation Problem
 
-Imagine a hospital builds a model to predict whether a breast tumor is malignant. The model uses 30 measurements taken from a biopsy -- things like the tumor's radius, perimeter, and area. These measurements are closely related to each other (if you know the radius, you can roughly calculate the perimeter and area). The model makes good predictions. But when you ask it *which measurements mattered most*, something strange happens:
+Imagine a hospital builds a model to predict whether a tumor is malignant. The model uses 30 measurements taken from a biopsy -- things like the tumor's radius, perimeter, and area. These measurements are closely related to each other (if you know the radius, you can roughly calculate the perimeter and area). The model makes good predictions, but when you ask it *which measurements mattered most*, something strange happens:
 
 - **Monday's model** says: *"The tumor's radius was the biggest factor in this prediction."*
-- **Tuesday's model** -- built on the same data, with the same method, differing only in an arbitrary setup choice (a "random seed" that controls tie-breaking inside the algorithm) -- says: *"Actually, the tumor's perimeter was the biggest factor."*
+- **Tuesday's updated model** -- built on the same data, with the same method, differing only in an arbitrary setup choice (a "random seed" that controls tie-breaking inside the algorithm) -- says: *"Actually, the tumor's perimeter was the biggest factor."*
 
 Both models are equally accurate. Both identify the right group of measurements. But they give a pathologist different answers about which specific measurement to focus on. A researcher reading Monday's explanation might publish that radius is "the" key biomarker, when in reality perimeter and area carry the same information and are equally valid.
 
 This isn't a hypothetical. We tested this on the real Wisconsin Breast Cancer dataset (30 measurements, 21 pairs that are highly correlated with each other). The standard approach produced explanations that changed dramatically between runs -- a consistency score of just 0.534 out of 1.0. DASH raised that to 0.933, nearly doubling the reliability of the explanation.
 
-The core issue is simple: when two measurements carry the same information, the model has to pick one to give credit to. Which one it picks is essentially a coin flip. But the explanation treats that coin flip as if it were a meaningful finding. **DASH makes this problem go away.**
+The core issue is simple: when two measurements carry the same information, the model has to pick one to give credit to. Which one it picks is essentially a coin flip. But the explanation treats that coin flip as if it were a meaningful finding. **DASH fixes this problem.**
 
 ---
 
@@ -54,7 +54,7 @@ Unstable explanations aren't just an academic concern. In any domain where decis
 
 **Hiring and talent analytics.** Companies increasingly use machine learning to screen job candidates. Inputs like years of experience, number of past roles, and tenure at previous jobs are related to each other. If the model's explanation says "years of experience" drove a rejection one time but "short tenure at previous jobs" another, the company faces fairness concerns and legal exposure -- especially when one of those inputs correlates with a protected characteristic like age.
 
-In all of these cases, the model's predictions are fine. It's the *explanation* that's unreliable. And in regulated, high-stakes, or ethically sensitive domains, an unreliable explanation can be worse than no explanation at all.
+In all of these cases, the model's predictions are fine; it's the *explanation* that's unreliable. And in regulated, high-stakes, or ethically sensitive domains, an unreliable explanation can be worse than no explanation at all.
 
 ---
 
@@ -64,7 +64,7 @@ Instead of asking one model for an explanation, DASH builds hundreds of small mo
 
 Each model still makes its own arbitrary choice about which related measurement to give credit to. But because the models are built independently, they make *different* arbitrary choices. The noise points in different directions.
 
-DASH averages all their explanations. The arbitrary noise cancels out. What remains is the signal: which *group* of related measurements actually matters, with credit distributed fairly across the group. Instead of "radius is #1 and perimeter doesn't matter," you get "radius *and* perimeter are both important -- they're part of the same underlying signal."
+DASH averages all their explanations and the arbitrary noise cancels out. What remains is the signal: which *group* of related measurements actually matters, with credit distributed fairly across the group. Instead of "radius is #1 and perimeter doesn't matter," you get "radius *and* perimeter are both important -- they're part of the same underlying signal."
 
 *That's the intuition. The sections below cover installation, usage, and the full technical details.*
 
@@ -164,7 +164,7 @@ The ranking is not wrong -- it captures real signal -- but it is partially arbit
 
 ---
 
-## Why Bigger Models Make It Worse
+## Why Not Just Use a More Powerful Model?
 
 The natural response to "my explanations are unstable" is "train a more powerful model." We tested that. The result is the most counterintuitive finding of this work: **a single large model with the same total compute as DASH produces the worst explanations of any method tested** -- worse than a simple tuned model, worse than naive averaging, worse on stability, DGP agreement, and equity simultaneously.
 
