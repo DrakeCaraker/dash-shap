@@ -11,6 +11,7 @@ pipeline = DASHPipeline(
     M=200,                              # Number of models in the population
     K=20,                               # Number of models to select for consensus
     epsilon=0.08,                       # Performance filter threshold
+    epsilon_mode="absolute",            # "absolute", "relative", or "quantile"
     selection_method="maxmin",          # "maxmin", "cluster", or "dedup"
     delta=0.1,                          # Diversity threshold (maxmin)
     tau=0.3,                            # Cluster distance threshold (cluster)
@@ -140,6 +141,8 @@ The four-way split ensures `X_explain` (used as `X_ref` for SHAP) is separate fr
 ```python
 from dash.evaluation import (
     dgp_agreement,             # formerly importance_accuracy (alias retained)
+    group_level_accuracy,
+    group_level_mse,
     importance_stability,
     stability_bootstrap_ci,    # BCa bootstrap CI for stability
     within_group_equity,
@@ -147,6 +150,14 @@ from dash.evaluation import (
 
 # DGP agreement vs. ground truth (sanity check, not primary criterion)
 spearman_rho, mse = dgp_agreement(estimated_importance, true_importance)
+
+# Group-level accuracy — Spearman of group-level sums vs true group betas
+# Note (C8): saturates at 1.0 when true group betas are well-separated
+gacc = group_level_accuracy(estimated_importance, true_importance, groups)
+
+# Group-level MSE — normalized MSE of group-level proportions vs true proportions
+# Discriminative complement to gacc when rank order is trivially correct
+gmse = group_level_mse(estimated_importance, true_importance, groups)
 
 # Stability across repetitions
 stability = importance_stability([importance_run1, importance_run2, ...])
@@ -162,3 +173,35 @@ mean_cv = within_group_equity(importance_vector, group_assignments,
 ```
 
 > `importance_accuracy` is retained as a backward-compatible alias for `dgp_agreement`.
+
+---
+
+## Statistical Testing
+
+```python
+from dash.evaluation import (
+    cohens_d,
+    compare_methods,
+    friedman_test,
+    holm_bonferroni,
+    feature_ablation_score,
+)
+
+# Cohen's d effect size between two groups of scores
+d = cohens_d(dash_scores, baseline_scores)
+
+# Wilcoxon signed-rank test between paired scores
+stat, pval = compare_methods(dash_scores, baseline_scores)
+
+# Friedman chi-square test across multiple methods
+stat, pval = friedman_test(method1_scores, method2_scores, method3_scores)
+
+# Holm-Bonferroni step-down correction for multiple comparisons
+adjusted_pvals = holm_bonferroni(raw_p_values)
+
+# Feature ablation score — proxy for explanation quality on real data
+# Zeros out top-K features and measures prediction degradation
+degradation = feature_ablation_score(
+    model, X, y, importance, top_k=5, metric_fn=None  # default: RMSE
+)
+```
