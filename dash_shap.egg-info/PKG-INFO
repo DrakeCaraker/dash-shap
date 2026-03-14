@@ -1,5 +1,0 @@
-Metadata-Version: 2.4
-Name: dash-shap
-Version: 0.1.0
-Summary: DASH: Diversified Aggregation of SHAP
-Requires-Python: >=3.9
