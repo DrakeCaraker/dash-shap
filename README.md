@@ -1,6 +1,6 @@
 # DASH: Diversified Aggregation of SHAP
 
-When you ask a machine learning model *why* it made a prediction, the answer should be consistent. If you train the model again with a different random seed and get the same predictions, the explanation should be the same too. But it isn't -- especially when your data contains related measurements. DASH fixes this by combining explanations from many independent models into a single stable consensus.
+Machine learning models can make predictions, but they can also tell you *why* -- which factors mattered most. That explanation should be consistent: if you build the model a second time on the same data and get equally good predictions, the explanation should be the same. But it isn't. Small, meaningless changes in setup -- like the arbitrary starting point of a randomized algorithm -- can completely change which factors the model calls "most important," even when the predictions don't change at all. This is especially bad when your data contains related measurements that carry overlapping information. DASH fixes this by combining explanations from many independently built models into a single stable consensus.
 
 > Caraker, Arnold, Rhoads (2026)
 
@@ -34,13 +34,13 @@ When you ask a machine learning model *why* it made a prediction, the answer sho
 Imagine a hospital builds a model to predict whether a breast tumor is malignant. The model uses 30 measurements taken from a biopsy -- things like the tumor's radius, perimeter, and area. These measurements are closely related to each other (if you know the radius, you can roughly calculate the perimeter and area). The model makes good predictions. But when you ask it *which measurements mattered most*, something strange happens:
 
 - **Monday's model** says: *"The tumor's radius was the biggest factor in this prediction."*
-- **Tuesday's model** (trained with a different random seed, on the same data) says: *"Actually, the tumor's perimeter was the biggest factor."*
+- **Tuesday's model** -- built on the same data, with the same method, differing only in an arbitrary setup choice (a "random seed" that controls tie-breaking inside the algorithm) -- says: *"Actually, the tumor's perimeter was the biggest factor."*
 
 Both models are equally accurate. Both identify the right group of measurements. But they give a pathologist different answers about which specific measurement to focus on. A researcher reading Monday's explanation might publish that radius is "the" key biomarker, when in reality perimeter and area carry the same information and are equally valid.
 
-This isn't a hypothetical. We tested this on the real Wisconsin Breast Cancer dataset (30 features, 21 pairs of highly correlated measurements). The standard approach produced explanations that changed dramatically between runs -- a stability score of just 0.534 out of 1.0. DASH raised that to 0.933, nearly doubling the consistency of the explanation.
+This isn't a hypothetical. We tested this on the real Wisconsin Breast Cancer dataset (30 measurements, 21 pairs that are highly correlated with each other). The standard approach produced explanations that changed dramatically between runs -- a consistency score of just 0.534 out of 1.0. DASH raised that to 0.933, nearly doubling the reliability of the explanation.
 
-The core issue is simple: when two measurements carry the same information, a model has to pick one. Which one it picks is essentially a coin flip. But the explanation treats that coin flip as if it were a meaningful finding. **DASH makes this problem go away.**
+The core issue is simple: when two measurements carry the same information, the model has to pick one to give credit to. Which one it picks is essentially a coin flip. But the explanation treats that coin flip as if it were a meaningful finding. **DASH makes this problem go away.**
 
 ---
 
@@ -48,11 +48,11 @@ The core issue is simple: when two measurements carry the same information, a mo
 
 Unstable explanations aren't just an academic concern. In any domain where decisions depend on *why* a model made a prediction -- not just *what* it predicted -- this instability has real consequences.
 
-**Medical research and clinical decision support.** Predictive models increasingly guide treatment decisions and drug development. Lab tests like ALT and AST both measure liver damage. Systolic and diastolic blood pressure are naturally correlated. If a clinical decision support tool tells one physician that ALT is the primary risk factor and tells another that AST is, clinicians lose trust in the system -- or worse, pursue the wrong intervention. Regulatory bodies like the FDA increasingly require explanations for AI-based medical devices. Those explanations need to be reproducible.
+**Medical research and clinical decision support.** Predictive models increasingly guide treatment decisions and drug development. Lab tests like ALT and AST both measure liver damage. Systolic and diastolic blood pressure naturally move together. If a clinical decision support tool tells one physician that ALT is the primary risk factor and tells another that AST is, clinicians lose trust in the system -- or worse, pursue the wrong intervention. Regulatory bodies like the FDA increasingly require explanations for AI-based medical devices. Those explanations need to be reproducible.
 
-**Lending and credit decisions.** In the US, lenders are legally required to explain why a loan application was denied (Equal Credit Opportunity Act adverse action notices). If a model uses correlated features like income, debt-to-income ratio, and credit utilization, the explanation might cite "insufficient income" on one model run and "high credit utilization" on another -- for the same applicant, with the same data. The applicant receives different advice depending on which run generated their notice, and a regulator auditing the system sees inconsistent reasoning.
+**Lending and credit decisions.** In the US, lenders are legally required to explain why a loan application was denied (Equal Credit Opportunity Act adverse action notices). If a model uses related inputs like income, debt-to-income ratio, and credit utilization, the explanation might cite "insufficient income" one time and "high credit utilization" another -- for the same applicant, with the same data. The applicant receives different advice depending on which version of the model generated their notice, and a regulator auditing the system sees inconsistent reasoning.
 
-**Hiring and talent analytics.** Companies increasingly use ML to screen job candidates. Features like years of experience, number of past roles, and tenure at previous jobs are correlated. If the model's explanation says "years of experience" drove a rejection in one run but "short tenure at previous jobs" in another, the company faces fairness concerns and legal exposure -- especially when one of those features correlates with a protected characteristic like age.
+**Hiring and talent analytics.** Companies increasingly use machine learning to screen job candidates. Inputs like years of experience, number of past roles, and tenure at previous jobs are related to each other. If the model's explanation says "years of experience" drove a rejection one time but "short tenure at previous jobs" another, the company faces fairness concerns and legal exposure -- especially when one of those inputs correlates with a protected characteristic like age.
 
 In all of these cases, the model's predictions are fine. It's the *explanation* that's unreliable. And in regulated, high-stakes, or ethically sensitive domains, an unreliable explanation can be worse than no explanation at all.
 
@@ -60,11 +60,11 @@ In all of these cases, the model's predictions are fine. It's the *explanation* 
 
 ## How DASH Fixes It
 
-Instead of asking one model for an explanation, DASH trains hundreds of small, independent models. Each model is deliberately forced to look at a different subset of features -- so if radius and perimeter are correlated, some models rely on radius while others rely on perimeter.
+Instead of asking one model for an explanation, DASH builds hundreds of small models, each one independently from scratch. Each model is deliberately forced to look at a different subset of the available measurements -- so if radius and perimeter are related, some models rely on radius while others rely on perimeter.
 
-Each model still makes its own arbitrary choice about which correlated feature to credit. But because the models are independent, they make *different* arbitrary choices. The noise points in different directions.
+Each model still makes its own arbitrary choice about which related measurement to give credit to. But because the models are built independently, they make *different* arbitrary choices. The noise points in different directions.
 
-DASH averages all their explanations. The arbitrary noise cancels out. What remains is the signal: which *group* of related features actually matters, with credit distributed fairly across the group. Instead of "radius is #1 and perimeter doesn't matter," you get "radius *and* perimeter are both important -- they're part of the same underlying signal."
+DASH averages all their explanations. The arbitrary noise cancels out. What remains is the signal: which *group* of related measurements actually matters, with credit distributed fairly across the group. Instead of "radius is #1 and perimeter doesn't matter," you get "radius *and* perimeter are both important -- they're part of the same underlying signal."
 
 *That's the intuition. The sections below cover installation, usage, and the full technical details.*
 
