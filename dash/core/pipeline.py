@@ -69,6 +69,12 @@ class DASHPipeline:
 
     def fit(self, X_train, y_train, X_val, y_val, X_ref=None, feature_names=None):
         if X_ref is None:
+            import warnings
+            warnings.warn(
+                "X_ref not provided; defaulting to X_val. Consider using a "
+                "held-out reference set (X_explain) to avoid potential confounds.",
+                UserWarning,
+            )
             X_ref = X_val
         self.feature_names_ = feature_names or [
             f"f{i}" for i in range(X_train.shape[1])
@@ -110,6 +116,7 @@ class DASHPipeline:
         imp_vecs = get_preliminary_importance(
             self.models_, self.filtered_indices_, X_ref,
             method=self.preliminary_importance_method,
+            seed=self.seed,
         )
         filt_scores = {i: self.val_scores_[i] for i in self.filtered_indices_}
 
