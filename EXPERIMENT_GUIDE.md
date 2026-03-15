@@ -2,7 +2,7 @@
 
 **What the experiments test, why each piece matters, and how to interpret the results.**
 
-**Authoritative notebook**: `notebooks/demo_benchmark_6.ipynb` (59 cells, 15 sections, checkpointed)
+**Authoritative notebook**: `notebooks/demo_benchmark_7.ipynb` (46 cells, mechanism-first structure, checkpointed)
 **Automated script**: `run_experiments.py` (mirrors the notebook, outputs to `results/`)
 
 ## The Problem DASH Solves

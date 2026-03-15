@@ -924,7 +924,8 @@ def experiment_real_breast_cancer():
                 abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
             else:
                 m = DASHPipeline(
-                    M=M, K=K, epsilon=EPSILON, delta=DELTA,
+                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
+                    epsilon_mode=REAL_EPSILON_MODE,
                     selection_method='maxmin', task='binary',
                     n_jobs=-1, seed=rep_seed, verbose=False,
                 )

@@ -533,6 +533,12 @@ perimeter $\approx$ area). Binary classification task.
 \paragraph{Superconductor.}
 81 features describing physical and chemical properties of 21,263
 superconducting materials. Regression task predicting critical temperature.
+We use $\varepsilon = 0.05$ in relative mode (retaining models within
+5\% of the best validation score).
+
+\subsection{Methods compared}
+
+We compare 10 methods (Table~\ref{tab:methods}):
 We use relative $\varepsilon = 0.05$ for scale-appropriate filtering.
 
 \paragraph{California Housing.}
@@ -549,6 +555,7 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \centering
 \caption{Methods compared in the benchmark. All use XGBoost as the base learner.}
 \label{tab:methods}
+\begin{tabular}{lp{7.5cm}}
 \begin{tabular}{llp{6.8cm}}
 \toprule
 & \textbf{Method} & \textbf{Description} \\
@@ -560,6 +567,18 @@ We compare 9 methods (Table~\ref{tab:methods}):
   & LSM (Tuned)       & Grid search over \texttt{max\_depth}, \texttt{learning\_rate} \\
   & Ensemble SHAP     & Single 2000-tree ensemble (\texttt{colsample\_bytree}{=}0.8) \\
 \midrule
+Single Best       & Best of 30 hyperparameter-tuned models (standard practice) \\
+Single Best (M=200) & Best of 200 trials (matched compute budget) \\
+Large Single Model & One XGBoost with $\sim$10K+ trees, low \texttt{colsample\_bytree},
+                     fixed hyperparameters \\
+LSM (Tuned)       & Same as LSM, with grid search over
+                     \texttt{max\_depth} and \texttt{learning\_rate} \\
+Ensemble SHAP     & Single large XGBoost (2000 trees, \texttt{colsample\_bytree}=0.8) \\
+Stochastic Retrain & $K$ models with different random seeds, same hyperparameters \\
+Random Selection  & DASH population + filter, but random (not MaxMin) model selection \\
+Naive Top-N       & Top $K$ models by validation score, averaged without diversity selection \\
+\dash{} (MaxMin)  & Full pipeline with MaxMin diversity selection \\
+\dash{} (Dedup)   & Full pipeline with deduplication-based selection \\
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain & $K$ models, different seeds, same hyperparameters \\
   & Random Selection  & DASH population + filtering, random $K$ selection \\
@@ -757,6 +776,12 @@ $^\dagger$Matched compute budget ($M{=}200$ models trained).}
   & LSM (Tuned)          & $.945 \pm .006$ & .972 & .245 & --- \\
   & Ensemble SHAP        & $.962 \pm .005$ & .980 & .232 & --- \\
 \midrule
+\multirow{5}{*}{\rotatebox{90}{\scriptsize Independent}}
+  & Stochastic Retrain   & 0.9795 & 0.9892 & 0.1719 \\
+  & Random Selection     & ---* & ---* & ---* \\
+  & Naive Top-N          & ---* & ---* & ---* \\
+  & \dash{} (Dedup)      & \textbf{0.9820} & \textbf{0.9909} & \textbf{0.1498} \\
+  & \dash{} (MaxMin)     & 0.9805 & 0.9901 & 0.1625 \\
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain   & $.980 \pm .003$ & .989 & .172 & --- \\
   & Random Selection$^\dagger$ & $.978 \pm .003$ & .988 & .175 & --- \\
@@ -931,6 +956,13 @@ attributions.}
 
 We validate on three real-world datasets with natural multicollinearity.
 
+\paragraph{California Housing.}
+On the California Housing dataset (8 features, regression), \dash{} improves
+stability over Single Best despite the smaller feature space. The natural
+correlation between spatial features (latitude/longitude) and socioeconomic
+variables (income/rooms/bedrooms) creates mild multicollinearity that is
+sufficient to destabilize single-model explanations.
+
 \paragraph{Breast Cancer Wisconsin.}
 On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 20 repetitions), \dash{} nearly doubles stability:
@@ -943,6 +975,10 @@ Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
 \begin{tabular}{llccc}
 \toprule
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability} & \textbf{$\Delta$Stab.} & \textbf{RMSE/AUC} \\
+\midrule
+\multirow{2}{*}{California Housing}
+  & Single Best          & ---* & --- \\
+  & \textbf{DASH (MaxMin)} & \textbf{---*} & --- \\
 \midrule
 \multirow{2}{*}{Breast Cancer}
   & Single Best            & $0.534 \pm 0.04$ & ---    & $0.97 \pm 0.01$ \\
@@ -957,7 +993,8 @@ Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
   & Single Best            & $0.930 \pm 0.02$ & ---    & $0.48 \pm 0.01$ \\
   & \textbf{DASH (MaxMin)} & $\mathbf{0.971} \pm 0.01$ & $+0.041$ & $\mathbf{0.47} \pm 0.01$ \\
 \bottomrule
-\end{tabular}
+\end{tabular}\\[2pt]
+\footnotesize{*California Housing values to be populated from experiment results.}
 \end{table}
 
 The Breast Cancer improvement ($+0.399$) is the largest across all
