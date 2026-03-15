@@ -14,6 +14,8 @@ def save_json(data, path):
             return obj.tolist()
         if isinstance(obj, dict):
             return {str(k): convert(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [convert(v) for v in obj]
         return obj
 
     with open(path, 'w') as f:
