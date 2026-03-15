@@ -439,6 +439,7 @@ def experiment_linear_sweep():
                     )
                     imp = naive.global_importance_
                     rmse_val = np.nan  # No ensemble predictions for this baseline
+                    m = naive  # Update m so k_eff tracking below uses correct object
 
                 r, _ = importance_accuracy(imp, true_imp)
                 acc_runs.append(r)
