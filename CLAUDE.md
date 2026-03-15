@@ -95,6 +95,7 @@ git config core.hooksPath .githooks
 
 ## Key Results (for quick reference)
 
+At rho=0.9 (20 reps, v6): DASH stability=0.981 vs Single Best=0.960 vs LSM=0.940
 At rho=0.95 (20 reps): DASH stability=0.982 vs Single Best=0.953 vs LSM=0.930
 Breast Cancer: DASH stability=0.933 vs Single Best=0.534 (+0.399)
 Superconductor: DASH stability=0.965 vs Single Best=0.848 vs LSM=0.702
