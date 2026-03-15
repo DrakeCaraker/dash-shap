@@ -14,7 +14,7 @@ __all__ = [
 ]
 
 
-def get_preliminary_importance(models, indices, X_ref, method="gain", n_subsample=500):
+def get_preliminary_importance(models, indices, X_ref, method="gain", n_subsample=500, seed=None):
     """Compute preliminary feature importance vectors for each model."""
     P = X_ref.shape[1]
     importance_vectors = {}
@@ -35,7 +35,13 @@ def get_preliminary_importance(models, indices, X_ref, method="gain", n_subsampl
             importance_vectors[idx] = imp
 
         elif method == "shap_subsample":
-            X_sub = X_ref[:min(n_subsample, len(X_ref))]
+            n_sub = min(n_subsample, len(X_ref))
+            if seed is not None:
+                rng = np.random.RandomState(seed)
+                sub_idx = rng.choice(len(X_ref), n_sub, replace=False)
+                X_sub = X_ref[sub_idx]
+            else:
+                X_sub = X_ref[:n_sub]
             explainer = shap.TreeExplainer(model)
             sv = explainer.shap_values(X_sub)
             if isinstance(sv, list):

@@ -23,6 +23,7 @@ Available experiments:
     epsilon_sensitivity    Epsilon sensitivity analysis
     ablation               Ablation studies (M, K, epsilon, delta)
     variance_decomposition Variance decomposition (data vs model variance)
+    first_mover_visualization First-mover bias concentration figure
     success_criteria       Run linear_sweep then evaluate pass/fail criteria
 """
 
@@ -303,12 +304,14 @@ def experiment_linear_sweep():
         'Large Single Model', 'LSM (Tuned)',
         'Stochastic Retrain', 'Random Selection',  # M2: isolate MaxMin value
         'DASH (MaxMin)',
+        'Naive Top-N',  # Ablation: averaging without diversity selection (reuses DASH population)
     ]
     sweep_results = {rho: {} for rho in rho_levels}
     feature_names = make_feature_names()  # m6: dynamic
 
     for rho in rho_levels:
         log(f"\n--- ρ = {rho} ---")
+        dash_cache = {}  # Cache DASH pipelines per rep for Naive Top-N reuse
         for name in sweep_methods:
             t_method = time.time()
             acc_runs, eq_runs, imp_runs, rmse_runs, gacc_runs, gmse_runs, keff_runs = \
@@ -357,7 +360,7 @@ def experiment_linear_sweep():
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
                     rmse_val = rmse_score(yte, preds)
-                else:  # DASH MaxMin
+                elif name == 'DASH (MaxMin)':
                     m = DASHPipeline(
                         M=M, K=K, epsilon=EPSILON, delta=DELTA,
                         selection_method='maxmin', n_jobs=-1,
@@ -367,6 +370,19 @@ def experiment_linear_sweep():
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
                     rmse_val = rmse_score(yte, preds)
+                    # Cache for Naive Top-N reuse
+                    dash_cache[rep] = m
+                elif name == 'Naive Top-N':
+                    # Reuse DASH population: top-K by val score, no diversity selection
+                    cached = dash_cache.get(rep)
+                    if cached is None:
+                        raise RuntimeError("Naive Top-N requires DASH (MaxMin) to run first")
+                    naive = NaiveAveragingBaseline(N=K, task='regression')
+                    naive.fit_from_population(
+                        cached.models_, cached.val_scores_, Xexp,
+                    )
+                    imp = naive.global_importance_
+                    rmse_val = np.nan  # No ensemble predictions for this baseline
 
                 r, _ = importance_accuracy(imp, true_imp)
                 acc_runs.append(r)
@@ -420,6 +436,7 @@ def experiment_linear_sweep():
 
     elapsed = time.time() - t0
     log(f"  Linear sweep completed in {elapsed/60:.1f} min")
+    format_timing_table(sweep_results, rho=0.9)
     return sweep_results
 
 
@@ -1339,6 +1356,130 @@ def experiment_success_criteria():
 
 
 ###############################################################################
+# EXPERIMENT: First-Mover Bias Visualization
+###############################################################################
+
+def experiment_first_mover_visualization():
+    """Visualize first-mover bias: importance concentration within a correlated group.
+
+    Generates a grouped bar chart showing per-feature importance within
+    correlated group 1 (features 0-4, all with true importance beta/5 = 0.4)
+    for Single Best, Large Single Model, and DASH (MaxMin).
+
+    This figure directly demonstrates the first-mover bias mechanism:
+    SB/LSM concentrate importance on one arbitrary feature, while DASH
+    distributes it proportionally.
+    """
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: First-Mover Bias Visualization")
+    log("=" * 70)
+
+    rho = 0.9
+    feature_names = make_feature_names()
+    group_features = list(range(5))  # Group 1: features 0-4
+    group_labels = [feature_names[i] for i in group_features]
+    n_vis_reps = 5  # Average over a few reps for stability
+
+    methods_to_run = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
+    method_importances = {m: [] for m in methods_to_run}
+
+    for rep in range(n_vis_reps):
+        rep_seed = SEED + rep
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
+            generate_synthetic_linear(N=5000, rho=rho, seed=rep_seed)
+
+        # Single Best
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        method_importances['Single Best'].append(sb.global_importance_[group_features])
+
+        # Large Single Model
+        lsm = LargeSingleModelBaseline(
+            K=K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
+            colsample_bytree=0.2, seed=rep_seed,
+        )
+        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        method_importances['Large Single Model'].append(lsm.global_importance_[group_features])
+
+        # DASH (MaxMin)
+        dash = DASHPipeline(
+            M=M, K=K, epsilon=EPSILON, delta=DELTA,
+            selection_method='maxmin', n_jobs=-1,
+            seed=rep_seed, verbose=False,
+        )
+        dash.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        method_importances['DASH (MaxMin)'].append(dash.global_importance_[group_features])
+
+    # Average across reps
+    avg_imp = {m: np.mean(method_importances[m], axis=0) for m in methods_to_run}
+    std_imp = {m: np.std(method_importances[m], axis=0, ddof=1) for m in methods_to_run}
+
+    # True importance for group 1
+    true_per_feature = 2.0 / 5  # beta_1 / group_size
+
+    # Log results
+    log(f"\n  Per-feature importance within Group 1 (true = {true_per_feature:.2f} each):")
+    log(f"  {'Feature':<12} {'SB':>8} {'LSM':>8} {'DASH':>8}")
+    log("  " + "-" * 40)
+    for i, fname in enumerate(group_labels):
+        log(f"  {fname:<12} {avg_imp['Single Best'][i]:>8.4f} "
+            f"{avg_imp['Large Single Model'][i]:>8.4f} "
+            f"{avg_imp['DASH (MaxMin)'][i]:>8.4f}")
+
+    # Concentration metric: max/sum within group
+    for m in methods_to_run:
+        conc = np.max(avg_imp[m]) / (np.sum(avg_imp[m]) + 1e-10)
+        log(f"  {m}: concentration = {conc:.3f} (1/5 = 0.200 is perfectly equitable)")
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(8, 5))
+    x = np.arange(len(group_features))
+    width = 0.22
+    colors_list = [COLORS.get(m, '#333') for m in methods_to_run]
+    for i, m in enumerate(methods_to_run):
+        ax.bar(x + i * width, avg_imp[m], width, yerr=std_imp[m],
+               label=m, color=colors_list[i], capsize=3, alpha=0.85)
+    ax.axhline(y=true_per_feature, color='black', linestyle='--', linewidth=1,
+               label=f'True importance ({true_per_feature:.2f})', alpha=0.6)
+    ax.set_xlabel('Feature (within correlated group 1)')
+    ax.set_ylabel('Global importance (mean |SHAP|)')
+    ax.set_title(f'First-Mover Bias: Importance Concentration at ρ={rho}')
+    ax.set_xticks(x + width)
+    ax.set_xticklabels(group_labels)
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    fig.savefig(f"{OUT}/figures/first_mover_concentration.pdf", dpi=150)
+    fig.savefig(f"{OUT}/figures/first_mover_concentration.png", dpi=150)
+    plt.close(fig)
+    log(f"  Saved: {OUT}/figures/first_mover_concentration.pdf")
+
+    elapsed = time.time() - t0
+    log(f"  First-mover visualization completed in {elapsed/60:.1f} min")
+    return avg_imp
+
+
+###############################################################################
+# HELPERS: Timing summary
+###############################################################################
+
+def format_timing_table(sweep_results, rho=0.9):
+    """Print a formatted timing comparison table from sweep results."""
+    if rho not in sweep_results:
+        log(f"  No results for ρ={rho}")
+        return
+    results = sweep_results[rho]
+    log(f"\n  Wall-clock timings at ρ={rho} ({N_REPS} reps):")
+    log(f"  {'Method':<24} {'Total (s)':>10} {'Per-rep (s)':>12}")
+    log("  " + "-" * 48)
+    for name, data in results.items():
+        elapsed = data.get('elapsed_s', 0)
+        per_rep = elapsed / N_REPS if N_REPS > 0 else 0
+        log(f"  {name:<24} {elapsed:>10.1f} {per_rep:>12.1f}")
+
+
+###############################################################################
 # EXPERIMENT REGISTRY
 ###############################################################################
 
@@ -1353,6 +1494,7 @@ EXPERIMENTS = {
     'epsilon_sensitivity': experiment_epsilon_sensitivity,
     'ablation': experiment_ablation,
     'variance_decomposition': experiment_variance_decomposition,
+    'first_mover_visualization': experiment_first_mover_visualization,
     'success_criteria': experiment_success_criteria,
 }
 
