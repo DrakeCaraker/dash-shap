@@ -8,7 +8,7 @@ DASH is Paper 1 of a five-paper research program that builds from a practical to
 
 Practical tool and empirical validation. The core claim: DASH produces more stable, accurate, and equitable SHAP importance rankings than single-model or single-ensemble approaches, with the advantage growing as feature collinearity increases. The key mechanistic insight is that sequential residual dependency within a single boosting ensemble amplifies collinearity-induced instability, and only independence between models resolves it.
 
-**Results to date:** DASH stability exceeds Single Best at 5/5 correlation levels (full run). DGP agreement at ρ=0.9: Spearman ρ = 0.990. Equity 33% better than Single Best at ρ=0.95. Large Single Model degrades faster than Single Best at all ρ levels, confirming the first-mover hypothesis. FSI correctly identifies known collinear clusters on Breast Cancer data without supervision.
+**Results to date (v6):** DASH stability exceeds Single Best at 5/5 correlation levels (confirmed in v6). DGP agreement at ρ=0.9: Spearman ρ = 0.990. Equity 24% better than Single Best at ρ=0.9 (CV 0.166 vs 0.218). Large Single Model degrades faster than Single Best at all ρ levels, confirming the first-mover hypothesis. FSI correctly identifies known collinear clusters on Breast Cancer data without supervision. Safety at ρ=0: DGP agreement gap = 0.0019.
 
 **Remaining work:** Full experiments at M=200, K=20, N_REPS=10 across all ρ levels, both DGPs, and all 8 methods. UCI benchmarks (Superconductor, Communities & Crime). UCR time series + tsfresh experiments (5 datasets). Ablation studies (M, K, ε, δ, colsample range, importance proxy). Statistical testing: Friedman omnibus + Wilcoxon with Bonferroni correction.
 
