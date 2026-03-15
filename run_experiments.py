@@ -1444,7 +1444,7 @@ def experiment_first_mover_visualization():
     feature_names = make_feature_names()
     group_features = list(range(5))  # Group 1: features 0-4
     group_labels = [feature_names[i] for i in group_features]
-    n_vis_reps = 5  # Average over a few reps for stability
+    n_vis_reps = 20  # Match N_REPS for publication-quality results
 
     methods_to_run = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
     method_importances = {m: [] for m in methods_to_run}
@@ -1547,7 +1547,7 @@ def experiment_first_mover_bias():
 
     rho = 0.9
     n_estimator_levels = [50, 100, 200, 500, 1000, 2000]
-    n_bias_reps = 5
+    n_bias_reps = 20  # Match N_REPS for publication-quality results
     feature_names_loc = make_feature_names()
     group_features = list(range(5))  # Group 1: features 0-4
 
