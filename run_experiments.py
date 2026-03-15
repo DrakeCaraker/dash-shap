@@ -1220,19 +1220,33 @@ def experiment_ablation():
                         delta=p['delta'], selection_method='maxmin',
                         n_jobs=-1, seed=rep_seed, verbose=False,
                     )
-                    dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
+                    try:
+                        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
+                    except ValueError:
+                        # Too few models passed filter (e.g. eps too tight)
+                        continue
                     imp = dm.global_importance_
                     r, _ = dgp_agreement(imp, true_imp)
                     acc_runs.append(r)
                     imp_runs.append(imp)
 
-                stab = importance_stability(imp_runs)
-                abl_results[abl_rho][param_name][val] = {
-                    'stability': stab,
-                    'accuracy_mean': np.mean(acc_runs),
-                    'accuracy_std': np.std(acc_runs, ddof=1),
-                }
-                log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}")
+                if len(imp_runs) >= 2:
+                    stab = importance_stability(imp_runs)
+                    abl_results[abl_rho][param_name][val] = {
+                        'stability': stab,
+                        'accuracy_mean': np.mean(acc_runs),
+                        'accuracy_std': np.std(acc_runs, ddof=1),
+                        'n_successful': len(imp_runs),
+                    }
+                    log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)")
+                else:
+                    abl_results[abl_rho][param_name][val] = {
+                        'stability': float('nan'),
+                        'accuracy_mean': float('nan'),
+                        'accuracy_std': float('nan'),
+                        'n_successful': len(imp_runs),
+                    }
+                    log(f"    SKIPPED — only {len(imp_runs)}/{ABL_N_REPS} reps passed filter")
 
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
