@@ -11,15 +11,15 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{multirow}
-\usepackage{hyperref}
+\usepackage{xcolor}
 \usepackage{natbib}
 \usepackage{algorithm}
 \usepackage{algorithmic}
-\usepackage{xcolor}
 \usepackage{caption}
 \usepackage{subcaption}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
+\usepackage{hyperref}
 
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
 
@@ -318,7 +318,7 @@ A good feature importance method under multicollinearity should satisfy:
   stage/.style={rectangle, draw=black!80, fill=blue!8, rounded corners=3pt,
     minimum height=1.1cm, minimum width=2.4cm, align=center, font=\small},
   arr/.style={-{Stealth[length=5pt]}, thick, color=black!70},
-  note/.style={font=\scriptsize\itshape, color=black!60},
+  note/.style={font=\scriptsize\itshape, color=black!60, align=center},
 ]
   \node[stage] (pop)  {Population\\Generation};
   \node[stage, right=0.6cm of pop]  (filt) {Performance\\Filtering};
@@ -385,9 +385,9 @@ best:
 where $s_i$ is the negative RMSE (for regression) or AUC (for
 classification) of model $i$. This ensures that all explanations come from
 models that have learned meaningful signal. We use $\varepsilon = 0.08$
-for synthetic data (corresponding to $\sim$2\% relative tolerance on
-RMSE~$\approx 3$) and scale-appropriate values for real datasets
-(\eg $\varepsilon = 0.40$ for Superconductor, where RMSE~$\approx 18$).
+(absolute mode) for synthetic data and $\varepsilon = 0.05$ (relative
+mode, retaining models within 5\% of the best score) for real-world
+datasets.
 
 \subsection{Stage 3: Diversity Selection}
 
@@ -536,16 +536,12 @@ superconducting materials. Regression task predicting critical temperature.
 We use $\varepsilon = 0.05$ in relative mode (retaining models within
 5\% of the best validation score).
 
-\subsection{Methods compared}
-
-We compare 10 methods (Table~\ref{tab:methods}):
-We use relative $\varepsilon = 0.05$ for scale-appropriate filtering.
-
 \paragraph{California Housing.}
 8 features describing housing characteristics of 20,640 California
 census blocks. Regression task predicting median house value. Moderate
 collinearity: several feature pairs with $|r| > 0.7$ (\eg income and
 house value, latitude and longitude).
+We use relative $\varepsilon = 0.05$ for scale-appropriate filtering.
 
 \subsection{Methods compared}
 
@@ -555,7 +551,6 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \centering
 \caption{Methods compared in the benchmark. All use XGBoost as the base learner.}
 \label{tab:methods}
-\begin{tabular}{lp{7.5cm}}
 \begin{tabular}{llp{6.8cm}}
 \toprule
 & \textbf{Method} & \textbf{Description} \\
@@ -567,18 +562,6 @@ We compare 9 methods (Table~\ref{tab:methods}):
   & LSM (Tuned)       & Grid search over \texttt{max\_depth}, \texttt{learning\_rate} \\
   & Ensemble SHAP     & Single 2000-tree ensemble (\texttt{colsample\_bytree}{=}0.8) \\
 \midrule
-Single Best       & Best of 30 hyperparameter-tuned models (standard practice) \\
-Single Best (M=200) & Best of 200 trials (matched compute budget) \\
-Large Single Model & One XGBoost with $\sim$10K+ trees, low \texttt{colsample\_bytree},
-                     fixed hyperparameters \\
-LSM (Tuned)       & Same as LSM, with grid search over
-                     \texttt{max\_depth} and \texttt{learning\_rate} \\
-Ensemble SHAP     & Single large XGBoost (2000 trees, \texttt{colsample\_bytree}=0.8) \\
-Stochastic Retrain & $K$ models with different random seeds, same hyperparameters \\
-Random Selection  & DASH population + filter, but random (not MaxMin) model selection \\
-Naive Top-N       & Top $K$ models by validation score, averaged without diversity selection \\
-\dash{} (MaxMin)  & Full pipeline with MaxMin diversity selection \\
-\dash{} (Dedup)   & Full pipeline with deduplication-based selection \\
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain & $K$ models, different seeds, same hyperparameters \\
   & Random Selection  & DASH population + filtering, random $K$ selection \\
@@ -776,12 +759,6 @@ $^\dagger$Matched compute budget ($M{=}200$ models trained).}
   & LSM (Tuned)          & $.945 \pm .006$ & .972 & .245 & --- \\
   & Ensemble SHAP        & $.962 \pm .005$ & .980 & .232 & --- \\
 \midrule
-\multirow{5}{*}{\rotatebox{90}{\scriptsize Independent}}
-  & Stochastic Retrain   & 0.9795 & 0.9892 & 0.1719 \\
-  & Random Selection     & ---* & ---* & ---* \\
-  & Naive Top-N          & ---* & ---* & ---* \\
-  & \dash{} (Dedup)      & \textbf{0.9820} & \textbf{0.9909} & \textbf{0.1498} \\
-  & \dash{} (MaxMin)     & 0.9805 & 0.9901 & 0.1625 \\
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain   & $.980 \pm .003$ & .989 & .172 & --- \\
   & Random Selection$^\dagger$ & $.978 \pm .003$ & .988 & .175 & --- \\
@@ -976,10 +953,6 @@ Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
 \toprule
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability} & \textbf{$\Delta$Stab.} & \textbf{RMSE/AUC} \\
 \midrule
-\multirow{2}{*}{California Housing}
-  & Single Best          & ---* & --- \\
-  & \textbf{DASH (MaxMin)} & \textbf{---*} & --- \\
-\midrule
 \multirow{2}{*}{Breast Cancer}
   & Single Best            & $0.534 \pm 0.04$ & ---    & $0.97 \pm 0.01$ \\
   & \textbf{DASH (MaxMin)} & $\mathbf{0.933} \pm 0.01$ & $+0.399$ & $\mathbf{0.98} \pm 0.01$ \\
@@ -993,8 +966,7 @@ Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
   & Single Best            & $0.930 \pm 0.02$ & ---    & $0.48 \pm 0.01$ \\
   & \textbf{DASH (MaxMin)} & $\mathbf{0.971} \pm 0.01$ & $+0.041$ & $\mathbf{0.47} \pm 0.01$ \\
 \bottomrule
-\end{tabular}\\[2pt]
-\footnotesize{*California Housing values to be populated from experiment results.}
+\end{tabular}
 \end{table}
 
 The Breast Cancer improvement ($+0.399$) is the largest across all
