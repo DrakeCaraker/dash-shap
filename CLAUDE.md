@@ -27,7 +27,14 @@ paper/            LaTeX source
 
 - `dash.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
 - `run_experiments.py` — CLI experiment runner (10 experiments, plotting, JSON output)
-- `notebooks/demo_benchmark_6.ipynb` — **authoritative** benchmark notebook
+- `notebooks/demo_benchmark_7.ipynb` — **authoritative** interactive benchmark notebook
+- `notebooks/explore_experiment_results.ipynb` — interactive viewer for `run_experiments.py` output
+
+## Experiment Synchronization
+
+- `run_experiments.py` is the canonical **non-interactive** experimental pipeline
+- `notebooks/demo_benchmark_7.ipynb` is the canonical **interactive** experimental pipeline — both must produce the same results
+- `notebooks/explore_experiment_results.ipynb` visualizes `run_experiments.py` output interactively — updates to either must be reflected in both
 
 ## Canonical Configuration (PAPER_CONFIG)
 
@@ -56,7 +63,7 @@ epsilon_mode = 'relative'
 - **Lazy imports** via `__getattr__` in all `__init__.py` files
 - **4-way data split** in synthetic generators: X_train, X_val, X_explain (SHAP background), X_test (RMSE eval)
 - **Checkpoint pattern** in notebooks: `save_checkpoint(name, data)` / `load_checkpoint(name)` writes `.pkl` to `checkpoints/`
-- **Notebook naming**: `demo_benchmark_{N}.ipynb` — higher N supersedes lower. **6 is authoritative**; 0–5 are historical
+- **Notebook naming**: `demo_benchmark_{N}.ipynb` — higher N supersedes lower. **7 is authoritative**; 0–6 are historical
 - **Tests**: `pytest` from repo root. ~47 tests across 4 files. No GPU required.
 - **Parallelism** via `joblib` (n_jobs parameter on DASHPipeline)
 
@@ -81,7 +88,7 @@ git config core.hooksPath .githooks
 
 - Commit `.pkl` files or anything in `checkpoints/`
 - Track build artifacts (`dist/`, `build/`, `*.egg-info/`)
-- Modify notebooks `demo_benchmark` through `demo_benchmark_5` (historical artifacts)
+- Modify notebooks `demo_benchmark` through `demo_benchmark_6` (historical artifacts)
 - Push notebooks with large embedded outputs (>1MB) — clear outputs first
 - Use `dash` as a bare import in tests (shadows the package — use `from dash.core import ...`)
 - Train models with high `colsample_bytree` (>0.5) in DASH population — defeats the diversity mechanism
