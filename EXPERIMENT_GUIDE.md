@@ -2,7 +2,7 @@
 
 **What the experiments test, why each piece matters, and how to interpret the results.**
 
-**Authoritative notebook**: `notebooks/demo_benchmark_7.ipynb` (46 cells, mechanism-first structure, checkpointed)
+**Authoritative notebook**: `notebooks/demo_benchmark_7.ipynb` (53 cells, mechanism-first structure, checkpointed)
 **Automated script**: `run_experiments.py` (mirrors the notebook, outputs to `results/`)
 
 ## The Problem DASH Solves
@@ -40,7 +40,9 @@ All experiments share a single `PAPER_CONFIG` defined in the notebook's setup ce
 
 ---
 
-## The 10 Methods and What Each Tests
+## The 9 Methods (+ 2 Variants) and What Each Tests
+
+The paper's Table 2 compares 9 primary methods. Two additional DASH variants (Cluster, Dedup) are tested in specific contexts only.
 
 **Single Best**: The standard practice. Tune one XGBoost model across 30 hyperparameter trials, compute SHAP, report importance. This is what most practitioners do today. It is the baseline to beat.
 
@@ -60,9 +62,9 @@ All experiments share a single `PAPER_CONFIG` defined in the notebook's setup ce
 
 **DASH (MaxMin)**: The recommended default. Greedy max-min dissimilarity selection ensures each added model is maximally different from all previously selected models in its feature utilization pattern. Does not require the correlation matrix.
 
-**DASH (Cluster)**: Feature cluster coverage selection. Uses the correlation matrix to identify correlated groups, then selects models covering different clusters. Strong when correlation structure is clean block-diagonal.
+**DASH (Cluster)** *(variant, overlapping experiment only)*: Feature cluster coverage selection. Uses the correlation matrix to identify correlated groups, then selects models covering different clusters. Strong when correlation structure is clean block-diagonal. Not included in the paper's main methods table.
 
-**DASH (Dedup)**: Rank correlation deduplication. Removes models whose importance vectors are too similar (Spearman rho > 0.95) but does not actively seek diversity. The weakest DASH variant -- a sanity check that even minimal deduplication helps.
+**DASH (Dedup)** *(variant, Table 2 only)*: Rank correlation deduplication. Removes models whose importance vectors are too similar (Spearman rho > 0.95) but does not actively seek diversity. The weakest DASH variant -- a sanity check that even minimal deduplication helps. Evaluated at rho=0.9 only.
 
 ### Expected ranking at high rho
 
@@ -82,15 +84,15 @@ The synthetic data has 50 features in 10 groups of 5, where within-group correla
 
 We sweep rho in {0.0, 0.5, 0.7, 0.9, 0.95} and run **20 repetitions** at each level. For each repetition, we regenerate the data (same coefficients, new random draws) and run all 7 sweep methods.
 
-### Sweep methods (7)
+### Sweep methods (8)
 
-Single Best, Single Best (M=200), Large Single Model, LSM (Tuned), Stochastic Retrain, Random Selection, and DASH (MaxMin). Three additional methods (Ensemble SHAP, Stochastic Retrain, DASH Dedup) are evaluated at rho=0.9 only in the Table 2 section.
+Single Best, Single Best (M=200), Large Single Model, LSM (Tuned), Stochastic Retrain, Random Selection, Naive Top-N, and DASH (MaxMin). Three additional methods (Ensemble SHAP, Stochastic Retrain, DASH Dedup) are evaluated at rho=0.9 only in the Table 2 section.
 
 ### Four metrics
 
 **Stability** (the headline metric): After running the full pipeline 20 times with different random seeds, how consistent are the importance rankings? Measured as the mean pairwise Spearman correlation across all pairs of runs. BCa bootstrap confidence intervals are computed for each method at each rho level.
 
-**DGP Agreement** (formerly "Accuracy"): Spearman correlation between estimated importance and known ground truth. Reported as a sanity check alongside stability and equity, not as the primary evaluation criterion. The ground truth presupposes equitable within-group credit distribution, making this partially circular with equity.
+**DGP Agreement** (formerly "Accuracy"): Spearman correlation between estimated importance and known ground truth. Reported as a sanity check alongside stability and equity, not as the primary evaluation criterion. The ground truth presupposes equitable within-group credit distribution, making this partially circular with equity. **Note**: The paper uses "Accuracy" for brevity; the code uses both `dgp_agreement()` and `importance_accuracy()` (aliases).
 
 **Within-group equity**: Coefficient of variation of importance within each correlated group. Lower is better. Groups with near-zero mean importance are excluded by default.
 
@@ -114,7 +116,7 @@ Single Best, Single Best (M=200), Large Single Model, LSM (Tuned), Stochastic Re
 
 **At rho=0.9 and rho=0.95**: DASH should dominate. Single Best stability should degrade sharply. The equity gap should be large.
 
-The correlation sweep plot (4 panels: stability, accuracy, equity, RMSE vs rho) is the paper's central figure.
+The correlation sweep plot (3 panels: stability, accuracy, equity vs rho) is the paper's central figure.
 
 ---
 
@@ -228,7 +230,23 @@ For Single Best, model-selection variance should dominate (the arbitrary hyperpa
 
 ---
 
-## Experiment 8: Statistical Significance Tests
+## Experiment 8: First-Mover Visualization
+
+Generates the concentration figure for the paper (Figure 2). Shows per-feature importance within a single correlated group (5 features, each with true importance 0.40) for Single Best, Large Single Model, and DASH (MaxMin). Demonstrates that Single Best and LSM concentrate importance on an arbitrary feature while DASH distributes proportionally.
+
+Run via `run_experiments.py --experiments first_mover_visualization`. Output: `results/figures/first_mover_concentration.{pdf,png}`.
+
+---
+
+## Experiment 9: First-Mover Bias Isolation
+
+Shows how first-mover bias concentration grows with tree count in a single sequential model. Trains models with increasing numbers of trees and measures importance concentration within correlated groups. Confirms the mechanistic prediction: more sequential trees amplify the first-mover advantage.
+
+Run via `run_experiments.py --experiments first_mover_bias`. Output: `results/figures/first_mover_bias_isolation.{pdf,png}`, `results/tables/first_mover_bias.json`.
+
+---
+
+## Experiment 10: Statistical Significance Tests
 
 Applies Wilcoxon signed-rank tests to per-repetition accuracy and equity values from the correlation sweep.
 
@@ -351,9 +369,9 @@ The notebook uses short tags to reference specific design decisions:
 
 ## What This Means for the Paper
 
-The correlation sweep fills in the central figure (4 panels: stability, accuracy, equity, RMSE vs rho). The bar chart at rho=0.9 becomes the summary figure. The IS Plots on real data become showcase figures. The disagreement map demonstrates individual-level uncertainty quantification.
+The correlation sweep fills in the central figure (3 panels: stability, accuracy, equity vs rho). The bar chart at rho=0.9 becomes the summary figure. The IS Plots on real data become showcase figures. The disagreement map demonstrates individual-level uncertainty quantification.
 
-Table 1: Correlation sweep results (7 methods x 5 rho levels).
+Table 1: Correlation sweep results (8 sweep methods x 5 rho levels).
 Table 2: All 10 methods at rho=0.9 (sweep methods + extended baselines).
 Table 3: Real-world benchmarks (California, Breast Cancer, Superconductor) with stability, RMSE, ablation, and significance tests.
 Table 4: Ablation results (M, K, epsilon, delta sensitivity).

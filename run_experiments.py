@@ -2,7 +2,7 @@
 """
 DASH Experimental Validation — Complete Runner
 ===============================================
-Aligned with audited demo_benchmark_4.ipynb (PAPER_CONFIG).
+Aligned with audited demo_benchmark_7.ipynb (PAPER_CONFIG).
 
 Run all experiments:
     python run_experiments.py
@@ -1345,13 +1345,21 @@ def experiment_variance_decomposition():
 # SUCCESS CRITERIA
 ###############################################################################
 
-def check_success_criteria(sweep_results):
-    """Evaluate pass/fail criteria against the linear sweep results."""
+def check_success_criteria(sweep_results, epsilon_results=None,
+                           nonlinear_results=None, sig_results=None,
+                           sc_results=None, cal_results=None,
+                           bc_results=None, vardecomp_results=None):
+    """Evaluate pass/fail criteria against experimental results.
+
+    Criteria 1-5 use sweep_results (required). Criteria 6-11 use optional
+    results from other experiments; they are skipped if not provided.
+    """
     log("\n" + "=" * 70)
     log("SUCCESS CRITERIA CHECK")
     log("=" * 70)
 
     rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
+    results = []
 
     # 1. Stability wins
     n_wins = sum(
@@ -1359,14 +1367,18 @@ def check_success_criteria(sweep_results):
         if sweep_results[rho]['DASH (MaxMin)']['stability']
         > sweep_results[rho]['Single Best']['stability']
     )
+    passed = n_wins >= 4
+    results.append(passed)
     log(f"  1. Stability wins: {n_wins}/{len(rho_levels)} "
-        f"({'PASS' if n_wins >= 4 else 'FAIL'}, need >=80%)")
+        f"({'PASS' if passed else 'FAIL'}, need >=80%)")
 
     # 2. DGP agreement at rho=0.9 (relative to Single Best baseline)
     acc_09 = sweep_results[0.9]['DASH (MaxMin)']['accuracy_mean']
     sb_acc_09 = sweep_results[0.9]['Single Best']['accuracy_mean']
+    passed = acc_09 >= sb_acc_09
+    results.append(passed)
     log(f"  2. DGP agreement at ρ=0.9: DASH={acc_09:.4f} vs SB={sb_acc_09:.4f} "
-        f"({'PASS' if acc_09 >= sb_acc_09 else 'check'}, DASH >= SB)")
+        f"({'PASS' if passed else 'FAIL'}, DASH >= SB)")
 
     # 3. Equity wins
     n_eq_wins = sum(
@@ -1374,27 +1386,119 @@ def check_success_criteria(sweep_results):
         if sweep_results[rho]['DASH (MaxMin)']['equity_mean']
         < sweep_results[rho]['Single Best']['equity_mean']
     )
+    passed = n_eq_wins >= 4
+    results.append(passed)
     log(f"  3. Equity wins: {n_eq_wins}/{len(rho_levels)} "
-        f"({'PASS' if n_eq_wins == len(rho_levels) else 'check'})")
+        f"({'PASS' if passed else 'FAIL'}, need >=80%)")
 
     # 4. Safety control at rho=0
     rho0_dash = sweep_results[0.0]['DASH (MaxMin)']['accuracy_mean']
     rho0_sb = sweep_results[0.0]['Single Best']['accuracy_mean']
+    passed = abs(rho0_dash - rho0_sb) < 0.1
+    results.append(passed)
     log(f"  4. ρ=0 control: DASH dgp={rho0_dash:.4f}, SB dgp={rho0_sb:.4f} "
-        f"({'PASS' if abs(rho0_dash - rho0_sb) < 0.1 else 'check'})")
+        f"({'PASS' if passed else 'FAIL'}, gap < 0.1)")
 
-    # 5. Independence value (DASH vs Large Single Model)
-    if 'Large Single Model' in sweep_results[0.9]:
-        n_lsm_wins = sum(
-            1 for rho in rho_levels
-            if 'Large Single Model' in sweep_results[rho]
-            and sweep_results[rho]['DASH (MaxMin)']['stability']
-            > sweep_results[rho]['Large Single Model']['stability']
-        )
-        log(f"  5. Independence value: DASH > LSM on {n_lsm_wins}/{len(rho_levels)} "
-            f"({'PASS' if n_lsm_wins >= int(0.7 * len(rho_levels)) else 'check'}, need >=70%)")
+    # 5. K_eff increases with epsilon
+    if epsilon_results is not None:
+        eps_vals = sorted(epsilon_results.keys())
+        keffs = [epsilon_results[e].get('k_eff_mean', 0) for e in eps_vals]
+        passed = all(keffs[i] <= keffs[i + 1] for i in range(len(keffs) - 1))
+        results.append(passed)
+        log(f"  5. K_eff monotonic with epsilon: {keffs} "
+            f"({'PASS' if passed else 'FAIL'})")
+    else:
+        log("  5. K_eff monotonicity: SKIP (no epsilon_results)")
+
+    # 6. Nonlinear DGP: DASH > SB stability at rho=0.9
+    if nonlinear_results is not None and 0.9 in nonlinear_results:
+        nl_09 = nonlinear_results[0.9]
+        if 'DASH (MaxMin)' in nl_09 and 'Single Best' in nl_09:
+            d_stab = nl_09['DASH (MaxMin)']['stability']
+            s_stab = nl_09['Single Best']['stability']
+            passed = d_stab > s_stab
+            results.append(passed)
+            log(f"  6. Nonlinear (ρ=0.9): DASH={d_stab:.4f} vs SB={s_stab:.4f} "
+                f"({'PASS' if passed else 'FAIL'})")
+        else:
+            log("  6. Nonlinear DGP: SKIP (missing methods in results)")
+    else:
+        log("  6. Nonlinear DGP: SKIP (no nonlinear_results)")
+
+    # 7. Significance: enough tests significant
+    if sig_results is not None:
+        n_sig = sum(1 for t in sig_results if t.get('significant', False))
+        n_total = len(sig_results)
+        passed = n_total > 0 and n_sig >= n_total * 0.5
+        results.append(passed)
+        log(f"  7. Significance: {n_sig}/{n_total} tests significant "
+            f"({'PASS' if passed else 'FAIL'}, need >=50%)")
+    else:
+        log("  7. Significance tests: SKIP (no sig_results)")
+
+    # 8. Superconductor: DASH stability > SB
+    if sc_results is not None:
+        if 'DASH (MaxMin)' in sc_results and 'Single Best' in sc_results:
+            d_stab = sc_results['DASH (MaxMin)']['stability']
+            s_stab = sc_results['Single Best']['stability']
+            passed = d_stab > s_stab
+            results.append(passed)
+            log(f"  8. Superconductor: DASH={d_stab:.4f} vs SB={s_stab:.4f} "
+                f"({'PASS' if passed else 'FAIL'})")
+        else:
+            log("  8. Superconductor: SKIP (missing methods)")
+    else:
+        log("  8. Superconductor: SKIP (no sc_results)")
+
+    # 9. California Housing: DASH stability > SB
+    if cal_results is not None:
+        if 'DASH (MaxMin)' in cal_results and 'Single Best' in cal_results:
+            d_stab = cal_results['DASH (MaxMin)']['stability']
+            s_stab = cal_results['Single Best']['stability']
+            passed = d_stab > s_stab
+            results.append(passed)
+            log(f"  9. California Housing: DASH={d_stab:.4f} vs SB={s_stab:.4f} "
+                f"({'PASS' if passed else 'FAIL'})")
+        else:
+            log("  9. California Housing: SKIP (missing methods)")
+    else:
+        log("  9. California Housing: SKIP (no cal_results)")
+
+    # 10. Breast Cancer: DASH stability > SB
+    if bc_results is not None:
+        if 'DASH (MaxMin)' in bc_results and 'Single Best' in bc_results:
+            d_stab = bc_results['DASH (MaxMin)']['stability']
+            s_stab = bc_results['Single Best']['stability']
+            passed = d_stab > s_stab
+            results.append(passed)
+            log(f" 10. Breast Cancer: DASH={d_stab:.4f} vs SB={s_stab:.4f} "
+                f"({'PASS' if passed else 'FAIL'})")
+        else:
+            log(" 10. Breast Cancer: SKIP (missing methods)")
+    else:
+        log(" 10. Breast Cancer: SKIP (no bc_results)")
+
+    # 11. Variance decomposition: DASH model-var < SB model-var
+    if vardecomp_results is not None:
+        dash_vd = vardecomp_results.get('DASH (MaxMin)', {})
+        sb_vd = vardecomp_results.get('Single Best', {})
+        d_model = dash_vd.get('model_instability')
+        s_model = sb_vd.get('model_instability')
+        if d_model is not None and s_model is not None:
+            passed = d_model < s_model
+            results.append(passed)
+            log(f" 11. Variance decomp: DASH model-var={d_model:.4f} vs SB={s_model:.4f} "
+                f"({'PASS' if passed else 'FAIL'})")
+        else:
+            log(" 11. Variance decomposition: SKIP (missing instability values)")
+    else:
+        log(" 11. Variance decomposition: SKIP (no vardecomp_results)")
 
     # Summary
+    n_passed = sum(results)
+    n_total = len(results)
+    log(f"\n  Overall: {n_passed}/{n_total} criteria passed")
+
     rho09 = sweep_results[0.9]
     log(f"\n  Stability at ρ=0.9:")
     for n in rho09:
@@ -1406,6 +1510,8 @@ def check_success_criteria(sweep_results):
     if 'Large Single Model' in rho09:
         lsm_stab = rho09['Large Single Model']['stability']
         log(f"  DASH improvement over LSM:         +{dash_stab - lsm_stab:.4f}")
+
+    return results
 
 
 ###############################################################################

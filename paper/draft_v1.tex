@@ -423,12 +423,11 @@ model from each pair. This provides a minimal-overhead diversity guarantee.
 We compute interventional TreeSHAP \citep{lundberg2020local} for each
 selected model $i \in \mathcal{S}$ using a randomly sampled background
 dataset of size $B = 100$. In our experiments, SHAP values are computed
-on the held-out test set $X_{\text{test}}$, which is disjoint from both
-the training set and the validation set used for performance filtering
-(Stage~2).\footnote{Earlier versions of the codebase used the validation
-set as both the filtering criterion and the SHAP reference set, which
-creates a potential confound. We recommend using a held-out reference set
-in practice.}
+on a held-out \emph{explain set} $X_{\text{explain}}$, which is disjoint
+from the training set, the validation set used for performance filtering
+(Stage~2), and the test set used for RMSE evaluation. This four-way split
+(train/val/explain/test) prevents any overlap between the data used for
+model selection, explanation computation, and predictive evaluation.
 \begin{equation}
   \Phi^{(i)} \in \mathbb{R}^{N' \times P}, \quad i \in \mathcal{S}.
 \end{equation}
