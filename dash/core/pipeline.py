@@ -25,11 +25,11 @@ class DASHPipeline:
     def __init__(
         self,
         M=200,
-        K=20,
+        K=30,
         epsilon=0.08,
         epsilon_mode="absolute",
         selection_method="maxmin",
-        delta=0.1,
+        delta=0.05,
         tau=0.3,
         task="regression",
         search_space=None,
