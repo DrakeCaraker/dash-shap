@@ -1,9 +1,8 @@
 # Benchmark Results
 
-**Source notebook:** `demo_benchmark_4_checkpointed.ipynb` (M=200, K=30, 20 repetitions)
-**Authoritative notebook:** `demo_benchmark_6.ipynb` (incorporates all methodology fixes)
+**Source notebook:** `demo_benchmark_6.ipynb` (M=200, K=30, 20 repetitions, canonical config)
 
-> Numbers below come from v4. Directional findings hold; exact numbers may shift when re-run with v6. See [Experiment Guide](../EXPERIMENT_GUIDE.md#methodology-fixes-applied) for the full list of fixes.
+> Numbers at ρ=0.9 are from v6. Correlation sweep, real-world stability, and other sections retain v4 numbers pending full v6 re-run with saved outputs. See [Experiment Guide](../EXPERIMENT_GUIDE.md#methodology-fixes-applied) for the full list of fixes.
 
 ---
 
@@ -55,7 +54,7 @@ The central result: how each method performs as correlation increases from 0.0 t
 ρ=0.0:    DASH=0.9765   SB=0.9756   LSM=0.9649   (comparable -- safety check)
 ρ=0.5:    DASH=0.9816   SB=0.9784   LSM=0.9702   (small advantage)
 ρ=0.7:    DASH=0.9804   SB=0.9697   LSM=0.9635   (advantage emerges)
-ρ=0.9:    DASH=0.9805   SB=0.9601   LSM=0.9401   (clear separation)
+ρ=0.9:    DASH=0.9810   SB=0.9603   LSM=0.9396   (clear separation)
 ρ=0.95:   DASH=0.9819   SB=0.9529   LSM=0.9301   (largest gap)
 ```
 
@@ -64,11 +63,11 @@ The central result: how each method performs as correlation increases from 0.0 t
 ρ=0.0:    DASH=0.1502   SB=0.1522   LSM=0.1547   (comparable)
 ρ=0.5:    DASH=0.1510   SB=0.1653   LSM=0.1799   (advantage begins)
 ρ=0.7:    DASH=0.1540   SB=0.1973   LSM=0.2021   (growing gap)
-ρ=0.9:    DASH=0.1625   SB=0.2171   LSM=0.2528   (25% better than SB)
+ρ=0.9:    DASH=0.1655   SB=0.2182   LSM=0.2539   (24% better than SB)
 ρ=0.95:   DASH=0.1585   SB=0.2421   LSM=0.2708   (34% better than SB)
 ```
 
-DASH stability is effectively flat across all correlation levels (0.9765-0.9819), while Single Best degrades from 0.9756 to 0.9529 and Large Single Model degrades from 0.9649 to 0.9301. DASH is immune to the correlation-induced instability that plagues single-model explanations because its independent models make their arbitrary choices independently, and averaging cancels the arbitrariness.
+DASH stability is effectively flat across all correlation levels (0.9765-0.9819), while Single Best degrades from 0.9756 to 0.9529 and Large Single Model degrades from 0.9649 to 0.9301 (sweep from v4; ρ=0.9 updated to v6). DASH is immune to the correlation-induced instability that plagues single-model explanations because its independent models make their arbitrary choices independently, and averaging cancels the arbitrariness.
 
 ---
 
@@ -82,7 +81,7 @@ DASH stability is effectively flat across all correlation levels (0.9765-0.9819)
 
 4. **DASH is safe when collinearity is absent (linear DGP).** At ρ=0.0, the DGP agreement gap between DASH and Single Best is 0.0005 -- effectively zero under the linear DGP. However, under nonlinear DGPs, DASH shows marginally lower stability at ρ=0.0 and ρ=0.5, so the safety guarantee is conditional on the DGP type.
 
-5. **DASH also has the best predictive RMSE** at every correlation level, disproving the concern that diversified ensembles sacrifice prediction quality. At ρ=0.9: DASH RMSE=0.5821 vs Single Best=0.6043 vs Large Single Model=0.7177.
+5. **DASH also has the best predictive RMSE** at every correlation level, disproving the concern that diversified ensembles sacrifice prediction quality.
 
 6. **Statistical rigor.** Wilcoxon signed-rank tests with Bonferroni correction show statistically significant improvements over Single Best at ρ≥0.7, with large effect sizes (Cohen's d > 1.0). Stability confidence intervals use BCa (bias-corrected and accelerated) bootstrap, which corrects for both bias and skewness. However, the comparison against Stochastic Retrain (the strongest baseline) is not statistically significant at ρ=0.9 (Cohen's d = 0.26, stability gap = 0.001), indicating that DASH's marginal improvement over simple seed averaging is modest.
 
@@ -97,9 +96,9 @@ The v6 benchmark defines 11 formal success criteria (expanded from 9 in v4). The
 | # | Criterion | v4 Result | Threshold |
 |---|-----------|-----------|-----------|
 | 1 | Stability wins (DASH > SB, linear sweep) | **5/5** ρ levels | >= 80% |
-| 2 | DGP agreement at ρ=0.9 (DASH >= SB) | **0.9901 >= 0.9796** | Relative to baseline |
+| 2 | DGP agreement at ρ=0.9 (DASH >= SB) | **0.9901 >= 0.9797** | Relative to baseline |
 | 3 | Equity wins (DASH CV < SB CV) | **5/5** ρ levels | >= 80% |
-| 4 | Safety at ρ=0 (DGP agreement gap) | **0.0005** | < 0.1 |
+| 4 | Safety at ρ=0 (DGP agreement gap) | **0.0019** | < 0.1 |
 | 5 | K_eff increases with ε | **5.8 → 27.1** | Monotonic |
 | 6 | Nonlinear DGP: DASH > SB stability (ρ=0.9) | **0.8955 > 0.8403** | DASH wins |
 | 7 | Breast Cancer: DASH stability > 0.80 | **0.9332** | > 0.80 |

@@ -673,11 +673,11 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
     \textbf{.154} & \textbf{.584} \\
 \midrule
 \multirow{4}{*}{0.9}
-  & Single Best          & $.960 \pm .005$ & .980 & .217 & .604 \\
-  & Large Single Model   & $.940 \pm .007$ & .969 & .253 & .718 \\
-  & Stoch.\ Retrain      & $.980 \pm .003$ & .989 & .172 & .584 \\
+  & Single Best          & $.960 \pm .005$ & .980 & .218 & .604 \\
+  & Large Single Model   & $.940 \pm .007$ & .969 & .254 & .718 \\
+  & Stoch.\ Retrain      & $.980 \pm .003$ & .989 & .177 & .584 \\
   & \textbf{DASH (MaxMin)} & $\mathbf{.981} \pm .003$ & \textbf{.990} &
-    \textbf{.163} & \textbf{.582} \\
+    \textbf{.166} & \textbf{.582} \\
 \midrule
 \multirow{4}{*}{0.95}
   & Single Best          & $.953 \pm .006$ & .976 & .242 & .600 \\
@@ -704,7 +704,7 @@ Three patterns confirm the first-mover bias mechanism:
   \item \textbf{Equity degrades in the same pattern.}
     LSM's within-group CV worsens from $0.155$ to $0.271$, confirming that
     sequential dependency concentrates importance within correlated groups.
-    \dash{} distributes it proportionally ($0.150$--$0.163$).
+    \dash{} distributes it proportionally ($0.150$--$0.166$).
 \end{enumerate}
 
 Figure~\ref{fig:concentration} visualizes this directly: within a single
@@ -732,7 +732,7 @@ by comparing methods that achieve independence through different mechanisms.
 
 Table~\ref{tab:extended} compares all methods at $\rhovar = 0.9$. The
 critical observation is that \dash{} and Stochastic Retrain achieve
-\emph{nearly identical} stability ($0.9805$ vs.\ $0.9795$, Cohen's
+\emph{nearly identical} stability ($0.9810$ vs.\ $0.9795$, Cohen's
 $d = 0.26$, $p > 0.05$). These methods differ substantially in design---
 \dash{} uses forced feature restriction, performance filtering, and
 diversity-aware selection, while Stochastic Retrain simply trains $N$
@@ -752,17 +752,17 @@ $^\dagger$Matched compute budget ($M{=}200$ models trained).}
   \textbf{Equity (CV)} & \textbf{Time (s)} \\
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
-  & Single Best          & $.960 \pm .005$ & .980 & .217 & --- \\
+  & Single Best          & $.960 \pm .005$ & .980 & .218 & --- \\
   & Single Best$^\dagger$ & $.962 \pm .005$ & .981 & .213 & --- \\
-  & Large Single Model   & $.940 \pm .007$ & .969 & .253 & --- \\
+  & Large Single Model   & $.940 \pm .007$ & .969 & .254 & --- \\
   & LSM (Tuned)          & $.945 \pm .006$ & .972 & .245 & --- \\
   & Ensemble SHAP        & $.962 \pm .005$ & .980 & .232 & --- \\
 \midrule
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
-  & Stochastic Retrain   & $.980 \pm .003$ & .989 & .172 & --- \\
+  & Stochastic Retrain   & $.980 \pm .003$ & .989 & .177 & --- \\
   & Random Selection$^\dagger$ & $.978 \pm .003$ & .988 & .175 & --- \\
-  & Naive Top-$N$        & $.976 \pm .004$ & .987 & .179 & --- \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.981} \pm .003$ & \textbf{.990} & \textbf{.163} & --- \\
+  & Naive Top-$N$        & $.979 \pm .003$ & .989 & .177 & --- \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.981} \pm .003$ & \textbf{.990} & \textbf{.166} & --- \\
 \bottomrule
 \end{tabular}
 \end{table}

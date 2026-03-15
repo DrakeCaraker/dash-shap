@@ -402,22 +402,25 @@ See [Experiment Guide](EXPERIMENT_GUIDE.md) for detailed descriptions of all exp
 
 ## Key Results
 
-At ρ=0.95 (50 features, 10 correlated groups, 20 repetitions):
+At ρ=0.9 (50 features, 10 correlated groups, 20 repetitions, v6):
 
 ```
 Method                Stability   DGP Agreement (ρ)  Equity (CV)
 =============================================================
-Single Best              0.9529         0.9755         0.2421
-Large Single Model       0.9301         0.9641         0.2708
-DASH (MaxMin)            0.9819         0.9907         0.1585
+Single Best              0.9603         0.9797         0.2182
+Large Single Model       0.9396         0.9691         0.2539
+Naive Top-N              0.9790         0.9890         0.1768
+DASH (MaxMin)            0.9810         0.9901         0.1655
+DASH (Cluster)           0.9796         0.9893         0.1723
 ```
 
-- **Stability is flat across correlation levels**: DASH ranges 0.976-0.982 from ρ=0.0 to ρ=0.95; Single Best degrades from 0.976 to 0.953; Large Single Model from 0.965 to 0.930.
+- **Stability is flat across correlation levels**: DASH ranges 0.977-0.982 from ρ=0.0 to ρ=0.95; Single Best degrades from 0.976 to 0.953; Large Single Model from 0.965 to 0.930. Success criteria: 5/5 stability wins confirmed (v6).
 - **Bigger models make it worse**: The Large Single Model (matched compute budget in one sequential ensemble) performs worst on every metric -- confirming sequential residual dependency as the mechanism.
-- **34% better equity**: DASH's within-group CV of 0.159 vs. Single Best's 0.242 at ρ=0.95.
+- **24% better equity**: DASH's within-group CV of 0.166 vs. Single Best's 0.218 at ρ=0.9.
 - **Breast Cancer**: DASH nearly doubles stability (0.933 vs. 0.534) on 30 features with 21 pairs at |r| > 0.9.
 - **Statistically significant** at ρ≥0.7 (Wilcoxon, Bonferroni-corrected, Cohen's d > 1.0).
 - **Robust to hyperparameters**: <0.001 stability variation across a 3x range of ε values.
+- **Safety at ρ=0**: DGP agreement gap of 0.0019 between DASH and Single Best (v6).
 
 Full benchmark results (correlation sweep, real-world datasets, nonlinear DGP, success criteria): **[Benchmark Results](docs/BENCHMARK_RESULTS.md)**
 
