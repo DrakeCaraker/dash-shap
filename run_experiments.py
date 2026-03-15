@@ -24,6 +24,7 @@ Available experiments:
     ablation               Ablation studies (M, K, epsilon, delta)
     variance_decomposition Variance decomposition (data vs model variance)
     first_mover_visualization First-mover bias concentration figure
+    first_mover_bias       First-mover bias isolation (concentration vs tree count)
     success_criteria       Run linear_sweep then evaluate pass/fail criteria
 """
 
@@ -1523,6 +1524,127 @@ def experiment_first_mover_visualization():
 
 
 ###############################################################################
+# EXPERIMENT: First-Mover Bias Isolation (IMPL_PLAN B3)
+###############################################################################
+
+def experiment_first_mover_bias():
+    """First-mover bias isolation: concentration grows with tree count.
+
+    Trains a single XGBoost with increasing n_estimators and measures how
+    importance concentration within a correlated group grows with depth.
+    Compares against M independent models averaged at the same total tree
+    count.  Produces a line plot: concentration vs n_estimators.
+    """
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: First-Mover Bias Isolation")
+    log("=" * 70)
+
+    import xgboost as xgb
+    import shap
+
+    rho = 0.9
+    n_estimator_levels = [50, 100, 200, 500, 1000, 2000]
+    n_bias_reps = 5
+    feature_names_loc = make_feature_names()
+    group_features = list(range(5))  # Group 1: features 0-4
+
+    single_concentrations = {n: [] for n in n_estimator_levels}
+    dash_concentrations = {n: [] for n in n_estimator_levels}
+
+    for rep in range(n_bias_reps):
+        rep_seed = SEED + rep
+        log(f"  Rep {rep+1}/{n_bias_reps}")
+
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
+            generate_synthetic_linear(N=5000, rho=rho, seed=rep_seed)
+
+        for n_est in n_estimator_levels:
+            # --- Single model: concentration grows with depth ---
+            model = xgb.XGBRegressor(
+                n_estimators=n_est,
+                max_depth=6, learning_rate=0.1,
+                colsample_bytree=0.3, subsample=0.8,
+                random_state=rep_seed,
+            )
+            model.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
+            explainer = shap.TreeExplainer(model)
+            sv = explainer.shap_values(Xexp[:200])
+            imp_single = np.mean(np.abs(sv), axis=0)
+            grp_imp = imp_single[group_features]
+            conc = np.max(grp_imp) / (np.sum(grp_imp) + 1e-10)
+            single_concentrations[n_est].append(conc)
+
+            # --- Independent ensemble: M small models, averaged ---
+            n_per_model = max(10, n_est // 20)
+            m_models = n_est // n_per_model
+            imp_accum = np.zeros(len(feature_names_loc))
+            for mi in range(m_models):
+                m_seed = rep_seed * 10000 + mi
+                mdl = xgb.XGBRegressor(
+                    n_estimators=n_per_model,
+                    max_depth=6, learning_rate=0.1,
+                    colsample_bytree=np.random.RandomState(m_seed).uniform(0.1, 0.5),
+                    subsample=0.8,
+                    random_state=m_seed,
+                )
+                mdl.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
+                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200])
+                imp_accum += np.mean(np.abs(sv_m), axis=0)
+            imp_avg = imp_accum / m_models
+            grp_imp_avg = imp_avg[group_features]
+            conc_avg = np.max(grp_imp_avg) / (np.sum(grp_imp_avg) + 1e-10)
+            dash_concentrations[n_est].append(conc_avg)
+
+    # Summarize
+    summary = {}
+    log(f"\n  {'n_estimators':>14} {'Single Conc':>14} {'Indep Conc':>14} {'Ratio':>8}")
+    log("  " + "=" * 55)
+    for n_est in n_estimator_levels:
+        sc = np.mean(single_concentrations[n_est])
+        dc = np.mean(dash_concentrations[n_est])
+        log(f"  {n_est:>14} {sc:>14.4f} {dc:>14.4f} {sc/dc:>8.2f}")
+        summary[str(n_est)] = {
+            'single_concentration': sc,
+            'single_concentration_std': float(np.std(single_concentrations[n_est], ddof=1)),
+            'independent_concentration': dc,
+            'independent_concentration_std': float(np.std(dash_concentrations[n_est], ddof=1)),
+        }
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(8, 5))
+    xs = n_estimator_levels
+    sc_means = [np.mean(single_concentrations[n]) for n in xs]
+    sc_stds = [np.std(single_concentrations[n], ddof=1) for n in xs]
+    dc_means = [np.mean(dash_concentrations[n]) for n in xs]
+    dc_stds = [np.std(dash_concentrations[n], ddof=1) for n in xs]
+
+    ax.errorbar(xs, sc_means, yerr=sc_stds, fmt='s-', color='#e74c3c',
+                label='Single Sequential Model', linewidth=2, capsize=4, markersize=7)
+    ax.errorbar(xs, dc_means, yerr=dc_stds, fmt='o-', color='#2ecc71',
+                label='Independent Ensemble (averaged)', linewidth=2, capsize=4, markersize=7)
+    ax.axhline(y=0.2, color='black', linestyle='--', alpha=0.5,
+               label='Perfect equity (1/5 = 0.20)')
+    ax.set_xlabel('Number of Trees (n_estimators)')
+    ax.set_ylabel('Concentration (max/sum within group)')
+    ax.set_title('First-Mover Bias Isolation: Concentration Grows with Tree Count')
+    ax.set_xscale('log')
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(f"{OUT}/figures/first_mover_bias_isolation.png", dpi=150, bbox_inches='tight')
+    fig.savefig(f"{OUT}/figures/first_mover_bias_isolation.pdf", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    log(f"  Saved: figures/first_mover_bias_isolation.{{png,pdf}}")
+
+    save_json(summary, f"{OUT}/tables/first_mover_bias.json")
+    elapsed = time.time() - t0
+    log(f"  First-mover bias isolation completed in {elapsed/60:.1f} min")
+    return summary
+
+
+###############################################################################
 # HELPERS: Timing summary
 ###############################################################################
 
@@ -1557,6 +1679,7 @@ EXPERIMENTS = {
     'ablation': experiment_ablation,
     'variance_decomposition': experiment_variance_decomposition,
     'first_mover_visualization': experiment_first_mover_visualization,
+    'first_mover_bias': experiment_first_mover_bias,
     'success_criteria': experiment_success_criteria,
 }
 
@@ -1573,6 +1696,7 @@ DEFAULT_ORDER = [
     'epsilon_sensitivity',
     'ablation',
     'variance_decomposition',
+    'first_mover_bias',
 ]
 
 
