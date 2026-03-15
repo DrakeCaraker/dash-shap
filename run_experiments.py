@@ -194,8 +194,9 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
     fig.suptitle('DASH vs Baselines — Synthetic Linear DGP', fontsize=14, y=1.02)
     fig.tight_layout()
     fig.savefig(f"{OUT}/figures/correlation_sweep.png", dpi=150, bbox_inches='tight')
+    fig.savefig(f"{OUT}/figures/correlation_sweep.pdf", bbox_inches='tight')
     plt.close(fig)
-    log(f"  Saved: figures/correlation_sweep.png")
+    log(f"  Saved: figures/correlation_sweep.png, correlation_sweep.pdf")
 
     # Bar chart for rho=0.9
     if 0.9 in all_results:
@@ -235,8 +236,62 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
 
         fig.tight_layout()
         fig.savefig(f"{OUT}/figures/bar_chart_rho09.png", dpi=150, bbox_inches='tight')
+        fig.savefig(f"{OUT}/figures/bar_chart_rho09.pdf", bbox_inches='tight')
         plt.close(fig)
-        log(f"  Saved: figures/bar_chart_rho09.png")
+        log(f"  Saved: figures/bar_chart_rho09.png, bar_chart_rho09.pdf")
+
+
+###############################################################################
+# PLOT: Ablation sensitivity
+###############################################################################
+
+def plot_ablation_sensitivity(ablation_results):
+    """Generate 2x2 ablation sensitivity figure (M, K, epsilon, delta)."""
+    _ensure_dirs()
+
+    param_configs = [
+        ('M', [50, 100, 200, 500], 'Population Size $M$'),
+        ('K', [5, 10, 20, 30, 50], 'Selected Models $K$'),
+        ('epsilon', [0.01, 0.03, 0.05, 0.08, 0.10], 'Filter Threshold $\\varepsilon$'),
+        ('delta', [0.01, 0.05, 0.10, 0.20], 'Diversity Threshold $\\delta$'),
+    ]
+    rho_styles = {
+        0.0:  ('--', '#7f8c8d', 'o', '$\\rho=0.0$'),
+        0.9:  ('-',  '#2980b9', 's', '$\\rho=0.9$'),
+        0.95: ('-',  '#e74c3c', '^', '$\\rho=0.95$'),
+    }
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    axes = axes.flatten()
+
+    for ax_idx, (param_name, param_vals, xlabel) in enumerate(param_configs):
+        ax = axes[ax_idx]
+        for rho, (ls, color, marker, label) in rho_styles.items():
+            rho_key = str(rho)
+            if rho_key not in ablation_results:
+                continue
+            param_data = ablation_results[rho_key].get(param_name, {})
+            x_vals, y_vals = [], []
+            for v in param_vals:
+                v_key = str(v)
+                if v_key in param_data:
+                    x_vals.append(v)
+                    y_vals.append(param_data[v_key].get('stability', 0))
+            if x_vals:
+                ax.plot(x_vals, y_vals, f'{marker}{ls}', color=color,
+                        label=label, linewidth=2, markersize=6)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel('Stability')
+        ax.set_title(f'{param_name} Sensitivity')
+        if ax_idx == 0:
+            ax.legend(fontsize=8)
+
+    fig.suptitle('DASH Hyperparameter Sensitivity', fontsize=14, y=1.01)
+    fig.tight_layout()
+    fig.savefig(f"{OUT}/figures/ablation_sensitivity.pdf", bbox_inches='tight')
+    fig.savefig(f"{OUT}/figures/ablation_sensitivity.png", dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    log(f"  Saved: figures/ablation_sensitivity.pdf")
 
 
 ###############################################################################
@@ -803,8 +858,9 @@ def experiment_real_california():
     # IS plot from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — California Housing', annotate_top_k=8)
     fig.savefig(f"{OUT}/figures/is_plot_california.png", dpi=150, bbox_inches='tight')
+    fig.savefig(f"{OUT}/figures/is_plot_california.pdf", bbox_inches='tight')
     plt.close(fig)
-    log(f"  Saved: figures/is_plot_california.png")
+    log(f"  Saved: figures/is_plot_california.png/pdf")
 
     save_json(cal_results, f"{OUT}/tables/california_housing.json")
     elapsed = time.time() - t0
@@ -904,6 +960,7 @@ def experiment_real_breast_cancer():
     # IS plot and disagreement map from last DASH run
     fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
     fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.png", dpi=150, bbox_inches='tight')
+    fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.pdf", bbox_inches='tight')
     plt.close(fig)
 
     var_obs = np.mean(m.variance_matrix_, axis=1)
@@ -912,8 +969,9 @@ def experiment_real_breast_cancer():
         feature_names=bc_names, top_k=12,
     )
     fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.png", dpi=150, bbox_inches='tight')
+    fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.pdf", bbox_inches='tight')
     plt.close(fig)
-    log(f"  Saved: is_plot_breast_cancer.png, disagreement_breast_cancer.png")
+    log(f"  Saved: is_plot_breast_cancer.png/pdf, disagreement_breast_cancer.png/pdf")
 
     save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
     elapsed = time.time() - t0
@@ -1177,6 +1235,10 @@ def experiment_ablation():
 
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
+
+    # Generate publication figure
+    plot_ablation_sensitivity(abl_results)
+
     elapsed = time.time() - t0
     log(f"  Ablation completed in {elapsed/60:.1f} min")
     return abl_results
@@ -1625,6 +1687,7 @@ EXPERIMENTS = {
 # Default run order (all experiments)
 DEFAULT_ORDER = [
     'linear_sweep',
+    'first_mover_visualization',
     'overlapping',
     'nonlinear_sweep',
     'table2_baselines',
