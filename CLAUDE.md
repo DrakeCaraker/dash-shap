@@ -78,7 +78,7 @@ python run_experiments.py --experiments linear_sweep  # one experiment
 
 ## Git Hooks
 
-Pre-push hook blocks `.pkl` files and files >1MB. Activate after cloning:
+Pre-push hook blocks `.pkl` files and files >10MB. Activate after cloning:
 
 ```bash
 git config core.hooksPath .githooks
@@ -89,7 +89,7 @@ git config core.hooksPath .githooks
 - Commit `.pkl` files or anything in `checkpoints/`
 - Track build artifacts (`dist/`, `build/`, `*.egg-info/`)
 - Modify notebooks `demo_benchmark` through `demo_benchmark_6` (historical artifacts)
-- Push notebooks with large embedded outputs (>1MB) — clear outputs first
+- Push notebooks with large embedded outputs (>10MB) — clear outputs first
 - Use `dash` as a bare import in tests (shadows the package — use `from dash.core import ...`)
 - Train models with high `colsample_bytree` (>0.5) in DASH population — defeats the diversity mechanism
 
