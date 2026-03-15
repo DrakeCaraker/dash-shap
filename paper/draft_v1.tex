@@ -18,6 +18,8 @@
 \usepackage{xcolor}
 \usepackage{caption}
 \usepackage{subcaption}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
 
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
 
@@ -308,10 +310,46 @@ A good feature importance method under multicollinearity should satisfy:
 
 \begin{figure}[h]
 \centering
-\fbox{\parbox{0.9\textwidth}{\centering\textit{[Pipeline diagram to be added.
-Five stages: Population Generation $\to$ Performance Filtering $\to$
-Diversity Selection $\to$ Consensus SHAP $\to$ Stability Diagnostics.]}}}
-\caption{The \dash{} five-stage pipeline.}
+\begin{tikzpicture}[
+  stage/.style={draw, rounded corners=4pt, minimum width=2.8cm,
+    minimum height=1.1cm, align=center, font=\small,
+    fill=#1!12, draw=#1!60, line width=0.8pt},
+  stage/.default=blue,
+  arr/.style={-{Stealth[length=5pt]}, line width=1pt, draw=gray!70},
+  lbl/.style={font=\scriptsize\itshape, text=gray!80, align=center},
+]
+% Stage 1
+\node[stage=teal] (s1) {\textbf{Stage 1}\\Population\\Generation};
+% Stage 2
+\node[stage=blue, right=0.55cm of s1] (s2) {\textbf{Stage 2}\\Performance\\Filtering};
+% Stage 3
+\node[stage=violet, right=0.55cm of s2] (s3) {\textbf{Stage 3}\\Diversity\\Selection};
+% Stage 4
+\node[stage=orange, right=0.55cm of s3] (s4) {\textbf{Stage 4}\\Consensus\\SHAP};
+% Stage 5
+\node[stage=red, right=0.55cm of s4] (s5) {\textbf{Stage 5}\\Stability\\Diagnostics};
+
+% Arrows
+\draw[arr] (s1) -- (s2);
+\draw[arr] (s2) -- (s3);
+\draw[arr] (s3) -- (s4);
+\draw[arr] (s4) -- (s5);
+
+% Labels below
+\node[lbl, below=2pt of s1] {$M{=}200$ models\\varied HPs};
+\node[lbl, below=2pt of s2] {$|\text{score} - s^*| \leq \varepsilon$};
+\node[lbl, below=2pt of s3] {MaxMin greedy\\$K{\leq}30$};
+\node[lbl, below=2pt of s4] {TreeSHAP\\element-wise mean};
+\node[lbl, below=2pt of s5] {FSI, IS Plot\\disagreement maps};
+\end{tikzpicture}
+\caption{The \dash{} five-stage pipeline. Stage~1 trains $M$ XGBoost
+models with randomized hyperparameters (including low
+\texttt{colsample\_bytree}) to ensure independent feature utilization.
+Stage~2 filters for predictive quality. Stage~3 selects a diverse
+subset via greedy max-min dissimilarity. Stage~4 computes interventional
+TreeSHAP for each selected model and averages element-wise. Stage~5
+provides diagnostic tools (FSI, IS Plot) for auditing explanation
+reliability.}
 \label{fig:pipeline}
 \end{figure}
 
@@ -356,9 +394,9 @@ best:
 where $s_i$ is the negative RMSE (for regression) or AUC (for
 classification) of model $i$. This ensures that all explanations come from
 models that have learned meaningful signal. We use $\varepsilon = 0.08$
-for synthetic data (corresponding to $\sim$2\% relative tolerance on
-RMSE~$\approx 3$) and scale-appropriate values for real datasets
-(\eg $\varepsilon = 0.40$ for Superconductor, where RMSE~$\approx 18$).
+(absolute mode) for synthetic data and $\varepsilon = 0.05$ (relative
+mode, retaining models within 5\% of the best score) for real-world
+datasets.
 
 \subsection{Stage 3: Diversity Selection}
 
