@@ -1401,11 +1401,15 @@ def check_success_criteria(sweep_results, epsilon_results=None,
 
     # 5. K_eff increases with epsilon
     if epsilon_results is not None:
-        eps_vals = sorted(epsilon_results.keys())
-        keffs = [epsilon_results[e].get('k_eff_mean', 0) for e in eps_vals]
+        eps_vals = sorted(epsilon_results.keys(), key=lambda x: float(x))
+        keffs = []
+        for e in eps_vals:
+            k_data = epsilon_results[e].get('k_eff', [])
+            keffs.append(np.mean(k_data) if k_data else 0)
         passed = all(keffs[i] <= keffs[i + 1] for i in range(len(keffs) - 1))
         results.append(passed)
-        log(f"  5. K_eff monotonic with epsilon: {keffs} "
+        keffs_str = [f"{k:.1f}" for k in keffs]
+        log(f"  5. K_eff monotonic with epsilon: {keffs_str} "
             f"({'PASS' if passed else 'FAIL'})")
     else:
         log("  5. K_eff monotonicity: SKIP (no epsilon_results)")
@@ -1479,18 +1483,21 @@ def check_success_criteria(sweep_results, epsilon_results=None,
         log(" 10. Breast Cancer: SKIP (no bc_results)")
 
     # 11. Variance decomposition: DASH model-var < SB model-var
+    # Structure: {condition: {method: {'stability': float}}}
+    # Model-selection instability = 1 - stability under 'data_fixed' condition
     if vardecomp_results is not None:
-        dash_vd = vardecomp_results.get('DASH (MaxMin)', {})
-        sb_vd = vardecomp_results.get('Single Best', {})
-        d_model = dash_vd.get('model_instability')
-        s_model = sb_vd.get('model_instability')
-        if d_model is not None and s_model is not None:
+        data_fixed = vardecomp_results.get('data_fixed', {})
+        dash_df = data_fixed.get('DASH (MaxMin)', {})
+        sb_df = data_fixed.get('Single Best', {})
+        if 'stability' in dash_df and 'stability' in sb_df:
+            d_model = 1.0 - dash_df['stability']
+            s_model = 1.0 - sb_df['stability']
             passed = d_model < s_model
             results.append(passed)
-            log(f" 11. Variance decomp: DASH model-var={d_model:.4f} vs SB={s_model:.4f} "
+            log(f" 11. Variance decomp: DASH model-instab={d_model:.4f} vs SB={s_model:.4f} "
                 f"({'PASS' if passed else 'FAIL'})")
         else:
-            log(" 11. Variance decomposition: SKIP (missing instability values)")
+            log(" 11. Variance decomposition: SKIP (missing data_fixed stability)")
     else:
         log(" 11. Variance decomposition: SKIP (no vardecomp_results)")
 
