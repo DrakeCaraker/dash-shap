@@ -1,7 +1,8 @@
-MAIN        = draft_v3_preprint
+MAIN        = draft_v4_preprint
+V3          = draft_v3_preprint
 V2          = draft_v2_preprint
 V1          = draft_v1
-DRAFTS      = $(MAIN) $(V2) $(V1)
+DRAFTS      = $(MAIN) $(V3) $(V2) $(V1)
 LATEXMK     = latexmk
 LATEX_FLAGS = -pdf
 
