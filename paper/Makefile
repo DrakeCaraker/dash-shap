@@ -26,5 +26,5 @@ lint:
 	@chktex -q $(MAIN).tex || true
 
 clean:
-	$(LATEXMK) -C $(foreach d,$(DRAFTS),$(d).tex)
+	$(LATEXMK) -c $(foreach d,$(DRAFTS),$(d).tex)
 	rm -f diff.tex diff.pdf
