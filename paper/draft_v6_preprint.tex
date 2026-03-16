@@ -3,9 +3,9 @@
 %
 % Caraker, Arnold, Rhoads (2026)
 %
-% draft_v6_preprint — revised per ArXiv readiness review:
+% draft_v6_preprint — revised per ArXiv readiness review (v6 review fixes):
 %   - Changed "pre-registered" to "pre-specified" (Appendix C)
-%   - Added variance decomposition approximate-decomposition caveat
+%   - Added variance decomposition approximate-decomposition caveat (footnote)
 %   - Fixed decimal precision consistency in nonlinear DGP section
 %   - Acknowledged SR's marginally higher stability point estimates
 %   - Added stability selection contrast paragraph in Discussion
@@ -13,8 +13,18 @@
 %   - Justified asymmetric baseline choice across real-world datasets
 %   - Added T-scaling paragraph to validate empirical hypothesis
 %   - Addressed Random Selection near-equivalence re diversity selection
-%   - Added arXiv subject classification
+%   - arXiv subject classification moved to comment (enter in submission form)
 %   - Moved ablation/timing to appendix to shorten Section 5
+%   - FSI epsilon renamed to epsilon_0 and defined (10^{-8}) to avoid confusion with varepsilon
+%   - Removed "numerically identical" from abstract
+%   - Fixed "tree-count-matched" → "training-budget-matched" for SB(M=200)
+%   - Added dedup forward reference noting results in code repo
+%   - Bibliography sorted alphabetically
+%   - Added SB(30) baseline to Breast Cancer table for transparency
+%   - Reworded M ablation framing (invariant, not "plateaus early")
+%   - Clarified nonlinear DGP text: SR best at rho=0.5
+%   - Added stability testing gap note (BCa CIs as alternative)
+%   - Added significance table "selected comparisons" note
 %
 % draft_v5_preprint — revised per third review pass:
 %   - Fixed math typesetting for tree count expression in Introduction
@@ -23,7 +33,7 @@
 %   - Softened pre-registration framing with scope caveat
 %
 % draft_v4_preprint — revised per second review pass:
-%   - Consistent "tree-count-matched" terminology throughout (abstract + body)
+%   - Consistent baseline terminology throughout (abstract + body)
 %   - Fixed ablation figure caption to match actual 1-of-4-panel state
 %   - Defined LSM-T/SR abbreviations in Table 9 caption
 %   - Added footnote clarifying equity exclusion threshold
@@ -120,11 +130,12 @@ method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
 chain, confirming that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
-$= 0.977$, numerically identical, while the standard
+$= 0.977$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
-$0.32$ to $0.93$ ($+0.61$), comparing against a tree-count-matched
-Single Best baseline ($M{=}200$).
+$0.53$ to $0.93$ ($+0.40$) over the standard Single Best, and from
+$0.32$ to $0.93$ ($+0.61$) over the training-budget-matched
+Single Best ($M{=}200$).
 
 \dash{} additionally provides two novel diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
@@ -139,8 +150,8 @@ reproducible benchmarks are available at
 multicollinearity, model independence, gradient boosting, explainability,
 Rashomon effect
 
-\smallskip
-\noindent\textbf{arXiv subject:} cs.LG (Machine Learning); stat.ML (Statistics -- Machine Learning)
+% arXiv subjects: cs.LG (primary), stat.ML (cross-list)
+% Enter these in the arXiv submission form, not in the paper body.
 
 % ===========================================================================
 \section{Introduction}
@@ -177,7 +188,7 @@ before modeling is susceptible.
 \paragraph{Why bigger models make it worse.}
 The intuitive response to unstable explanations is to train a more powerful
 model. We demonstrate that this is counterproductive. A single large
-XGBoost model with thousands of trees and the same total tree count as \dash{} ($M \times {\sim}75 \approx 15{,}000$ trees) produces the \emph{worst} explanations of any method
+XGBoost model with thousands of trees and the same total tree count as \dash{} ($M \times {\sim}75 \approx 15{,}000$ trees, where ${\sim}75$ is the average number of trees per population model after early stopping) produces the \emph{worst} explanations of any method
 tested---worse on stability, accuracy, and equity simultaneously. The
 mechanism is \emph{sequential residual dependency}: in gradient boosting,
 each tree fits the residuals of all previous trees. If tree~1 selects
@@ -505,6 +516,8 @@ knowledge of the feature correlation structure.
 A simpler variant removes near-duplicate models (pairwise Spearman
 $\rhovar > 0.95$ on importance vectors), retaining the better-performing
 model from each pair. This provides a minimal-overhead diversity guarantee.
+We focus on MaxMin selection throughout this paper; deduplication results
+are available in the code repository.
 
 \subsection{Stage 4: Consensus SHAP}
 
@@ -542,13 +555,14 @@ without requiring ground-truth importance:
 \paragraph{Feature Stability Index (FSI).}
 For each feature $j$:
 \begin{equation}
-  \text{FSI}_j = \frac{\bar{\sigma}_j}{\bar{I}_j + \epsilon},
+  \text{FSI}_j = \frac{\bar{\sigma}_j}{\bar{I}_j + \epsilon_0},
   \label{eq:fsi}
 \end{equation}
 where $\bar{\sigma}_j = \frac{1}{N'}\sum_i \text{std}_k[\phi_j^{(i)}(f_k)]$
 is the mean (across observations) of the standard deviation (across models)
-of SHAP values, and $\bar{I}_j$ is the consensus global importance
-(Eq.~\ref{eq:global_importance}). High FSI indicates that a feature's
+of SHAP values, $\bar{I}_j$ is the consensus global importance
+(Eq.~\ref{eq:global_importance}), and $\epsilon_0 = 10^{-8}$ is a smoothing
+constant to avoid division by zero. High FSI indicates that a feature's
 SHAP values vary substantially across models relative to its importance---
 a signature of explanation instability, typically caused by collinearity.
 
@@ -664,7 +678,7 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
   & Single Best       & Best of 30 hyperparameter-tuned models (standard practice) \\
-  & Single Best ($M$) & Best of $M{=}200$ models (tree-count-matched to \dash{}) \\
+  & Single Best ($M$) & Best of $M{=}200$ models (training-budget-matched to \dash{}) \\
   & Large Single Model & One XGBoost with $\sim$15K trees, low \texttt{colsample\_bytree} \\
   & LSM (Tuned)       & Grid search over \texttt{max\_depth}, \texttt{learning\_rate} \\
   & Ensemble SHAP     & Single 2000-tree ensemble (\texttt{colsample\_bytree}{=}0.8) \\
@@ -736,16 +750,21 @@ the instability described in Section~\ref{sec:problem}. We test this
 with a controlled comparison: \dash{} and the Large Single Model (LSM)
 both use the same low \texttt{colsample\_bytree} (0.1--0.5) and the same
 total tree count---though wall-clock time and model architecture differ
-substantially (Table~\ref{tab:cost}): ``tree-count-matched'' refers to
-the total number of trees, not wall-clock time or FLOPs. The comparison isolates the
+substantially (Table~\ref{tab:cost}): ``tree-count-matched'' refers here to
+the total number of trees (DASH vs.\ LSM), not wall-clock time or FLOPs.
+Separately, Single Best ($M$) is ``training-budget-matched'' in the sense
+that it trains the same number of models as DASH. The comparison isolates the
 \emph{sequential vs.\ independent} distinction rather than claiming
 cost parity. The only structural difference is that \dash{}'s models
 are trained independently, while LSM's trees are trained sequentially
 on progressively modified residuals.
 
-Table~\ref{tab:sweep} presents the results across
-$\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with 20 repetitions per
-level. The key finding is that LSM achieves the \emph{worst}
+Table~\ref{tab:sweep} presents results for the four principal methods
+across $\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with 20 repetitions per
+level. The remaining five baselines (Ensemble SHAP, Single Best $M{=}200$,
+LSM Tuned, Random Selection, Naive Top-$N$) are evaluated at
+$\rhovar = 0.9$ only (Table~\ref{tab:extended}), as their primary
+purpose is to contextualize the mechanism at high correlation. The key finding is that LSM achieves the \emph{worst}
 stability of any method at every correlation level, despite matching
 \dash{}'s total tree count and feature restriction. This confirms
 first-mover bias: sequential residual dependency concentrates
@@ -763,11 +782,7 @@ Both \dash{} and LSM use the same low \texttt{colsample\_bytree}; the
 only difference is that \dash{}'s models are trained independently while
 LSM trains trees sequentially. Bold indicates best per metric per $\rhovar$ level.
 The four principal methods are shown; all nine are compared at
-$\rhovar = 0.9$ in Table~\ref{tab:extended}. Ensemble SHAP, Single Best ($M{=}200$),
-and the remaining baselines are evaluated at $\rhovar = 0.9$ only (Table~\ref{tab:extended})
-rather than across all $\rhovar$ levels, because their computational cost
-scales with the number of sweep points and their primary purpose is to
-contextualize the mechanism at the critical high-correlation regime.}
+$\rhovar = 0.9$ in Table~\ref{tab:extended}.}
 \label{tab:sweep}
 \small
 \begin{tabular}{clcccc}
@@ -888,7 +903,7 @@ share one property: their explained models are trained independently.
 \centering
 \caption{All methods at $\rhovar = 0.9$ (20 repetitions), grouped by
 whether they achieve model independence. Bold indicates best per metric.
-$^\dagger$Matched tree-count budget ($M{=}200$ models trained).
+$^\dagger$Matched training budget ($M{=}200$ models trained).
 Timing entries marked --- share infrastructure with other methods
 and were not independently measured.
 95\% BCa bootstrap CIs on stability: Single Best $[0.952, 0.963]$,
@@ -943,7 +958,8 @@ population already provides. The primary value of diversity selection
 is therefore not stability but equity: \dash{}'s within-group CV
 ($0.176$) is lower than Random Selection's ($0.187$), indicating that
 deliberate diversity in feature utilization patterns produces more
-equitable credit distribution. Practitioners who need only stability
+equitable credit distribution (though this comparison has not been
+formally significance-tested). Practitioners who need only stability
 can use random selection from a performance-filtered population;
 those who also require equitable attributions benefit from the full
 \dash{} pipeline.
@@ -957,13 +973,12 @@ $0.978$ while \dash{} achieves $0.995$---indicating that \dash{}
 nearly eliminates model-selection noise. Model-selection variance
 accounts for approximately $54\%$ of Single Best's total instability but only $24\%$
 of \dash{}'s, confirming that independence-based averaging cancels the
-arbitrary feature choices that dominate single-model explanations.
-(Caveat: these percentages use $1 - \text{stability}$ as a proxy for
-instability. Since stability is a mean pairwise Spearman correlation
-rather than a variance, the decomposition is approximate and the
-model-selection and data-sampling components do not satisfy an exact
-additive partition. The figures should be interpreted as directional
-evidence of relative contribution, not as precise variance fractions.)
+arbitrary feature choices that dominate single-model
+explanations.\footnote{These percentages use $1 - \text{stability}$ as
+a proxy for instability. Since stability is a mean pairwise Spearman
+correlation rather than a variance, the decomposition is approximate
+and should be interpreted as directional evidence rather than exact
+variance fractions.}
 
 \paragraph{Statistical significance.}
 Table~\ref{tab:significance} reports Wilcoxon signed-rank tests with
@@ -975,12 +990,17 @@ $\rhovar \geq 0.7$ for both accuracy ($d = +0.98$) and equity
 ($d = -1.07$). The \dash{} vs.\ Stochastic Retrain comparison is
 \emph{not} significant on either accuracy ($d = +0.05$) or equity
 ($d = -0.21$), consistent with the independence principle.
+Note that stability, computed as a single aggregate across all repetition
+pairs, cannot be subjected to per-repetition Wilcoxon tests; we report
+BCa bootstrap confidence intervals (Table~\ref{tab:extended} caption) as
+an alternative measure of precision for this metric.
 
 \begin{table}[htbp]
 \centering
 \caption{Wilcoxon signed-rank tests with Holm--Bonferroni step-down correction
 (20~paired repetitions). Bold $p$-values are significant at adjusted
-$\alpha = 0.05$.}
+$\alpha = 0.05$. Selected comparisons shown from 26 total tests;
+full results available in the code repository.}
 \label{tab:significance}
 \small
 \begin{tabular}{clccc}
@@ -1165,15 +1185,18 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 \caption{Real-world dataset results (20 repetitions each).
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
+$^\dagger$Matched training budget ($M{=}200$ models trained).
+$\Delta$Stab.\ is relative to standard Single Best.
 All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{$\Delta$Stab.} & \textbf{RMSE} \\
 \midrule
-\multirow{2}{*}{Breast Cancer}
-  & Single Best ($M{=}200$) & $.317 \pm .053$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.614$ & \multicolumn{1}{c}{---} \\
+\multirow{3}{*}{Breast Cancer}
+  & Single Best              & $.534 \pm .040$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
+  & Single Best ($M{=}200$)$^\dagger$ & $.317 \pm .053$ & $-0.217$ & \multicolumn{1}{c}{---} \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.396$ & \multicolumn{1}{c}{---} \\
 \addlinespace
 \midrule
 \addlinespace
@@ -1191,14 +1214,14 @@ All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
 \end{tabular}
 \end{table}
 
-The Breast Cancer improvement ($+0.614$) is the largest across all
-experiments. We report the tree-count-matched Single Best ($M{=}200$) for
-Breast Cancer rather than the standard Single Best ($N_{\text{trials}}{=}30$)
-used for Superconductor and California Housing, because Breast Cancer's
-extreme collinearity (21 pairs with $|r| > 0.9$) makes the compute-matched
-comparison the more stringent test: even with 200 hyperparameter trials,
-single-model stability is catastrophically low ($0.317$), indicating
-that feature rankings are essentially random across runs. The
+The Breast Cancer improvement is the largest across all experiments.
+Even the standard Single Best ($N_{\text{trials}}{=}30$) achieves only
+$0.534$ stability; the training-budget-matched variant ($M{=}200$) is
+worse still at $0.317$, because Breast Cancer's extreme collinearity
+(21 pairs with $|r| > 0.9$) makes model selection itself unstable---with
+200 hyperparameter configurations, the ``best'' model varies wildly across
+repetitions. Both baselines indicate that feature rankings are essentially
+random across runs. The
 radius/perimeter/area triad creates extreme SHAP instability: a
 feature's importance can swing from first to fifth across runs. \dash{}
 consensus resolves this, producing clinically interpretable top
@@ -1278,9 +1301,10 @@ $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \end{table}
 
 At $\rhovar = 0$, \dash{} and Single Best perform nearly identically
-($0.934$ vs.\ $0.933$). At $\rhovar = 0.5$, \dash{} shows a marginal
-advantage ($0.852$ vs.\ $0.849$), which grows consistently with
-correlation. This is a genuine scope boundary: nonlinear relationships
+($0.934$ vs.\ $0.933$). At $\rhovar = 0.5$, Stochastic Retrain achieves
+the highest stability ($0.855$), with \dash{} ($0.852$) marginally ahead
+of Single Best ($0.849$). \dash{}'s advantage over Single Best grows
+consistently with correlation. This is a genuine scope boundary: nonlinear relationships
 are common in practice, and overall stability levels are lower than for
 the linear DGP ($\sim$0.87--0.93 vs.\ $\sim$0.93--0.98). When the DGP
 contains interactions and nonlinear terms, different models in the DASH
@@ -1512,6 +1536,17 @@ providing the computational infrastructure on which this work is built.
 
 \begin{thebibliography}{99}
 
+\bibitem[Aas et~al.(2021)]{aas2021explaining}
+K.~Aas, M.~Jullum, and A.~L{\o}land.
+\newblock Explaining individual predictions when features are dependent:
+  More accurate approximations to {S}hapley values.
+\newblock \emph{Artificial Intelligence}, 298:103502, 2021.
+
+\bibitem[Altmann et~al.(2010)]{altmann2010permutation}
+A.~Altmann, L.~Tolo{\v{s}}i, O.~Sander, and T.~Lengauer.
+\newblock Permutation importance: a corrected feature importance measure.
+\newblock \emph{Bioinformatics}, 26(10):1340--1347, 2010.
+
 \bibitem[Alvarez-Melis and Jaakkola(2018)]{alvarez2018towards}
 D.~Alvarez-Melis and T.~S. Jaakkola.
 \newblock Towards robust interpretability with self-explaining neural networks.
@@ -1533,11 +1568,40 @@ H.~Chen, J.~D. Janizek, S.~Lundberg, and S.-I. Lee.
 \newblock True to the model or true to the data?
 \newblock \emph{arXiv preprint arXiv:2006.16234}, 2020.
 
+\bibitem[Covert et~al.(2021)]{covert2021explaining}
+I.~Covert, S.~M. Lundberg, and S.-I. Lee.
+\newblock Explaining by removing: A unified framework for model explanation.
+\newblock \emph{Journal of Machine Learning Research}, 22(209):1--90, 2021.
+
+\bibitem[Dong and Rudin(2020)]{dong2020exploring}
+J.~Dong and C.~Rudin.
+\newblock Exploring the cloud of variable importance for the set of all good
+  models.
+\newblock \emph{Nature Machine Intelligence}, 2(12):810--824, 2020.
+
 \bibitem[Fisher et~al.(2019)]{fisher2019all}
 A.~Fisher, C.~Rudin, and F.~Dominici.
 \newblock All models are wrong, but many are useful: Learning a variable's
   importance by studying an entire class of prediction models simultaneously.
 \newblock \emph{Journal of Machine Learning Research}, 20(177):1--81, 2019.
+
+\bibitem[Heskes et~al.(2020)]{heskes2020causal}
+T.~Heskes, E.~Sijben, G.~Bucur, and T.~Claassen.
+\newblock Causal {S}hapley values: Exploiting causal knowledge to explain
+  individual predictions of complex models.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2020.
+
+\bibitem[Hooker and Mentch(2019)]{hooker2019please}
+G.~Hooker and L.~Mentch.
+\newblock Please stop permuting features: An explanation and alternatives.
+\newblock \emph{arXiv preprint arXiv:1905.03151}, 2019.
+
+\bibitem[Janzing et~al.(2020)]{janzing2020feature}
+D.~Janzing, L.~Minorics, and P.~Bl{\"o}baum.
+\newblock Feature relevance quantification in explainable {AI}: A causal
+  problem.
+\newblock In \emph{International Conference on Artificial Intelligence and
+  Statistics}, pages 2907--2916. PMLR, 2020.
 
 \bibitem[Krishna et~al.(2022)]{krishna2022disagreement}
 S.~Krishna, T.~Han, A.~Ber, G.~Karypis, and H.~Lakkaraju.
@@ -1571,6 +1635,20 @@ C.~Marx, Y.~Calmon, and F.~Ustun.
 \newblock In \emph{International Conference on Artificial Intelligence and
   Statistics}, 2023.
 
+\bibitem[Meinshausen and B{\"u}hlmann(2010)]{meinshausen2010stability}
+N.~Meinshausen and P.~B{\"u}hlmann.
+\newblock Stability selection.
+\newblock \emph{Journal of the Royal Statistical Society: Series B},
+  72(4):417--473, 2010.
+
+\bibitem[Molnar et~al.(2022)]{molnar2022general}
+C.~Molnar, G.~K{\"o}nig, J.~Herbinger, T.~Freiesleben, S.~Dandl,
+  C.~A. Scholbeck, G.~Casalicchio, M.~Grosse-Wentrup, and B.~Bischl.
+\newblock General pitfalls of model-agnostic interpretation methods for
+  machine learning models.
+\newblock In \emph{xxAI -- Beyond Explainable AI}, pages 39--68. Springer,
+  2022.
+
 \bibitem[O'Brien(2007)]{obrien2007caution}
 R.~M. O'Brien.
 \newblock A caution regarding rules of thumb for variance inflation factors.
@@ -1581,83 +1659,17 @@ J.~Paillard, D.~Chen, and R.~Bhatt.
 \newblock On computing {SHAP} values for ensemble models.
 \newblock \emph{arXiv preprint arXiv:2502.01327}, 2025.
 
-\bibitem[Shapley(1953)]{shapley1953value}
-L.~S. Shapley.
-\newblock A value for n-person games.
-\newblock In H.~W. Kuhn and A.~W. Tucker, editors, \emph{Contributions to the
-  Theory of Games}, volume~II, pages 307--317. Princeton University Press, 1953.
-
-\bibitem[Zou and Hastie(2005)]{zou2005regularization}
-H.~Zou and T.~Hastie.
-\newblock Regularization and variable selection via the elastic net.
-\newblock \emph{Journal of the Royal Statistical Society: Series B},
-  67(2):301--320, 2005.
-
-\bibitem[Altmann et~al.(2010)]{altmann2010permutation}
-A.~Altmann, L.~Tolo{\v{s}}i, O.~Sander, and T.~Lengauer.
-\newblock Permutation importance: a corrected feature importance measure.
-\newblock \emph{Bioinformatics}, 26(10):1340--1347, 2010.
-
-\bibitem[Meinshausen and B{\"u}hlmann(2010)]{meinshausen2010stability}
-N.~Meinshausen and P.~B{\"u}hlmann.
-\newblock Stability selection.
-\newblock \emph{Journal of the Royal Statistical Society: Series B},
-  72(4):417--473, 2010.
-
-\bibitem[Heskes et~al.(2020)]{heskes2020causal}
-T.~Heskes, E.~Sijben, G.~Bucur, and T.~Claassen.
-\newblock Causal {S}hapley values: Exploiting causal knowledge to explain
-  individual predictions of complex models.
-\newblock In \emph{Advances in Neural Information Processing Systems}, 2020.
-
-\bibitem[Strobl et~al.(2007)]{strobl2007bias}
-C.~Strobl, A.-L. Boulesteix, A.~Zeileis, and T.~Hothorn.
-\newblock Bias in random forest variable importance measures: Illustrations,
-  sources and a solution.
-\newblock \emph{BMC Bioinformatics}, 8:25, 2007.
-
-\bibitem[Hooker and Mentch(2019)]{hooker2019please}
-G.~Hooker and L.~Mentch.
-\newblock Please stop permuting features: An explanation and alternatives.
-\newblock \emph{arXiv preprint arXiv:1905.03151}, 2019.
-
-\bibitem[Janzing et~al.(2020)]{janzing2020feature}
-D.~Janzing, L.~Minorics, and P.~Bl{\"o}baum.
-\newblock Feature relevance quantification in explainable {AI}: A causal
-  problem.
-\newblock In \emph{International Conference on Artificial Intelligence and
-  Statistics}, pages 2907--2916. PMLR, 2020.
-
-\bibitem[Aas et~al.(2021)]{aas2021explaining}
-K.~Aas, M.~Jullum, and A.~L{\o}land.
-\newblock Explaining individual predictions when features are dependent:
-  More accurate approximations to {S}hapley values.
-\newblock \emph{Artificial Intelligence}, 298:103502, 2021.
-
-\bibitem[Dong and Rudin(2020)]{dong2020exploring}
-J.~Dong and C.~Rudin.
-\newblock Exploring the cloud of variable importance for the set of all good
-  models.
-\newblock \emph{Nature Machine Intelligence}, 2(12):810--824, 2020.
-
 \bibitem[Semenova et~al.(2022)]{semenova2022existence}
 L.~Semenova, C.~Rudin, and R.~Parr.
 \newblock On the existence of simpler machine learning models.
 \newblock In \emph{ACM Conference on Fairness, Accountability, and
   Transparency}, pages 1827--1858, 2022.
 
-\bibitem[Covert et~al.(2021)]{covert2021explaining}
-I.~Covert, S.~M. Lundberg, and S.-I. Lee.
-\newblock Explaining by removing: A unified framework for model explanation.
-\newblock \emph{Journal of Machine Learning Research}, 22(209):1--90, 2021.
-
-\bibitem[Molnar et~al.(2022)]{molnar2022general}
-C.~Molnar, G.~K{\"o}nig, J.~Herbinger, T.~Freiesleben, S.~Dandl,
-  C.~A. Scholbeck, G.~Casalicchio, M.~Grosse-Wentrup, and B.~Bischl.
-\newblock General pitfalls of model-agnostic interpretation methods for
-  machine learning models.
-\newblock In \emph{xxAI -- Beyond Explainable AI}, pages 39--68. Springer,
-  2022.
+\bibitem[Shapley(1953)]{shapley1953value}
+L.~S. Shapley.
+\newblock A value for n-person games.
+\newblock In H.~W. Kuhn and A.~W. Tucker, editors, \emph{Contributions to the
+  Theory of Games}, volume~II, pages 307--317. Princeton University Press, 1953.
 
 \bibitem[Slack et~al.(2020)]{slack2020fooling}
 D.~Slack, S.~Hilgard, E.~Jia, S.~Singh, and H.~Lakkaraju.
@@ -1665,6 +1677,18 @@ D.~Slack, S.~Hilgard, E.~Jia, S.~Singh, and H.~Lakkaraju.
   explanation methods.
 \newblock In \emph{AAAI/ACM Conference on AI, Ethics, and Society}, pages
   180--186, 2020.
+
+\bibitem[Strobl et~al.(2007)]{strobl2007bias}
+C.~Strobl, A.-L. Boulesteix, A.~Zeileis, and T.~Hothorn.
+\newblock Bias in random forest variable importance measures: Illustrations,
+  sources and a solution.
+\newblock \emph{BMC Bioinformatics}, 8:25, 2007.
+
+\bibitem[Zou and Hastie(2005)]{zou2005regularization}
+H.~Zou and T.~Hastie.
+\newblock Regularization and variable selection via the elastic net.
+\newblock \emph{Journal of the Royal Statistical Society: Series B},
+  67(2):301--320, 2005.
 
 \end{thebibliography}
 
@@ -1765,7 +1789,8 @@ $\varepsilon$ & Models Passing & $K_{\text{eff}}$ & Stability & Accuracy & Equit
 Stability is robust across population sizes $M$:
 $M = 50$ ($0.9727$) $\to$ $M = 100$ ($0.9719$)
 $\to$ $M = 200$ ($0.9722$) $\to$ $M = 500$ ($0.9722$). Performance
-plateaus early, confirming that $M = 200$ is sufficient.
+is effectively invariant to population size (within 0.001 across
+$M \in \{50, 100, 200, 500\}$). We use $M = 200$ as a conservative default.
 
 \begin{figure}[htbp]
 \centering
