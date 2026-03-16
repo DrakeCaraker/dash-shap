@@ -64,12 +64,13 @@ from dash.experiments.synthetic import (
 from dash.baselines import (
     SingleBestBaseline, LargeSingleModelBaseline, NaiveAveragingBaseline,
     StochasticRetrainBaseline, EnsembleSHAPBaseline, RandomSelectionBaseline,
+    RandomForestBaseline, PermutationImportanceBaseline,
 )
 from dash.evaluation import (
     dgp_agreement, importance_accuracy, group_level_accuracy, group_level_mse,
     importance_stability, stability_bootstrap_ci, within_group_equity,
     compare_methods, cohens_d, friedman_test, holm_bonferroni,
-    feature_ablation_score,
+    feature_ablation_score, tost_equivalence,
 )
 from dash.utils.io import save_json
 
@@ -134,6 +135,8 @@ COLORS = {
     'DASH (Dedup)': '#3498db',
     'DASH (MaxMin)': '#2ecc71',
     'DASH (Cluster)': '#1abc9c',
+    'Random Forest': '#16a085',
+    'Permutation Importance': '#8e44ad',
 }
 
 MARKERS = {
@@ -147,6 +150,8 @@ MARKERS = {
     'Random Selection': 'd',
     'DASH (MaxMin)': 'o',
     'DASH (Cluster)': 'P',
+    'Random Forest': 'H',
+    'Permutation Importance': 'p',
 }
 
 
@@ -323,6 +328,35 @@ def _log_pairwise_significance(results, dash_name, method_names, dataset_label):
             d = cohens_d(dash[metric], bl[metric])
             log(f"  {bname:<22} {label:<12} {pval:>12.4g} {d:>10.3f}")
             sig_results[bname][label] = {'p': pval, 'cohens_d': d}
+        # TOST equivalence test for DASH vs Stochastic Retrain
+        if bname == 'Stochastic Retrain':
+            for metric in ('rmse_runs', 'ablation_runs'):
+                if metric not in dash or metric not in bl:
+                    continue
+                label = metric.replace('_runs', '')
+                _, p1, _, p2, equiv = tost_equivalence(
+                    dash[metric], bl[metric],
+                )
+                log(f"  {bname:<22} {label:<12} TOST equiv={'YES' if equiv else 'no'}  "
+                    f"p_max={max(p1, p2):.4g}")
+                sig_results[bname][f'{label}_tost'] = {
+                    'p1': p1, 'p2': p2, 'equivalent': equiv,
+                }
+    # Apply Holm-Bonferroni correction to all raw Wilcoxon p-values
+    raw_keys = []
+    raw_pvals = []
+    for bname in sig_results:
+        for label in sig_results[bname]:
+            if '_tost' not in label and 'p' in sig_results[bname][label]:
+                raw_keys.append((bname, label))
+                raw_pvals.append(sig_results[bname][label]['p'])
+    if raw_pvals:
+        adjusted = holm_bonferroni(np.array(raw_pvals))
+        for (bname, label), adj_p in zip(raw_keys, adjusted):
+            sig_results[bname][label]['p_holm'] = float(adj_p)
+        log(f"\n  Holm-Bonferroni corrected p-values:")
+        for (bname, label), adj_p in zip(raw_keys, adjusted):
+            log(f"    {bname:<22} {label:<12} p_HB={adj_p:.4g}")
     # Store in results for JSON serialisation
     results['_significance'] = sig_results
 
@@ -359,6 +393,7 @@ def experiment_linear_sweep():
         'Single Best', 'Single Best (M=200)',  # M3: matched budget
         'Large Single Model', 'LSM (Tuned)',
         'Stochastic Retrain', 'Random Selection',  # M2: isolate MaxMin value
+        'Random Forest',
         'DASH (MaxMin)',
         'Naive Top-N',  # Ablation: averaging without diversity selection (reuses DASH population)
     ]
@@ -415,6 +450,14 @@ def experiment_linear_sweep():
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
+                    rmse_val = rmse_score(yte, preds)
+                elif name == 'Random Forest':
+                    m = RandomForestBaseline(
+                        n_estimators=500, task='regression', seed=rep_seed,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+                    imp = m.global_importance_
+                    preds = m.model_.predict(Xte)
                     rmse_val = rmse_score(yte, preds)
                 elif name == 'DASH (MaxMin)':
                     m = DASHPipeline(
@@ -615,7 +658,7 @@ def experiment_nonlinear_sweep():
     nl_rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
     nl_methods = [
         'Single Best', 'Large Single Model', 'LSM (Tuned)',
-        'Stochastic Retrain', 'DASH (MaxMin)',
+        'Stochastic Retrain', 'Random Forest', 'DASH (MaxMin)',
     ]
     nl_sweep = {rho: {} for rho in nl_rho_levels}
     feature_names = make_feature_names()
@@ -650,6 +693,13 @@ def experiment_nonlinear_sweep():
                     m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                     imp = m.global_importance_
                     preds = m.get_consensus_ensemble_predictions(Xte)
+                elif name == 'Random Forest':
+                    m = RandomForestBaseline(
+                        n_estimators=500, task='regression', seed=rep_seed,
+                    )
+                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+                    imp = m.global_importance_
+                    preds = m.model_.predict(Xte)
                 else:  # DASH MaxMin
                     m = DASHPipeline(
                         M=M, K=K, epsilon=EPSILON, delta=DELTA,
@@ -704,7 +754,10 @@ def experiment_table2_baselines():
     log("EXPERIMENT: Table 2 — Extended Baselines at ρ=0.9")
     log("=" * 70)
 
-    table2_methods = ['Ensemble SHAP', 'Stochastic Retrain', 'DASH (Dedup)']
+    table2_methods = [
+        'Ensemble SHAP', 'Stochastic Retrain', 'Random Forest',
+        'Permutation Importance', 'DASH (Dedup)',
+    ]
     table2_results = {}
     feature_names = make_feature_names()
 
@@ -725,6 +778,18 @@ def experiment_table2_baselines():
             elif name == 'Stochastic Retrain':
                 m = StochasticRetrainBaseline(N=K, task='regression', n_jobs=-1, seed=rep_seed)
                 m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+                imp = m.global_importance_
+            elif name == 'Random Forest':
+                m = RandomForestBaseline(
+                    n_estimators=500, task='regression', seed=rep_seed,
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+                imp = m.global_importance_
+            elif name == 'Permutation Importance':
+                m = PermutationImportanceBaseline(
+                    n_trials=N_TRIALS_SB, task='regression', seed=rep_seed,
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, y_ref=yexp)
                 imp = m.global_importance_
             else:  # DASH (Dedup)
                 dm = DASHPipeline(
@@ -788,7 +853,7 @@ def experiment_real_california():
         X_cal, y_cal, test_size=0.2, random_state=SEED,
     )
 
-    cal_methods = ['Single Best', 'DASH (MaxMin)']
+    cal_methods = ['Single Best', 'Random Forest', 'DASH (MaxMin)']
     cal_results = {}
 
     for name in cal_methods:
@@ -812,6 +877,14 @@ def experiment_real_california():
 
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
+                abl = feature_ablation_score(m.model_, Xte_r, y_cal_test, imp)
+            elif name == 'Random Forest':
+                m = RandomForestBaseline(
+                    n_estimators=500, task='regression', seed=rep_seed,
+                )
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
@@ -896,7 +969,7 @@ def experiment_real_breast_cancer():
         X_bc, y_bc, test_size=0.2, random_state=SEED,
     )
 
-    bc_methods = ['Single Best', 'DASH (MaxMin)']
+    bc_methods = ['Single Best', 'Random Forest', 'DASH (MaxMin)']
     bc_results = {}
 
     for name in bc_methods:
@@ -921,6 +994,13 @@ def experiment_real_breast_cancer():
             if name == 'Single Best':
                 m = SingleBestBaseline(n_trials=N_TRIALS_SB, task='binary', seed=rep_seed)
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
+            elif name == 'Random Forest':
+                m = RandomForestBaseline(
+                    n_estimators=500, task='binary', seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
                 abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
             else:
@@ -1006,7 +1086,7 @@ def experiment_real_superconductor():
 
     SC_M = 200  # Lighter compute for real-world dataset
     SC_K = 30
-    sc_methods = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
+    sc_methods = ['Single Best', 'Large Single Model', 'Random Forest', 'DASH (MaxMin)']
     sc_results = {}
 
     for name in sc_methods:
@@ -1037,6 +1117,14 @@ def experiment_real_superconductor():
                 m = LargeSingleModelBaseline(
                     K=SC_K, T_per_model=PAPER_CONFIG['T_PER_MODEL'],
                     colsample_bytree=0.2, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
+                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
+            elif name == 'Random Forest':
+                m = RandomForestBaseline(
+                    n_estimators=500, task='regression', seed=rep_seed,
                 )
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
