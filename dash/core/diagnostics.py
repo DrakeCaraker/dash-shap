@@ -173,6 +173,7 @@ def local_disagreement_map(
     feature_names=None,
     top_k=15,
     figsize=(10, 6),
+    title=None,
 ):
     """Plot a local disagreement map for a single observation."""
     K, N_prime, P = all_shap_matrices.shape
@@ -196,8 +197,8 @@ def local_disagreement_map(
     ax.invert_yaxis()
     ax.axvline(0, color="k", linewidth=0.5)
     ax.set_xlabel("SHAP Value (consensus +/- 1 std)", fontsize=11)
-    ax.set_title(
-        f"Local Disagreement Map — Observation {observation_idx}", fontsize=13,
-    )
+    if title is None:
+        title = f"Local Disagreement Map — Observation {observation_idx}"
+    ax.set_title(title, fontsize=13)
     fig.tight_layout()
     return fig
