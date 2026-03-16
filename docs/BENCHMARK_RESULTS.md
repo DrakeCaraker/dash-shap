@@ -2,7 +2,7 @@
 
 **Canonical source:** `notebooks/demo_benchmark_6.ipynb` (M=200, K=30, 20 repetitions, PAPER_CONFIG)
 
-> All numbers in this document are sourced from `demo_benchmark_6.ipynb` unless otherwise noted. The paper (`paper/draft_v2_preprint.tex`) and this document should always agree; any discrepancy should be resolved in favor of `demo_benchmark_6.ipynb`.
+> All numbers in this document are sourced from `demo_benchmark_6.ipynb` unless otherwise noted. The paper (`paper/draft_v5_preprint.tex`) and this document should always agree; any discrepancy should be resolved in favor of `demo_benchmark_6.ipynb`.
 
 ---
 
@@ -71,7 +71,7 @@ DASH stability is effectively flat across all correlation levels (0.972–0.977)
 
 1. **DASH's advantage is specifically about collinearity.** The stability gap widens from near-zero at ρ=0.0 to +0.026 at ρ=0.95. At zero correlation, all methods perform similarly — DASH is a targeted fix, not a blunt hammer.
 
-2. **Bigger models make explanations worse, not better.** The Large Single Model — matching DASH's total compute in a single sequential ensemble — achieves the worst stability (0.925), worst DGP agreement (0.961), and worst equity (0.284) of any method at ρ=0.95. Model independence, not model size, is what matters.
+2. **Bigger models make explanations worse, not better.** The Large Single Model — matching DASH's total tree count in a single sequential ensemble — achieves the worst stability (0.925), worst DGP agreement (0.961), and worst equity (0.284) of any method at ρ=0.95. Model independence, not model size, is what matters.
 
 3. **DASH distributes credit fairly across correlated features.** At ρ=0.95, DASH's within-group CV of 0.172 vs Single Best 0.246 and LSM 0.284. Where single models arbitrarily concentrate importance on one member of a correlated group, DASH's consensus reflects the group's collective contribution.
 
@@ -116,7 +116,7 @@ The Breast Cancer dataset is a natural showcase for DASH because it contains 30 
 | Single Best (M=200) | 0.317 ± 0.053 |
 | **DASH (MaxMin)** | **0.930 ± 0.005** |
 
-DASH improves stability by +0.614 on this heavily collinear dataset. This is the most dramatic improvement across all experiments. The Single Best (M=200) baseline is compute-matched: it trains 200 models and selects the best, yet still produces essentially random importance rankings across runs.
+DASH improves stability by +0.614 on this heavily collinear dataset. This is the most dramatic improvement across all experiments. The Single Best (M=200) baseline is tree-count-matched: it trains 200 models and selects the best, yet still produces essentially random importance rankings across runs.
 
 ---
 

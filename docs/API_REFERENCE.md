@@ -9,11 +9,11 @@ from dash.core.pipeline import DASHPipeline
 
 pipeline = DASHPipeline(
     M=200,                              # Number of models in the population
-    K=20,                               # Number of models to select for consensus
+    K=30,                               # Number of models to select for consensus
     epsilon=0.08,                       # Performance filter threshold
     epsilon_mode="absolute",            # "absolute", "relative", or "quantile"
     selection_method="maxmin",          # "maxmin", "cluster", or "dedup"
-    delta=0.1,                          # Diversity threshold (maxmin)
+    delta=0.05,                         # Diversity threshold (maxmin)
     tau=0.3,                            # Cluster distance threshold (cluster)
     task="regression",                  # "regression", "binary", "multiclass"
     search_space=None,                  # Custom hyperparameter search space (dict)

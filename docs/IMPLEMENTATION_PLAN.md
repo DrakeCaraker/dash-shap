@@ -1,10 +1,12 @@
 # Implementation Plan: Mechanism-First Paper Repositioning + Code Changes
 
+> **Note:** This plan was written for draft_v1. The paper has since been revised through v5 (ArXiv-ready). Many items below are now complete. Retained for historical reference.
+
 ## Strategic Framing
 
 **Current title**: "DASH: Diversified Aggregation of SHAP — Stable, Accurate, and Equitable Feature Importance Under Multicollinearity"
 
-**Proposed title**: "First-Mover Bias in Gradient Boosting Explanations: Mechanism, Diagnosis, and Resolution via Diversified Aggregation"
+**Proposed title**: "First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution"
 
 **Core reframe**: The primary contribution is the *mechanistic finding* (sequential residual dependency / first-mover bias). DASH is the engineered solution. Stochastic Retrain is corroborating evidence. The diagnostics (FSI, IS Plot) are the practical toolset. This positions Paper 1 as the foundation for the 5-paper program (partial orders → impossibility result → neural net generalization → paradigm paper).
 
