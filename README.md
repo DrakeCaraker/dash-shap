@@ -7,7 +7,7 @@
 
 **Stable feature importance explanations under collinearity via independent model aggregation.**
 
-> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* Awaiting submission to TMLR.
+> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* ArXiv pre-print (2026). Target venue: TMLR.
 
 ---
 
@@ -15,7 +15,7 @@
 
 SHAP is one of the most widely used tools for explaining machine learning predictions. But it has a hidden fragility: when features are correlated, the explanation changes depending on which feature the model happens to use first. Train the same XGBoost model twice with different random seeds and you can get completely different importance rankings — even though the predictions are identical. In regulated, high-stakes, or scientific settings, this means the "explanation" is partially arbitrary.
 
-This instability comes from a specific mechanism — **sequential residual dependency** in gradient boosting — and the intuitive fix (bigger models) makes it *worse*. A single large model with the same total compute as DASH produces the worst explanations of any method tested, because more sequential trees means more reinforcement of an arbitrary initial feature choice.
+This instability comes from a specific mechanism — **sequential residual dependency** in gradient boosting — and the intuitive fix (bigger models) makes it *worse*. A single large model with the same total tree count as DASH produces the worst explanations of any method tested, because more sequential trees means more reinforcement of an arbitrary initial feature choice.
 
 **DASH fixes this.** It trains many small models independently, so each one makes its own arbitrary choice about which correlated feature to use. When you average their explanations, the arbitrary noise cancels out and the signal remains — which *group* of features matters, with credit distributed fairly across the group.
 
@@ -39,7 +39,7 @@ Stability on real-world datasets:
 | Superconductor | 81 | 0.830 | 0.962 | +0.132 |
 | California Housing | 8 | 0.967 | 0.982 | +0.015 |
 
-*\*Compute-matched Single Best (M=200): trains 200 models, keeps the best. Standard Single Best uses default hyperparameter tuning.*
+*\*Tree-count-matched Single Best (M=200): trains 200 models, keeps the best. Standard Single Best uses default hyperparameter tuning.*
 
 DASH stability is flat across correlation levels (0.972–0.977 from ρ = 0.0 to ρ = 0.95). All 11 pre-registered success criteria pass. Statistically significant at ρ ≥ 0.7 (Wilcoxon, Holm-Bonferroni corrected, Cohen's d > 1.0).
 
@@ -76,7 +76,7 @@ from dash.core.pipeline import DASHPipeline
 
 pipeline = DASHPipeline(
     M=200,                      # Train 200 diverse models
-    K=20,                       # Select 20 for consensus
+    K=30,                       # Select up to 30 for consensus
     epsilon=0.08,               # Keep models within 0.08 of best score
     selection_method="maxmin",  # Greedy diversity selection
     task="regression",          # "regression", "binary", or "multiclass"

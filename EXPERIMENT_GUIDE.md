@@ -2,7 +2,7 @@
 
 **What the experiments test, why each piece matters, and how to interpret the results.**
 
-**Authoritative notebook**: `notebooks/demo_benchmark_7.ipynb` (53 cells, mechanism-first structure, checkpointed)
+**Authoritative notebook**: `notebooks/demo_benchmark_6.ipynb` (ArXiv canonical). **In development**: `notebooks/demo_benchmark_7.ipynb` (TMLR, 53 cells, mechanism-first structure, checkpointed)
 **Automated script**: `run_experiments.py` (mirrors the notebook, outputs to `results/`)
 
 ## The Problem DASH Solves
@@ -357,7 +357,7 @@ The notebook uses short tags to reference specific design decisions:
 | F2 | Relative epsilon mode for real-world datasets |
 | M1 | Holm-Bonferroni step-down correction |
 | M2 | Random Selection baseline isolates MaxMin value |
-| M3 | Matched compute budget (Single Best M=200) |
+| M3 | Matched tree-count budget (Single Best M=200) |
 | M4 | Seed passed to all baseline .fit() calls |
 | M5 | Feature ablation using first selected model as proxy |
 | M8 | Bootstrap CI for stability |
