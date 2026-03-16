@@ -793,7 +793,7 @@ $\rhovar = 0.9$ in Table~\ref{tab:extended}.}
 \begin{tabular}{clcccc}
 \toprule
 $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
-  \textbf{Equity (CV)} & \textbf{RMSE} \\
+  \textbf{Equity (CV$\downarrow$)} & \textbf{RMSE} \\
 \midrule
 \multirow{4}{*}{0.0}
   & Single Best          & $.973 \pm .001$ & .985 & .168 & .609 \\
@@ -918,7 +918,7 @@ and were not independently measured.
 \begin{tabular}{llcccc}
 \toprule
 & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
-  \textbf{Equity (CV)} & \textbf{Time (s)} \\
+  \textbf{Equity (CV$\downarrow$)} & \textbf{Time (s)} \\
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
   & Single Best          & $.958 \pm .003$ & .978 & .224 & \phantom{0}43.5 \\
@@ -1277,10 +1277,13 @@ Best at $\rhovar \geq 0.7$ (stability gap $+0.078$ at $\rhovar = 0.95$).
 
 \begin{table}[htbp]
 \centering
-\caption{Nonlinear DGP: stability across correlation levels for all five methods.
+\caption{Nonlinear DGP: stability and equity across correlation levels.
 SB = Single Best, LSM = Large Single Model, LSM-T = LSM (Tuned),
 SR = Stochastic Retrain.
-Bold indicates best per $\rhovar$. Equity (CV) values are reported in the lower section.}
+Five methods with distinct training structures are shown; Random Selection
+and Naive Top-$N$ (which performed similarly to \dash{} in the linear regime)
+are omitted for space and are available in the code repository.
+Bold indicates best per $\rhovar$.}
 \label{tab:nonlinear}
 \begin{tabular}{cccccc}
 \toprule
@@ -1353,10 +1356,15 @@ sequentially-constructed model. The solution is to change what is
 being explained: from one model's feature attributions to a consensus
 across independently trained models. Under nonlinear data-generating
 processes, independence remains the most effective mitigation but does
-not fully restore stability (Section~\ref{sec:robustness}), as different
-models may capture qualitatively different interaction structures whose
-averaging introduces noise alongside the beneficial cancellation of
-arbitrary feature selections.
+not fully restore stability (Section~\ref{sec:robustness}). The
+mechanism is that SHAP attributions for a feature depend on \emph{which
+interactions} the model has learned, not only on which feature was
+selected first within a correlated group. Since independently trained
+models may learn qualitatively different interaction structures
+(\eg tree $h_1$ in model~$A$ captures $z_1^2$ while model~$B$ captures
+$z_1 z_2$), averaging their SHAP values introduces model-disagreement
+noise that is distinct from first-mover bias and not resolved by
+independence alone.
 
 \paragraph{Relationship to stability selection.}
 \dash{} shares a structural resemblance with stability selection
@@ -1844,13 +1852,13 @@ Random Selection  & 200 & $K_{\text{eff}}$ & 287.2 & $6.6\times$ \\
 \end{tabular}
 \smallskip
 
-\noindent\textit{Note:} Random Selection is slower than \dash{} despite
-a similar pipeline (both train $M{=}200$ models and compute SHAP for
-$K_{\text{eff}}$ models) because \dash{}'s diversity selection identifies
-a compact subset early, whereas Random Selection's lack of diversity
-guarantees leads to higher variance in per-run $K_{\text{eff}}$ and
-additional overhead from the random sampling procedure across the full
-filtered pool.
+\noindent\textit{Note:} \dash{}'s diversity selection typically terminates
+before reaching $K_{\max} = 30$ (the minimum-distance threshold $\delta$
+stops selection early), yielding $K_{\text{eff}} \approx 10$--$15$ SHAP
+evaluations at $\varepsilon = 0.08$. Random Selection always selects
+$K = 30$ models, requiring roughly twice as many SHAP computations per
+repetition. Stochastic Retrain similarly computes SHAP for all $K = 30$
+models, explaining its higher cost relative to \dash{}.
 \end{table}
 
 \section{Pre-Specified Success Criteria}
