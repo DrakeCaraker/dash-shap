@@ -27,7 +27,8 @@ paper/            LaTeX source
 
 - `dash.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
 - `run_experiments.py` — CLI experiment runner (10 experiments, plotting, JSON output)
-- `notebooks/demo_benchmark_7.ipynb` — **authoritative** interactive benchmark notebook
+- `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook
+- `notebooks/demo_benchmark_7.ipynb` — **in development (TMLR)** interactive benchmark notebook
 - `notebooks/explore_experiment_results.ipynb` — interactive viewer for `run_experiments.py` output
 
 ## Experiment Synchronization
@@ -63,7 +64,7 @@ epsilon_mode = 'relative'
 - **Lazy imports** via `__getattr__` in all `__init__.py` files
 - **4-way data split** in synthetic generators: X_train, X_val, X_explain (SHAP background), X_test (RMSE eval)
 - **Checkpoint pattern** in notebooks: `save_checkpoint(name, data)` / `load_checkpoint(name)` writes `.pkl` to `checkpoints/`
-- **Notebook naming**: `demo_benchmark_{N}.ipynb` — higher N supersedes lower. **7 is authoritative**; 0–6 are historical
+- **Notebook naming**: `demo_benchmark_{N}.ipynb` — higher N supersedes lower. **6 is authoritative for ArXiv**; **7 is authoritative for TMLR (in development, not yet run)**; 0–5 are historical
 - **Tests**: `pytest` from repo root. ~47 tests across 4 files. No GPU required.
 - **Parallelism** via `joblib` (n_jobs parameter on DASHPipeline)
 
@@ -88,7 +89,7 @@ git config core.hooksPath .githooks
 
 - Commit `.pkl` files or anything in `checkpoints/`
 - Track build artifacts (`dist/`, `build/`, `*.egg-info/`)
-- Modify notebooks `demo_benchmark` through `demo_benchmark_6` (historical artifacts)
+- Modify notebooks `demo_benchmark` through `demo_benchmark_5` (historical artifacts)
 - Push notebooks with large embedded outputs (>10MB) — clear outputs first
 - Use `dash` as a bare import in tests (shadows the package — use `from dash.core import ...`)
 - Train models with high `colsample_bytree` (>0.5) in DASH population — defeats the diversity mechanism
@@ -99,6 +100,21 @@ At rho=0.9 (20 reps, v6): DASH stability=0.981 vs Single Best=0.960 vs LSM=0.940
 At rho=0.95 (20 reps): DASH stability=0.982 vs Single Best=0.953 vs LSM=0.930
 Breast Cancer: DASH stability=0.933 vs Single Best=0.534 (+0.399)
 Superconductor: DASH stability=0.965 vs Single Best=0.848 vs LSM=0.702
+
+## Claude Code Workflow
+
+### Slash Commands
+- `/commit` — safe commit with pkl/large file guards (blocks `.pkl`, warns >500KB)
+- `/checkpoint-clear` — list and selectively delete checkpoint/pkl files
+- `/notebook-status` — summarize notebook states, flag large outputs, show canonical status
+- `/paper-context` — load full research context (EXPERIMENT_GUIDE, BENCHMARK_RESULTS, ROADMAP) for writing tasks
+- `/sync-check` — verify PAPER_CONFIG consistency across `run_experiments.py`, notebooks 6 & 7, and CLAUDE.md
+- `/experiment-summary` — format results into markdown + LaTeX tables with provenance and regression checks
+
+### Hooks
+- **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
+- **Stop** (user-level): prevents session end with uncommitted/unpushed changes
+- **PreToolUse** (project-level): warns when editing notebooks >2MB (catches output bloat before commit)
 
 ## Research Program
 
