@@ -1,17 +1,30 @@
-MAIN = draft_v2_preprint
-V1   = draft_v1
+MAIN        = draft_v2_preprint
+V1          = draft_v1
+DRAFTS      = $(MAIN) $(V1)
+LATEXMK     = latexmk
+LATEX_FLAGS = -pdf
 
-.PHONY: all v1 clean watch
+.PHONY: all v1 clean watch diff wordcount lint
 
 all:
-	latexmk -pdf $(MAIN).tex
+	$(LATEXMK) $(LATEX_FLAGS) $(MAIN).tex
 
 v1:
-	latexmk -pdf $(V1).tex
+	$(LATEXMK) $(LATEX_FLAGS) $(V1).tex
 
 watch:
-	latexmk -pdf -pvc $(MAIN).tex
+	$(LATEXMK) $(LATEX_FLAGS) -pvc $(MAIN).tex
+
+diff:
+	latexdiff $(V1).tex $(MAIN).tex > diff.tex
+	$(LATEXMK) $(LATEX_FLAGS) diff.tex
+
+wordcount:
+	@texcount -inc -total $(MAIN).tex
+
+lint:
+	@chktex -q $(MAIN).tex || true
 
 clean:
-	latexmk -C $(MAIN).tex
-	latexmk -C $(V1).tex
+	$(LATEXMK) -C $(foreach d,$(DRAFTS),$(d).tex)
+	rm -f diff.tex diff.pdf
