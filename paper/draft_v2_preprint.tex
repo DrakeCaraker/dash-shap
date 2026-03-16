@@ -19,6 +19,7 @@
 \usepackage{subcaption}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
+\usepackage{microtype}   % better text rendering, reduces overfull hboxes
 \usepackage{hyperref}
 
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
@@ -33,17 +34,21 @@
 \newcommand{\ie}{i.e.,\ }
 \newcommand{\wrt}{w.r.t.\ }
 
+% --- Table spacing ---
+\renewcommand{\arraystretch}{1.15}
+
 \title{%
   \textbf{First-Mover Bias in Gradient Boosting Explanations:} \\[6pt]
   \large Mechanism, Detection, and Resolution
 }
 
 \author{
-  Drake Caraker\thanks{Corresponding author.} \qquad
-  Bryan Arnold \qquad
+  Drake Caraker\thanks{Corresponding author: \texttt{drakecaraker@gmail.com}} \quad
+  Bryan Arnold \quad
   David Rhoads \\[4pt]
-  \textit{Independent Researchers} \\
-  \texttt{puremath86@gmail.com} (Caraker \& Arnold) \quad \texttt{drhoads9@gmail.com} (Rhoads)
+  \textit{Independent Researchers} \\[2pt]
+  \small\texttt{puremath86@gmail.com} (Arnold) \quad
+  \small\texttt{drhoads9@gmail.com} (Rhoads)
 }
 
 \date{March 2026}
@@ -85,8 +90,10 @@ reproducible benchmarks are available at
 \url{https://github.com/DrakeCaraker/dash-shap}.
 \end{abstract}
 
-\textbf{Keywords:} first-mover bias, SHAP, feature importance, multicollinearity,
-model independence, gradient boosting, explainability, Rashomon effect
+\smallskip
+\noindent\textbf{Keywords:} first-mover bias, SHAP, feature importance,
+multicollinearity, model independence, gradient boosting, explainability,
+Rashomon effect
 
 % ===========================================================================
 \section{Introduction}
@@ -312,7 +319,7 @@ A good feature importance method under multicollinearity should satisfy:
 
 \dash{} is a five-stage pipeline (Figure~\ref{fig:pipeline}):
 
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \begin{tikzpicture}[
   stage/.style={rectangle, draw=black!80, fill=blue!8, rounded corners=3pt,
@@ -331,11 +338,11 @@ A good feature importance method under multicollinearity should satisfy:
   \draw[arr] (div)  -- (cons);
   \draw[arr] (cons) -- (diag);
 
-  \node[note, below=2pt of pop]  {$M{=}200$ models};
-  \node[note, below=2pt of filt] {$\varepsilon$-threshold};
-  \node[note, below=2pt of div]  {MaxMin, $K{\leq}30$};
-  \node[note, below=2pt of cons] {Interventional\\TreeSHAP};
-  \node[note, below=2pt of diag] {FSI, IS~Plot};
+  \node[note, below=4pt of pop]  {$M{=}200$ models};
+  \node[note, below=4pt of filt] {$\varepsilon$-threshold};
+  \node[note, below=4pt of div]  {MaxMin, $K{\leq}30$};
+  \node[note, below=4pt of cons] {Interventional\\TreeSHAP};
+  \node[note, below=4pt of diag] {FSI, IS~Plot};
 \end{tikzpicture}
 \caption{The \dash{} five-stage pipeline. Models are trained independently
 (Stage~1), filtered for quality (Stage~2), selected for diversity (Stage~3),
@@ -354,7 +361,7 @@ to a random subset of features. This forces different models to rely on
 different members of correlated groups. Each model is trained independently
 with early stopping, using a separate random seed to diversify initialization.
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{Hyperparameter search space for population generation.}
 \label{tab:search_space}
@@ -546,7 +553,7 @@ We use relative $\varepsilon = 0.05$ for scale-appropriate filtering.
 
 We compare 9 methods (Table~\ref{tab:methods}):
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{Methods compared in the benchmark. All use XGBoost as the base learner.}
 \label{tab:methods}
@@ -560,7 +567,9 @@ We compare 9 methods (Table~\ref{tab:methods}):
   & Large Single Model & One XGBoost with $\sim$15K trees, low \texttt{colsample\_bytree} \\
   & LSM (Tuned)       & Grid search over \texttt{max\_depth}, \texttt{learning\_rate} \\
   & Ensemble SHAP     & Single 2000-tree ensemble (\texttt{colsample\_bytree}{=}0.8) \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain & $K$ models, different seeds, same hyperparameters \\
   & Random Selection  & DASH population + filtering, random $K$ selection \\
@@ -600,7 +609,7 @@ for explanation quality.
 
 \subsection{Statistical tests}
 
-Pairwise comparisons use Wilcoxon signed-rank tests with Holm-Bonferroni
+Pairwise comparisons use Wilcoxon signed-rank tests with Holm--Bonferroni
 step-down correction. Effect sizes are reported as Cohen's $d$.
 
 \subsection{Pipeline configuration}
@@ -637,7 +646,7 @@ $\rhovar = 0$ to $0.925$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
 stability is effectively flat ($0.972$--$0.977$), demonstrating
 immunity to the mechanism it is designed to break.
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{The mechanism experiment: \dash{} vs.\ Single Best vs.\ Large
 Single Model across correlation levels (20 repetitions per $\rhovar$).
@@ -655,35 +664,43 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
   & Single Best          & $.973 \pm .001$ & .985 & .168 & .609 \\
   & Large Single Model   & $.953 \pm .003$ & .974 & .170 & .771 \\
   & Stoch.\ Retrain      & $.975 \pm .001$ & .987 & .175 & .581 \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{.972} \pm .002$ & \textbf{.985} &
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.972} \pm .002$ & \textbf{.985} &
     \textbf{.164} & \textbf{.596} \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{4}{*}{0.5}
   & Single Best          & $.975 \pm .002$ & .987 & .178 & .617 \\
   & Large Single Model   & $.965 \pm .002$ & .981 & .194 & .767 \\
   & Stoch.\ Retrain      & $.980 \pm .001$ & .989 & .173 & .585 \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
     \textbf{.163} & \textbf{.599} \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{4}{*}{0.7}
   & Single Best          & $.969 \pm .002$ & .984 & .193 & .618 \\
   & Large Single Model   & $.963 \pm .002$ & .981 & .209 & .757 \\
   & Stoch.\ Retrain      & $.980 \pm .001$ & .990 & .170 & .582 \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.989} &
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.989} &
     \textbf{.162} & \textbf{.597} \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{4}{*}{0.9}
   & Single Best          & $.958 \pm .003$ & .978 & .224 & .614 \\
   & Large Single Model   & $.938 \pm .003$ & .967 & .262 & .738 \\
   & Stoch.\ Retrain      & $.977 \pm .002$ & .988 & .182 & .577 \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
     \textbf{.176} & \textbf{.594} \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{4}{*}{0.95}
   & Single Best          & $.951 \pm .004$ & .975 & .246 & .608 \\
   & Large Single Model   & $.925 \pm .003$ & .961 & .284 & .733 \\
   & Stoch.\ Retrain      & $.979 \pm .002$ & .989 & .170 & .576 \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
     \textbf{.172} & \textbf{.590} \\
 \bottomrule
 \end{tabular}
@@ -712,7 +729,7 @@ correlated group (5~features, each with true importance $0.40$), the
 Single Best and Large Single Model concentrate importance on one
 arbitrary feature, while \dash{} distributes it proportionally.
 
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=0.75\textwidth]{first_mover_concentration.png}
 \caption{First-mover bias visualized: per-feature importance within a
@@ -738,7 +755,7 @@ diversity-aware selection, while Stochastic Retrain simply trains $N$
 models with different random seeds and the same hyperparameters---but they
 share one property: their explained models are trained independently.
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{All methods at $\rhovar = 0.9$ (20 repetitions), grouped by
 whether they achieve model independence. Bold indicates best per metric.
@@ -752,12 +769,14 @@ Timing entries marked --- were not independently measured.}
   \textbf{Equity (CV)} & \textbf{Time (s)} \\
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
-  & Single Best          & $.958 \pm .003$ & .978 & .224 & 43.5 \\
+  & Single Best          & $.958 \pm .003$ & .978 & .224 & \phantom{0}43.5 \\
   & Single Best$^\dagger$ & $.964 \pm .002$ & .981 & .212 & 248.8 \\
-  & Large Single Model   & $.938 \pm .003$ & .967 & .262 & 6.4 \\
-  & LSM (Tuned)          & $.948 \pm .003$ & .972 & .272 & 88.9 \\
+  & Large Single Model   & $.938 \pm .003$ & .967 & .262 & \phantom{00}6.4 \\
+  & LSM (Tuned)          & $.948 \pm .003$ & .972 & .272 & \phantom{0}88.9 \\
   & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & --- \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain   & $.977 \pm .002$ & .988 & .182 & 233.5 \\
   & Random Selection$^\dagger$ & $.976 \pm .001$ & .988 & .187 & 287.2 \\
@@ -795,7 +814,7 @@ $\rhovar \geq 0.7$ for both accuracy ($d = +0.98$) and equity
 \emph{not} significant on either accuracy ($d = +0.05$) or equity
 ($d = -0.21$), consistent with the independence principle.
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{Wilcoxon signed-rank tests with Holm--Bonferroni step-down correction
 (20~paired repetitions). Bold $p$-values are significant at adjusted
@@ -804,20 +823,22 @@ $\alpha = 0.05$.}
 \small
 \begin{tabular}{clccc}
 \toprule
-$\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d$ \\ % TODO: update p-values from experiment output after running with holm_bonferroni()
+$\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d$ \\
 \midrule
-0.7  & DASH vs SB  & Accuracy & \textbf{0.031} & +0.98 \\
-0.7  & DASH vs LSM & Accuracy & \textbf{0.002} & +1.97 \\
+0.7  & DASH vs SB  & Accuracy & \textbf{0.031} & $+$0.98 \\
+0.7  & DASH vs LSM & Accuracy & \textbf{0.002} & $+$1.97 \\
 0.7  & DASH vs SB  & Equity   & \textbf{0.018} & $-$1.07 \\
 0.7  & DASH vs LSM & Equity   & \textbf{$<$0.001} & $-$1.96 \\
-0.9  & DASH vs SB  & Accuracy & \textbf{0.010} & +1.59 \\
-0.9  & DASH vs LSM & Accuracy & \textbf{$<$0.001} & +3.42 \\
+\addlinespace
+0.9  & DASH vs SB  & Accuracy & \textbf{0.010} & $+$1.59 \\
+0.9  & DASH vs LSM & Accuracy & \textbf{$<$0.001} & $+$3.42 \\
 0.9  & DASH vs SB  & Equity   & \textbf{0.015} & $-$1.27 \\
 0.9  & DASH vs LSM & Equity   & \textbf{$<$0.001} & $-$3.03 \\
-0.9  & DASH vs SR  & Accuracy & n.s. (0.926) & +0.05 \\
+0.9  & DASH vs SR  & Accuracy & n.s. (0.926) & $+$0.05 \\
 0.9  & DASH vs SR  & Equity   & n.s. (0.622) & $-$0.21 \\
-0.95 & DASH vs SB  & Accuracy & \textbf{$<$0.001} & +2.07 \\
-0.95 & DASH vs LSM & Accuracy & \textbf{$<$0.001} & +4.41 \\
+\addlinespace
+0.95 & DASH vs SB  & Accuracy & \textbf{$<$0.001} & $+$2.07 \\
+0.95 & DASH vs LSM & Accuracy & \textbf{$<$0.001} & $+$4.41 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -863,7 +884,7 @@ At $\rhovar = 0$, all methods perform similarly (stability $0.953$--$0.975$),
 confirming the safety desideratum: \dash{} does not degrade explanations
 when multicollinearity is absent.
 
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{correlation_sweep.png}
 \caption{Stability, accuracy, and equity as a function of within-group
@@ -913,7 +934,7 @@ explanation reliability \emph{before} acting on feature rankings---a
 capability absent from single-model workflows and from Stochastic
 Retrain.
 
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \begin{subfigure}[t]{0.48\textwidth}
   \centering
@@ -953,7 +974,7 @@ sufficient to destabilize single-model explanations.
 On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 20 repetitions), \dash{} nearly doubles stability:
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{Real-world dataset results (20 repetitions each).
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
@@ -963,17 +984,21 @@ Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{$\Delta$Stab.} & \textbf{RMSE} \\
 \midrule
 \multirow{2}{*}{Breast Cancer}
-  & Single Best ($M{=}200$) & $0.317 \pm 0.053$ & & \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{0.930} \pm 0.005$ & $+0.614$ & \\
+  & Single Best ($M{=}200$) & $0.317 \pm 0.053$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{0.930} \pm 0.005$ & $+0.614$ & \multicolumn{1}{c}{---} \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{3}{*}{Superconductor}
-  & Single Best            & $0.830 \pm 0.02$ & & $9.18 \pm 0.11$ \\
+  & Single Best            & $0.830 \pm 0.02$ & \multicolumn{1}{c}{---} & $9.18 \pm 0.11$ \\
   & Large Single Model     & $0.689 \pm 0.03$ & $-0.141$ & $9.34 \pm 0.09$ \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{0.962} \pm 0.01$ & $+0.132$ & $\mathbf{9.15} \pm 0.08$ \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{0.962} \pm 0.01$ & $+0.132$ & $\mathbf{9.15} \pm 0.08$ \\
+\addlinespace
 \midrule
+\addlinespace
 \multirow{2}{*}{Calif.\ Housing}
-  & Single Best            & $0.967 \pm 0.01$ & & $0.460 \pm 0.009$ \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{0.982} \pm 0.005$ & $+0.015$ & $\mathbf{0.450} \pm 0.005$ \\
+  & Single Best            & $0.967 \pm 0.01$ & \multicolumn{1}{c}{---} & $0.460 \pm 0.009$ \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{0.982} \pm 0.005$ & $+0.015$ & $\mathbf{0.450} \pm 0.005$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1015,7 +1040,7 @@ $\varepsilon$ values ($0.03$ to $0.10$), stability varies by $< 0.005$.
 The effective ensemble size $K_{\text{eff}}$ scales with $\varepsilon$
 (4.0 to 16.2), but performance plateaus early.
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{Epsilon sensitivity at $\rhovar = 0.9$. Performance is robust
 across a $3\times$ range.}
@@ -1040,7 +1065,7 @@ plateaus early, confirming that $M = 200$ is sufficient.
 Full ablation results for $M$, $K$, $\varepsilon$, and $\delta$ are
 shown in Figure~\ref{fig:ablation}.
 
-\begin{figure}[h]
+\begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth]{ablation_sensitivity.png}
 \caption{Ablation sensitivity: stability as a function of each pipeline
@@ -1056,7 +1081,7 @@ $\rhovar = 0.9$ (20~repetitions, single-threaded timing).
 \dash{}'s cost is dominated by training $M = 200$ models and computing
 $K \leq 30$ TreeSHAP explanations.
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{Computational cost at $\rhovar = 0.9$ (20 repetitions).
 Wall-clock times are hardware-dependent (Apple M-series, single node)
@@ -1067,9 +1092,9 @@ and reported for relative comparison.}
 \toprule
 \textbf{Method} & \textbf{Models} & \textbf{SHAP Evals} & \textbf{Per-rep (s)} & \textbf{Ratio} \\
 \midrule
-Large Single Model & 1  & 1  & 6.4 & $0.1\times$ \\
-Single Best       & 30  & 1  & 43.5 & $1.0\times$ \\
-LSM (Tuned)       & 1   & 1  & 88.9 & $2.0\times$ \\
+Large Single Model & 1  & 1  & \phantom{00}6.4 & $0.1\times$ \\
+Single Best       & 30  & 1  & \phantom{0}43.5 & $1.0\times$ \\
+LSM (Tuned)       & 1   & 1  & \phantom{0}88.9 & $2.0\times$ \\
 \dash{} (MaxMin)  & 200 & $K_{\text{eff}}$ & 140.3 & $3.2\times$ \\
 Stochastic Retrain & 30 & 30 & 233.5 & $5.4\times$ \\
 Single Best ($M{=}200$)  & 200 & 1  & 248.8 & $5.7\times$ \\
@@ -1091,10 +1116,10 @@ degrade (stability drops from $\sim$0.93 to $\sim$0.88), but the
 first-mover bias mechanism still operates: \dash{} outperforms Single
 Best at $\rhovar \geq 0.7$ (stability gap $+0.078$ at $\rhovar = 0.95$).
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
 \caption{Nonlinear DGP: stability across correlation levels for all five methods.
-Bold indicates best per $\rhovar$. Equity (CV) values are reported in the lower panel.}
+Bold indicates best per $\rhovar$. Equity (CV) values are reported in the lower section.}
 \label{tab:nonlinear}
 \begin{tabular}{cccccc}
 \toprule
@@ -1421,7 +1446,7 @@ K.~Aas, M.~Jullum, and A.~L{\o}land.
 \section{Algorithm Pseudocode}
 \label{app:algorithm}
 
-\begin{algorithm}[h]
+\begin{algorithm}[htbp]
 \caption{DASH Pipeline}
 \label{alg:dash}
 \begin{algorithmic}[1]
@@ -1473,7 +1498,7 @@ Full per-repetition importance vectors, significance test results, and
 ablation data are available in JSON format from the experimental runner.
 Running \texttt{python run\_experiments.py} reproduces all tables and
 figures. The authoritative notebook
-\texttt{notebooks/demo\_benchmark\_7.ipynb} provides a checkpointed
+\texttt{notebooks/demo\_benchmark\_6.ipynb} provides a checkpointed
 walkthrough of all experiments with intermediate results cached for
 rapid re-execution.
 
@@ -1500,7 +1525,7 @@ The benchmark defines eleven formal pass/fail criteria, all of which
   \item \textbf{Nonlinear DGP}: DASH $>$ SB stability at $\rhovar = 0.9$
     $\to$ \textbf{PASS} (DASH $= 0.8734$ vs.\ SB $= 0.8336$)
   \item \textbf{Statistical significance}: $\geq$50\% of tests significant
-    $\to$ \textbf{PASS} (17/26 Bonferroni, 15/26 Holm-Bonferroni)
+    $\to$ \textbf{PASS} (17/26 Bonferroni, 15/26 Holm--Bonferroni)
   \item \textbf{Superconductor}: DASH stability $>$ SB $\to$ \textbf{PASS}
     ($0.962$ vs.\ $0.830$)
   \item \textbf{California Housing}: DASH stability $>$ SB $\to$ \textbf{PASS}
