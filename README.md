@@ -31,13 +31,15 @@ At high collinearity (ρ = 0.9, 50 features, 10 correlated groups, 20 repetition
 | Large Single Model | 0.938 | 0.967 | 0.262 |
 | **DASH (MaxMin)** | **0.977** | **0.988** | **0.176** |
 
-Real-world datasets:
+Stability on real-world datasets:
 
 | Dataset | Features | Single Best | DASH | Improvement |
 |---|---|---|---|---|
-| Breast Cancer | 30 (21 pairs \|r\| > 0.9) | 0.317 | 0.930 | **+0.613** |
+| Breast Cancer | 30 (21 pairs \|r\| > 0.9) | 0.317* | 0.930 | **+0.614** |
 | Superconductor | 81 | 0.830 | 0.962 | +0.132 |
 | California Housing | 8 | 0.967 | 0.982 | +0.015 |
+
+*\*Compute-matched Single Best (M=200): trains 200 models, keeps the best. Standard Single Best uses default hyperparameter tuning.*
 
 DASH stability is flat across correlation levels (0.972–0.977 from ρ = 0.0 to ρ = 0.95). All 11 pre-registered success criteria pass. Statistically significant at ρ ≥ 0.7 (Wilcoxon, Holm-Bonferroni corrected, Cohen's d > 1.0).
 
