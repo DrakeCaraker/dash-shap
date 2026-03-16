@@ -222,6 +222,25 @@ def test_holm_bonferroni_less_conservative_than_bonferroni():
     assert any(a < b for a, b in zip(adjusted, bonferroni))
 
 
+def test_tost_equivalence_small_diff():
+    """Small differences with large delta should be equivalent."""
+    from dash.evaluation import tost_equivalence
+    a = np.array([1.0, 1.1, 0.9, 1.05, 0.95])
+    b = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
+    t1, p1, t2, p2, equiv = tost_equivalence(a, b, delta=0.5)
+    assert isinstance(equiv, bool)
+    assert equiv is True
+
+
+def test_tost_equivalence_large_diff():
+    """Large differences with small delta should NOT be equivalent."""
+    from dash.evaluation import tost_equivalence
+    a = np.array([1.0, 1.1, 0.9, 1.05, 0.95])
+    c = np.array([5.0, 5.0, 5.0, 5.0, 5.0])
+    _, _, _, _, equiv = tost_equivalence(a, c, delta=0.1)
+    assert equiv is False
+
+
 def test_performance_filter_relative():
     """Relative epsilon mode filters based on fraction of best score."""
     from dash.core.filtering import performance_filter
