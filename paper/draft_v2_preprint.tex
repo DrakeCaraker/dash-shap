@@ -51,7 +51,7 @@
 }
 
 \author{
-  Drake Caraker\thanks{Corresponding author: \texttt{drakecaraker@gmail.com}} \quad
+  Drake Caraker\thanks{Corresponding author: \texttt{drakecaraker@gmail.com}; ORCID: \href{https://orcid.org/0009-0009-5639-7899}{0009-0009-5639-7899}} \quad
   Bryan Arnold \quad
   David Rhoads \\[4pt]
   \textit{Independent Researchers} \\[2pt]
@@ -86,7 +86,7 @@ method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
 chain, confirming that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
-$\approx 0.977$ (not significantly different), while the standard
+$= 0.977$, numerically identical, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
 $0.32$ to $0.93$ ($+0.61$), comparing against a compute-matched
@@ -530,6 +530,8 @@ computing the correlation matrix directly.
 
 We generate data with $N = 5{,}000$ observations and $P = 50$ features
 arranged in 10 groups of 5, with within-group correlation $\rhovar$.
+Data is split 4-way: 56\% train, 16\% validation (for performance
+filtering), 8\% explain (SHAP background), 20\% test (RMSE evaluation).
 The target follows a linear data-generating process (DGP):
 \begin{equation}
   y = \sum_{g=1}^{10} \beta_g \cdot \bar{z}_g + \epsilon,
@@ -805,7 +807,9 @@ share one property: their explained models are trained independently.
 whether they achieve model independence. Bold indicates best per metric.
 $^\dagger$Matched compute budget ($M{=}200$ models trained).
 Timing entries marked --- share infrastructure with other methods
-and were not independently measured.}
+and were not independently measured.
+95\% BCa bootstrap CIs on stability: Single Best $[0.952, 0.963]$,
+\dash{} $[0.975, 0.978]$ (non-overlapping).}
 \label{tab:extended}
 \small
 \begin{tabular}{llcccc}
@@ -847,6 +851,17 @@ The gap between tiers ($\sim$0.01--0.04) dwarfs the gap within the
 independent tier ($\sim$0.001). This confirms that the operative
 mechanism is independence between explained models, not any particular
 aggregation strategy or hyperparameter diversification.
+
+\paragraph{Variance decomposition.}
+To directly quantify the role of model-selection randomness, we
+decompose explanation instability into two sources by alternately fixing
+the data seed or the model seed. When data is fixed and only model seeds
+vary (isolating model-selection variance), Single Best stability is
+$0.978$ while \dash{} achieves $0.995$---indicating that \dash{}
+nearly eliminates model-selection noise. Model-selection variance
+accounts for $54\%$ of Single Best's total instability but only $24\%$
+of \dash{}'s, confirming that independence-based averaging cancels the
+arbitrary feature choices that dominate single-model explanations.
 
 \paragraph{Statistical significance.}
 Table~\ref{tab:significance} reports Wilcoxon signed-rank tests with
@@ -898,7 +913,7 @@ the operative mechanism. \dash{} should therefore be understood as a
 statistically superior alternative to seed averaging. Its practical
 advantages over SR are threefold:
 \begin{enumerate}
-  \item \textbf{Speed.} \dash{} is $1.7\times$ faster than SR (140\,s
+  \item \textbf{Speed.} \dash{} is ${\sim}1.7\times$ faster than SR (140\,s
     vs.\ 234\,s per repetition, Table~\ref{tab:cost}) because diversity
     selection reduces the number of SHAP evaluations from $K = 30$ to
     $K_{\text{eff}} \leq 30$ (typically 10--15 at $\varepsilon = 0.08$).
@@ -948,7 +963,9 @@ with $\rhovar$.
 \caption{Stability, accuracy, and equity as a function of within-group
 correlation $\rhovar$ (linear DGP, 20~repetitions per level). Independent
 methods (\dash{}, Stochastic Retrain) are flat across correlation levels;
-dependent methods (Single Best, LSM) degrade monotonically.}
+dependent methods (Single Best, LSM) degrade monotonically.
+All seven methods shown; Table~\ref{tab:sweep} reports the four principal
+methods in detail, Table~\ref{tab:extended} compares all at $\rhovar = 0.9$.}
 \label{fig:sweep}
 \end{figure}
 
@@ -963,10 +980,13 @@ by quantifying explanation disagreement across the ensemble.
 \paragraph{Feature Stability Index (FSI).}
 The FSI (Eq.~\ref{eq:fsi}) measures the ratio of cross-model SHAP
 variance to mean importance for each feature. On the Breast Cancer
-dataset, features known to belong to correlated groups---radius,
-perimeter, area---have FSI values $> 0.5$, while uncorrelated features
-(symmetry, fractal dimension) have FSI $< 0.1$. The FSI correctly
-identifies collinear features without computing the correlation matrix,
+dataset, the most important features (\texttt{mean concave points},
+\texttt{worst area}, \texttt{worst perimeter}) have FSI $\approx 0.9$--$1.0$,
+indicating moderate cross-model disagreement, while features in the
+radius/perimeter/area triad that are less frequently selected as
+``first movers'' show higher FSI ($> 1.2$), reflecting greater
+instability. The FSI gradient across correlated features
+identifies collinear groups without computing the correlation matrix,
 providing an unsupervised collinearity diagnostic.
 
 \paragraph{Importance-Stability (IS) Plot.}
@@ -983,9 +1003,11 @@ thresholds on importance and FSI:
     interactions requiring further investigation.
 \end{itemize}
 
-On Breast Cancer, the IS Plot places \texttt{mean concave points} and
-\texttt{worst texture} in Quadrant~I (robust drivers) and the
-radius/perimeter/area triad in Quadrant~II (collinear cluster), matching
+On Breast Cancer, the IS Plot places \texttt{mean concave points},
+\texttt{worst area}, and \texttt{worst perimeter} in Quadrant~I
+(robust drivers---high importance, low FSI) and the
+radius/perimeter/area triad's remaining members in Quadrant~II
+(collinear cluster---high importance, high FSI), matching
 domain knowledge about the underlying tumor geometry
 (Figure~\ref{fig:is_plot}). This enables practitioners to audit
 explanation reliability \emph{before} acting on feature rankings---a
@@ -1127,11 +1149,14 @@ shown in Figure~\ref{fig:ablation}.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\textwidth,alt={Sensitivity plots of stability vs pipeline parameters M, K, epsilon, and delta}]{ablation_sensitivity.png}
-\caption{Ablation sensitivity: stability as a function of each pipeline
-parameter ($M$, $K$, $\varepsilon$, $\delta$) at three correlation levels.
-Performance plateaus early in all dimensions, confirming robustness to
-configuration choices.}
+% NOTE: Full 4-panel ablation figure (M, K, epsilon, delta) to be
+% regenerated from demo_benchmark_7 once that run completes.
+\includegraphics[width=\textwidth,alt={Sensitivity plot of stability vs population size M at three correlation levels}]{ablation_sensitivity.png}
+\caption{Ablation sensitivity: stability as a function of population size $M$
+at three correlation levels (remaining panels---$K$, $\varepsilon$,
+$\delta$---to be updated in the final version).
+Stability plateaus past $M = 100$;
+see Table~\ref{tab:epsilon} for $\varepsilon$ sensitivity.}
 \label{fig:ablation}
 \end{figure}
 
