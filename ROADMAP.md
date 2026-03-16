@@ -8,16 +8,16 @@ DASH is Paper 1 of a five-paper research program that builds from a practical to
 
 **Title:** "First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution"
 
-The paper reframed from "DASH as a method" to "first-mover bias as a mechanism." The core claim: sequential residual dependency in gradient boosting creates first-mover bias that concentrates SHAP importance on arbitrary features under multicollinearity, and model independence is both necessary and sufficient to resolve it. DASH is one principled instantiation of this principle, but the contribution is the mechanistic insight — validated by the finding that DASH ≈ Stochastic Retrain (d=+0.05, n.s.), proving the principle generalizes beyond any specific implementation.
+The paper reframed from "DASH as a method" to "first-mover bias as a mechanism." The core claim: sequential residual dependency in gradient boosting creates first-mover bias that concentrates SHAP importance on arbitrary features under multicollinearity, and model independence is sufficient to resolve it. DASH is one principled instantiation of this principle, but the contribution is the mechanistic insight — validated by the finding that DASH ≈ Stochastic Retrain (d=+0.05, n.s.), proving the principle generalizes beyond any specific implementation.
 
 **Three lines of evidence:**
-1. **The mechanism:** Large Single Model (same compute budget as DASH) produces *worst* stability, confirming sequential dependency is the cause
+1. **The mechanism:** Large Single Model (same total tree count as DASH) produces *worst* stability, confirming sequential dependency is the cause
 2. **The principle:** Independence between models resolves it (DASH ≈ Stochastic Retrain equivalence)
 3. **Dose-response:** Effect scales with correlation — dependent methods degrade 0.973→0.951, independent methods remain flat
 
 **Final configuration:** M=200, K=30, N_REPS=20, ε=0.08 (synthetic) / 0.05 relative (real-world).
 
-**Results (ArXiv pre-print):** DASH stability 0.977 at ρ=0.9 vs Single Best 0.958 vs LSM 0.938. Breast Cancer: DASH 0.930 vs Single Best 0.317 (+0.613). Superconductor: DASH 0.962 vs Single Best 0.830 vs LSM 0.702. California Housing: DASH 0.982 vs Single Best 0.967. DGP agreement (Spearman ρ) = 0.988 at ρ=0.9. Safety at ρ=0: gap = 0.0003 (n.s.). 11/11 pre-registered success criteria pass. Statistical testing: Wilcoxon signed-rank + Holm-Bonferroni step-down + Cohen's d effect sizes + TOST equivalence testing.
+**Results (ArXiv pre-print):** DASH stability 0.977 at ρ=0.9 vs Single Best 0.958 vs LSM 0.938. Breast Cancer: DASH 0.930 vs Single Best 0.317 (+0.614). Superconductor: DASH 0.962 vs Single Best 0.830 vs LSM 0.689. California Housing: DASH 0.982 vs Single Best 0.967. DGP agreement (Spearman ρ) = 0.988 at ρ=0.9. Safety at ρ=0: gap = 0.0003 (n.s.). 11/11 pre-registered success criteria pass. Statistical testing: Wilcoxon signed-rank + Holm-Bonferroni step-down + Cohen's d effect sizes + TOST equivalence testing.
 
 **Nonlinear scope boundary (discovered):** Under nonlinear DGP, DASH advantage only emerges at ρ≥0.7, with overall stability ~0.87-0.88 vs ~0.93-0.98 for linear. Paper documents this as an honest limitation and scope condition.
 

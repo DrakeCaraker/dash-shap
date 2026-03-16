@@ -1,5 +1,7 @@
 # Peer Review: DASH-SHAP for TMLR Publication
 
+> **Status:** This review was conducted on draft_v1. Issues marked below have been largely addressed in drafts v2–v5. Retained for historical reference.
+
 **Reviewer**: Automated analysis (code + paper + experiments)
 **Date**: 2026-03-15
 **Verdict**: Conditionally Publishable (Major Revision)
