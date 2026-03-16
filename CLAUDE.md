@@ -42,7 +42,7 @@ paper/            LaTeX source
 ```python
 M = 200          # population size
 K = 30           # selected models
-N_REPS = 20      # repetitions per experiment
+N_REPS = 50      # repetitions per experiment
 EPSILON = 0.08   # absolute filter threshold (synthetic)
 DELTA = 0.05     # deduplication Spearman threshold
 SEED = 42
