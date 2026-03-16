@@ -64,7 +64,7 @@ epsilon_mode = 'relative'
 - **Lazy imports** via `__getattr__` in all `__init__.py` files
 - **4-way data split** in synthetic generators: X_train, X_val, X_explain (SHAP background), X_test (RMSE eval)
 - **Checkpoint pattern** in notebooks: `save_checkpoint(name, data)` / `load_checkpoint(name)` writes `.pkl` to `checkpoints/`
-- **Notebook naming**: `demo_benchmark_{N}.ipynb` — higher N supersedes lower. **6 is authoritative for ArXiv**; **7 is authoritative for TMLR (in development, not yet run)**; 0–5 are historical
+- **Notebook naming**: `demo_benchmark_{N}.ipynb` — **6 is authoritative for ArXiv**; **7 is authoritative for TMLR (in development, not yet run)**
 - **Tests**: `pytest` from repo root. ~47 tests across 4 files. No GPU required.
 - **Parallelism** via `joblib` (n_jobs parameter on DASHPipeline)
 
@@ -89,7 +89,6 @@ git config core.hooksPath .githooks
 
 - Commit `.pkl` files or anything in `checkpoints/`
 - Track build artifacts (`dist/`, `build/`, `*.egg-info/`)
-- Modify notebooks `demo_benchmark` through `demo_benchmark_5` (historical artifacts)
 - Push notebooks with large embedded outputs (>10MB) — clear outputs first
 - Use `dash` as a bare import in tests (shadows the package — use `from dash.core import ...`)
 - Train models with high `colsample_bytree` (>0.5) in DASH population — defeats the diversity mechanism
