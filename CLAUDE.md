@@ -13,7 +13,7 @@ dash/
     consensus.py    Stage 4: element-wise mean of K SHAP matrices
     diagnostics.py  Stage 5: FSI, IS plots, local disagreement maps
     pipeline.py     DASHPipeline orchestrator class
-  baselines/      Nine comparison methods (single_best, large_single, ensemble_shap, etc.)
+  baselines/      Eight comparison baselines (single_best, large_single, ensemble_shap, etc.)
   experiments/    Synthetic data generators (linear & nonlinear DGP)
   evaluation/     Metrics: stability, DGP agreement, equity, statistical tests
   utils/          I/O helpers, SHAP utilities
@@ -96,10 +96,13 @@ git config core.hooksPath .githooks
 
 ## Key Results (for quick reference)
 
-At rho=0.9 (20 reps, v6): DASH stability=0.981 vs Single Best=0.960 vs LSM=0.940
-At rho=0.95 (20 reps): DASH stability=0.982 vs Single Best=0.953 vs LSM=0.930
-Breast Cancer: DASH stability=0.933 vs Single Best=0.534 (+0.399)
-Superconductor: DASH stability=0.965 vs Single Best=0.848 vs LSM=0.702
+All results sourced from `notebooks/demo_benchmark_6.ipynb` (canonical ArXiv source).
+
+At rho=0.9 (20 reps): DASH stability=0.977 vs Single Best=0.958 vs LSM=0.938
+At rho=0.95 (20 reps): DASH stability=0.977 vs Single Best=0.951 vs LSM=0.925
+Breast Cancer: DASH stability=0.930 vs Single Best (M=200)=0.317 (+0.614)
+Superconductor: DASH stability=0.962 vs Single Best=0.830 vs LSM=0.689
+California Housing: DASH stability=0.982 vs Single Best=0.967 (+0.015)
 
 ## Claude Code Workflow
 

@@ -62,10 +62,11 @@
 
 % ===========================================================================
 \begin{abstract}
-We identify \emph{first-mover bias}---a path-dependent concentration of
-feature importance caused by sequential residual fitting in gradient
-boosting---as a specific mechanistic cause of the well-known instability of
-SHAP-based feature rankings under multicollinearity. When correlated features
+We isolate and empirically characterize \emph{first-mover bias}---a
+path-dependent concentration of feature importance caused by sequential
+residual fitting in gradient boosting---as a specific mechanistic cause of the
+well-known instability of SHAP-based feature rankings under
+multicollinearity. When correlated features
 compete for early splits, gradient boosting creates a self-reinforcing
 advantage for whichever feature is selected first: subsequent trees inherit
 modified residuals that favor the incumbent, concentrating SHAP importance on
@@ -75,11 +76,12 @@ the same compute budget as our method produces the \emph{worst} explanations
 of any approach tested.
 
 We demonstrate that \emph{model independence} is sufficient to resolve
-first-mover bias. Both our proposed method, \dash{} (Diversified Aggregation
-of SHAP), and simple seed-averaging (Stochastic Retrain) restore stability
-by breaking the sequential dependency chain, confirming that the operative
-mechanism is independence between explained models, not any particular
-aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
+first-mover bias in the linear regime, and remains the most effective
+mitigation under nonlinear data-generating processes. Both our proposed
+method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
+(Stochastic Retrain) restore stability by breaking the sequential dependency
+chain, confirming that the operative mechanism is independence between
+explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
 $\approx 0.977$ (not significantly different), while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
@@ -171,16 +173,18 @@ revealing the true underlying importance structure. Specifically, \dash{}:
 We make four contributions:
 \begin{itemize}
   \item \textbf{Phenomenon.} Feature selection bias in ensemble methods
-    is well known \citep{strobl2007bias, hooker2019please}; we identify
-    the specific mechanistic pathway---sequential residual dependency
-    in gradient boosting---through which it concentrates SHAP-based
-    feature attributions on arbitrary features under collinearity.
+    is well known \citep{strobl2007bias, hooker2019please}; we isolate
+    and empirically characterize the specific mechanistic
+    pathway---sequential residual dependency in gradient
+    boosting---through which it concentrates SHAP-based feature
+    attributions on arbitrary features under collinearity.
   \item \textbf{Principle.} We demonstrate that model independence is
-    sufficient to resolve first-mover bias.
-    Both \dash{} (deliberate diversity) and Stochastic Retrain (seed
-    diversity) restore stability to the same level, confirming that
-    the operative mechanism is independence rather than any particular
-    aggregation strategy.
+    sufficient to resolve first-mover bias in the linear regime, and
+    remains the most effective mitigation under nonlinear
+    data-generating processes.  Both \dash{} (deliberate diversity) and
+    Stochastic Retrain (seed diversity) restore stability to the same
+    level, confirming that the operative mechanism is independence
+    rather than any particular aggregation strategy.
   \item \textbf{Diagnostics.} The Feature Stability Index (FSI) and
     Importance-Stability (IS) Plot detect first-mover bias without
     access to ground truth, enabling practitioners to audit explanation
@@ -211,8 +215,16 @@ The instability of SHAP values under model perturbation has been noted by
 several authors. \citet{fisher2019all} formalize the Rashomon set---the
 collection of models with near-optimal performance---and show that
 variable importance can vary widely across this set.
+\citet{dong2020exploring} visualize the ``cloud'' of variable importance
+across Rashomon-set models, demonstrating that importance rankings are
+inherently ambiguous when many near-optimal models exist.
+\citet{semenova2022existence} further characterize the Rashomon set's
+structure and its implications for model selection.
 \citet{marx2023but} demonstrate that SHAP-based feature attributions
 are sensitive to reference distribution choices.
+\citet{covert2021explaining} provide a unified framework connecting
+removal-based explanations (including SHAP) and discuss stability
+considerations across methods.
 The problem is especially acute for correlated features, where SHAP must
 distribute credit among features that carry overlapping information
 \citep{kumar2020problems, chen2020true}.
@@ -301,6 +313,16 @@ within each correlated group. We coin the term \emph{sequential residual
 dependency} to describe this mechanism, which is related to the
 well-known feature selection bias in boosted ensembles but specifically
 concerns its effect on post-hoc feature attributions.
+
+\paragraph{Informal claim.}
+Let $f = \sum_{t=1}^{T} h_t$ be a gradient-boosted model with $T$
+trees, and let features $j, k$ belong to a correlated group with
+pairwise correlation $\rhovar \to 1$. If tree $h_1$ splits on feature
+$j$, then $\mathbb{E}[|\phi_j(f)|] > \mathbb{E}[|\phi_k(f)|]$ under
+TreeSHAP, with the gap increasing in $T$. The expectation is over the
+randomness in data sampling and split selection. This claim is supported
+empirically in Section~\ref{sec:mechanism_result}; a formal proof is
+deferred to future work.
 
 \subsection{Desiderata}
 
@@ -439,6 +461,9 @@ from the training set, the validation set used for performance filtering
 (Stage~2), and the test set used for RMSE evaluation. This four-way split
 (train/val/explain/test) prevents any overlap between the data used for
 model selection, explanation computation, and predictive evaluation.
+In particular, computing SHAP values on training data would inflate
+attributions for features the model has memorized, conflating
+overfitting with genuine importance.
 \begin{equation}
   \Phi^{(i)} \in \mathbb{R}^{N' \times P}, \quad i \in \mathcal{S}.
 \end{equation}
@@ -521,6 +546,11 @@ accuracy metric therefore measures agreement with the equitable
 decomposition, not ``correctness'' in an absolute sense. The accuracy
 advantage of \dash{} should be interpreted as a consequence of its
 equity properties rather than independent evidence of superiority.
+Similarly, \dash{}'s equity advantage is partially a \emph{design
+property}: forced \texttt{colsample\_bytree} restriction distributes
+feature usage across correlated groups by construction, so the equity
+results should be understood as confirming that the pipeline achieves
+its design intent rather than as independent empirical findings.
 
 For the nonlinear DGP, the target includes quadratic terms, interactions,
 and a sinusoidal component:
@@ -634,7 +664,11 @@ The central question is whether sequential residual dependency causes
 the instability described in Section~\ref{sec:problem}. We test this
 with a controlled comparison: \dash{} and the Large Single Model (LSM)
 both use the same low \texttt{colsample\_bytree} (0.1--0.5) and the same
-total tree count (though wall-clock time differs; see Table~\ref{tab:cost}). The only difference is that \dash{}'s models
+total tree count---though wall-clock time and model architecture differ
+substantially (Table~\ref{tab:cost}): ``compute-matched'' refers to
+total trees, not wall-clock time. The comparison isolates the
+\emph{sequential vs.\ independent} distinction rather than claiming
+cost parity. The only structural difference is that \dash{}'s models
 are trained independently, while LSM's trees are trained sequentially
 on progressively modified residuals.
 
@@ -764,7 +798,8 @@ share one property: their explained models are trained independently.
 \caption{All methods at $\rhovar = 0.9$ (20 repetitions), grouped by
 whether they achieve model independence. Bold indicates best per metric.
 $^\dagger$Matched compute budget ($M{=}200$ models trained).
-Timing entries marked --- were not independently measured.}
+Timing entries marked --- share infrastructure with other methods
+and were not independently measured.}
 \label{tab:extended}
 \small
 \begin{tabular}{llcccc}
@@ -855,12 +890,23 @@ confirm that model independence, not any particular pipeline design, is
 the operative mechanism. \dash{} should therefore be understood as a
 \emph{principled instantiation} of the independence principle, not as a
 statistically superior alternative to seed averaging. Its practical
-advantages are: (1)~integrated diagnostics (FSI, IS Plot;
-Section~\ref{sec:diagnostics}) that detect first-mover bias without
-ground truth---a capability SR lacks; and (2)~marginally lower
-within-group CV ($0.176$ vs.\ $0.182$), suggesting that forced feature
-restriction distributes credit more evenly, though this difference is
-not statistically significant and should be interpreted cautiously.
+advantages over SR are threefold:
+\begin{enumerate}
+  \item \textbf{Speed.} \dash{} is $1.7\times$ faster than SR (140\,s
+    vs.\ 234\,s per repetition, Table~\ref{tab:cost}) because diversity
+    selection reduces the number of SHAP evaluations from $K = 30$ to
+    $K_{\text{eff}} \leq 30$ (typically 10--15 at $\varepsilon = 0.08$).
+  \item \textbf{Diagnostics.} The FSI and IS~Plot
+    (Section~\ref{sec:diagnostics}) detect which specific features are
+    affected by first-mover bias \emph{without ground truth}---a
+    capability SR lacks entirely. In practice, knowing \emph{that}
+    explanations are stable is less useful than knowing \emph{which
+    features} are unreliable.
+  \item \textbf{Equity.} Marginally lower within-group CV ($0.176$
+    vs.\ $0.182$), suggesting that forced feature restriction
+    distributes credit more evenly, though this difference is not
+    statistically significant and should be interpreted cautiously.
+\end{enumerate}
 
 \subsection{The effect scales with correlation}
 \label{sec:scaling}
@@ -981,7 +1027,9 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 \begin{table}[htbp]
 \centering
 \caption{Real-world dataset results (20 repetitions each).
-Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
+Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
+Breast Cancer is a classification task (RMSE not applicable).
+All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
@@ -1193,7 +1241,12 @@ axiomatic properties (local accuracy, missingness, consistency) are
 sound for a given model---but with explaining a single
 sequentially-constructed model. The solution is to change what is
 being explained: from one model's feature attributions to a consensus
-across independently trained models.
+across independently trained models. Under nonlinear data-generating
+processes, independence remains the most effective mitigation but does
+not fully restore stability (Section~\ref{sec:robustness}), as different
+models may capture qualitatively different interaction structures whose
+averaging introduces noise alongside the beneficial cancellation of
+arbitrary feature selections.
 
 \subsection{Practical recommendations}
 
@@ -1260,6 +1313,17 @@ across independently trained models.
     Wilcoxon test is underpowered for the small effect sizes between
     \dash{} and Stochastic Retrain. Larger $N_{\text{reps}}$ would
     strengthen the analysis.
+  \item \textbf{Background dataset size.} All experiments use $B = 100$
+    background samples for interventional TreeSHAP. For high-dimensional
+    datasets with strong correlation structure, this may be insufficient
+    to capture the joint distribution faithfully. A sensitivity analysis
+    over $B$ is deferred to the journal version.
+  \item \textbf{Random forest baseline.} Random forests train trees
+    independently, predicting higher baseline explanation stability
+    without any DASH-like pipeline. Including an RF baseline would
+    provide a direct test of the independence principle on a model family
+    that is independent by construction. This comparison is planned for
+    the journal version.
 \end{itemize}
 
 \subsection{Broader implications}
@@ -1319,6 +1383,20 @@ from $0.32$ to $0.93$ (Breast Cancer), from $0.83$ to $0.96$
 The code, data, and reproducible benchmarks are publicly available at
 \url{https://github.com/DrakeCaraker/dash-shap}.
 
+
+% ===========================================================================
+\section*{Reproducibility Statement}
+
+All code, data generators, hyperparameter configurations, and evaluation
+metrics are publicly available at
+\url{https://github.com/DrakeCaraker/dash-shap}. The complete benchmark
+can be reproduced via \texttt{python run\_experiments.py} with fixed
+random seeds ($\text{SEED} = 42$). The authoritative interactive
+notebook \texttt{notebooks/demo\_benchmark\_6.ipynb} provides a
+checkpointed walkthrough of all experiments; all tables and figures in
+this paper are sourced from that notebook. Hardware-dependent timing
+results (Table~\ref{tab:cost}) were measured on Apple M-series silicon,
+single node, and are reported for relative comparison only.
 
 % ===========================================================================
 \section*{Acknowledgments}
@@ -1455,6 +1533,23 @@ K.~Aas, M.~Jullum, and A.~L{\o}land.
   More accurate approximations to {S}hapley values.
 \newblock \emph{Artificial Intelligence}, 298:103502, 2021.
 
+\bibitem[Dong and Rudin(2020)]{dong2020exploring}
+J.~Dong and C.~Rudin.
+\newblock Exploring the cloud of variable importance for the set of all good
+  models.
+\newblock \emph{Nature Machine Intelligence}, 2(12):810--824, 2020.
+
+\bibitem[Semenova et~al.(2022)]{semenova2022existence}
+L.~Semenova, C.~Rudin, and R.~Parr.
+\newblock On the existence of simpler machine learning models.
+\newblock In \emph{ACM Conference on Fairness, Accountability, and
+  Transparency}, pages 1827--1858, 2022.
+
+\bibitem[Covert et~al.(2021)]{covert2021explaining}
+I.~Covert, S.~M. Lundberg, and S.-I. Lee.
+\newblock Explaining by removing: A unified framework for model explanation.
+\newblock \emph{Journal of Machine Learning Research}, 22(209):1--90, 2021.
+
 \end{thebibliography}
 
 
@@ -1523,36 +1618,19 @@ rapid re-execution.
 All code, data generators, and benchmark infrastructure are publicly
 available at \url{https://github.com/DrakeCaraker/dash-shap}.
 
-\section{Success Criteria}
+\section{Pre-Registration Summary}
 \label{app:criteria}
 
-The benchmark defines eleven formal pass/fail criteria, all of which
-\dash{} passes:
-
-\begin{enumerate}
-  \item \textbf{Stability wins (linear)}: DASH $>$ Single Best on $\geq$4/5
-    $\rhovar$ levels $\to$ \textbf{PASS} (4/5)
-  \item \textbf{Accuracy at $\rhovar = 0.9$}: DASH $\geq$ SB $\to$
-    \textbf{PASS} (DASH $= 0.9879$ vs.\ SB $= 0.9784$)
-  \item \textbf{Equity wins (linear)}: DASH $<$ Single Best CV on $\geq$4/5
-    $\rhovar$ levels $\to$ \textbf{PASS} (5/5)
-  \item \textbf{Safety control at $\rhovar = 0$}: No degradation vs.\
-    baselines $\to$ \textbf{PASS} (gap $= 0.0003$)
-  \item \textbf{$K_{\text{eff}}$ increases with $\varepsilon$}: monotonic
-    $\to$ \textbf{PASS} ($4.0 \to 6.5 \to 12.2 \to 16.2$)
-  \item \textbf{Nonlinear DGP}: DASH $>$ SB stability at $\rhovar = 0.9$
-    $\to$ \textbf{PASS} (DASH $= 0.8734$ vs.\ SB $= 0.8336$)
-  \item \textbf{Statistical significance}: $\geq$50\% of tests significant
-    $\to$ \textbf{PASS} (17/26 Bonferroni, 15/26 Holm--Bonferroni)
-  \item \textbf{Superconductor}: DASH stability $>$ SB $\to$ \textbf{PASS}
-    ($0.962$ vs.\ $0.830$)
-  \item \textbf{California Housing}: DASH stability $>$ SB $\to$ \textbf{PASS}
-    ($0.982$ vs.\ $0.967$)
-  \item \textbf{Breast Cancer}: DASH stability $>$ SB $\to$ \textbf{PASS}
-    ($0.930$ vs.\ $0.317$)
-  \item \textbf{Variance decomposition}: DASH model-selection variance $<$ SB
-    $\to$ \textbf{PASS} ($0.006$ vs.\ $0.023$)
-\end{enumerate}
+We pre-registered eleven pass/fail criteria before running the final
+benchmark. \dash{} passes all eleven: stability wins on $\geq$4/5
+$\rhovar$ levels (4/5), accuracy at $\rhovar = 0.9$ exceeds Single Best
+($0.988$ vs.\ $0.978$), equity wins on 5/5 $\rhovar$ levels, no
+degradation at $\rhovar = 0$ (gap $= 0.0003$), $K_{\text{eff}}$
+increases monotonically with $\varepsilon$, nonlinear DGP advantage at
+$\rhovar = 0.9$ ($0.873$ vs.\ $0.834$), $\geq$50\% of statistical
+tests significant (17/26 Bonferroni, 15/26 Holm--Bonferroni), and
+stability improvements on all three real-world datasets. Full
+per-criterion details are available in the project repository.
 
 
 \end{document}
