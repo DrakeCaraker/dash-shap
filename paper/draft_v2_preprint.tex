@@ -43,7 +43,7 @@
   Bryan Arnold \qquad
   David Rhoads \\[4pt]
   \textit{Independent Researchers} \\
-  \texttt{puremath86@gmail.com} \quad \texttt{drhoads9@gmail.com}
+  \texttt{puremath86@gmail.com} (Caraker \& Arnold) \quad \texttt{drhoads9@gmail.com} (Rhoads)
 }
 
 \date{March 2026}
@@ -123,8 +123,7 @@ before modeling is susceptible.
 \paragraph{Why bigger models make it worse.}
 The intuitive response to unstable explanations is to train a more powerful
 model. We demonstrate that this is counterproductive. A single large
-XGBoost model with thousands of trees and the same total computational
-budget as \dash{} produces the \emph{worst} explanations of any method
+XGBoost model with thousands of trees and the same total tree count as \dash{} ($M \times \sim$75 $\approx$ 15\,000 trees) produces the \emph{worst} explanations of any method
 tested---worse on stability, accuracy, and equity simultaneously. The
 mechanism is \emph{sequential residual dependency}: in gradient boosting,
 each tree fits the residuals of all previous trees. If tree~1 selects
@@ -622,7 +621,7 @@ The central question is whether sequential residual dependency causes
 the instability described in Section~\ref{sec:problem}. We test this
 with a controlled comparison: \dash{} and the Large Single Model (LSM)
 both use the same low \texttt{colsample\_bytree} (0.1--0.5) and the same
-total computational budget. The only difference is that \dash{}'s models
+total tree count (though wall-clock time differs; see Table~\ref{tab:cost}). The only difference is that \dash{}'s models
 are trained independently, while LSM's trees are trained sequentially
 on progressively modified residuals.
 
@@ -743,7 +742,8 @@ share one property: their explained models are trained independently.
 \centering
 \caption{All methods at $\rhovar = 0.9$ (20 repetitions), grouped by
 whether they achieve model independence. Bold indicates best per metric.
-$^\dagger$Matched compute budget ($M{=}200$ models trained).}
+$^\dagger$Matched compute budget ($M{=}200$ models trained).
+Timing entries marked --- were not independently measured.}
 \label{tab:extended}
 \small
 \begin{tabular}{llcccc}
@@ -756,12 +756,12 @@ $^\dagger$Matched compute budget ($M{=}200$ models trained).}
   & Single Best$^\dagger$ & $.964 \pm .002$ & .981 & .212 & 248.8 \\
   & Large Single Model   & $.938 \pm .003$ & .967 & .262 & 6.4 \\
   & LSM (Tuned)          & $.948 \pm .003$ & .972 & .272 & 88.9 \\
-  & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & $\sim$43 \\
+  & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & --- \\
 \midrule
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain   & $.977 \pm .002$ & .988 & .182 & 233.5 \\
   & Random Selection$^\dagger$ & $.976 \pm .001$ & .988 & .187 & 287.2 \\
-  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .187 & $\sim$140 \\
+  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .187 & --- \\
   & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} & \textbf{.176} & 140.3 \\
 \bottomrule
 \end{tabular}
@@ -786,7 +786,7 @@ aggregation strategy or hyperparameter diversification.
 
 \paragraph{Statistical significance.}
 Table~\ref{tab:significance} reports Wilcoxon signed-rank tests with
-Bonferroni correction on accuracy and equity metrics across all
+Holm--Bonferroni step-down correction on accuracy and equity metrics across all
 $\rhovar$ levels. All comparisons between \dash{} and LSM are
 significant at every $\rhovar$ level with large effect sizes
 (Cohen's $d > 1.4$). \dash{} vs.\ Single Best becomes significant at
@@ -797,14 +797,14 @@ $\rhovar \geq 0.7$ for both accuracy ($d = +0.98$) and equity
 
 \begin{table}[h]
 \centering
-\caption{Wilcoxon signed-rank tests with Bonferroni correction
+\caption{Wilcoxon signed-rank tests with Holm--Bonferroni step-down correction
 (20~paired repetitions). Bold $p$-values are significant at adjusted
 $\alpha = 0.05$.}
 \label{tab:significance}
 \small
 \begin{tabular}{clccc}
 \toprule
-$\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{Bonf}}$ & Cohen's $d$ \\
+$\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d$ \\ % TODO: update p-values from experiment output after running with holm_bonferroni()
 \midrule
 0.7  & DASH vs SB  & Accuracy & \textbf{0.031} & +0.98 \\
 0.7  & DASH vs LSM & Accuracy & \textbf{0.002} & +1.97 \\
@@ -1093,18 +1093,28 @@ Best at $\rhovar \geq 0.7$ (stability gap $+0.078$ at $\rhovar = 0.95$).
 
 \begin{table}[h]
 \centering
-\caption{Nonlinear DGP: stability and equity across correlation levels.
-Bold indicates best per $\rhovar$.}
+\caption{Nonlinear DGP: stability across correlation levels for all five methods.
+Bold indicates best per $\rhovar$. Equity (CV) values are reported in the lower panel.}
 \label{tab:nonlinear}
-\begin{tabular}{ccccc}
+\begin{tabular}{cccccc}
 \toprule
-$\rhovar$ & SB Stability & \textbf{DASH Stability} & SB Equity & \textbf{DASH Equity} \\
+\multicolumn{6}{c}{\textit{Stability}} \\
+$\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \midrule
-0.0  & 0.9327 & 0.9335 & 0.1784 & \textbf{0.1677} \\
-0.5  & 0.8492 & \textbf{0.8520} & 0.1771 & \textbf{0.1724} \\
-0.7  & 0.8420 & \textbf{0.8656} & 0.1918 & \textbf{0.1703} \\
-0.9  & 0.8336 & \textbf{0.8734} & 0.2002 & \textbf{0.1731} \\
-0.95 & 0.7978 & \textbf{0.8758} & 0.2309 & \textbf{0.1665} \\
+0.0  & 0.933 & 0.912 & 0.929 & \textbf{0.934} & \textbf{0.934} \\
+0.5  & 0.849 & 0.836 & 0.851 & \textbf{0.855} & 0.852 \\
+0.7  & 0.842 & 0.836 & 0.853 & 0.854 & \textbf{0.866} \\
+0.9  & 0.834 & 0.791 & 0.819 & 0.869 & \textbf{0.873} \\
+0.95 & 0.798 & 0.745 & 0.803 & 0.864 & \textbf{0.876} \\
+\midrule
+\multicolumn{6}{c}{\textit{Equity (CV, lower is better)}} \\
+$\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
+\midrule
+0.0  & 0.112 & \textbf{0.076} & 0.088 & 0.097 & 0.085 \\
+0.5  & 0.229 & \textbf{0.174} & 0.193 & 0.203 & \textbf{0.174} \\
+0.7  & 0.257 & 0.195 & 0.211 & 0.215 & \textbf{0.173} \\
+0.9  & 0.340 & 0.305 & 0.297 & 0.244 & \textbf{0.201} \\
+0.95 & 0.399 & 0.388 & 0.341 & 0.246 & \textbf{0.209} \\
 \bottomrule
 \end{tabular}
 \end{table}
