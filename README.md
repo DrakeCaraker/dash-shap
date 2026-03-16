@@ -7,7 +7,7 @@
 
 **Stable feature importance explanations under collinearity via independent model aggregation.**
 
-> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* Submitted to TMLR.
+> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* Awaiting submission to TMLR.
 
 ---
 
