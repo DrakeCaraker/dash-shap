@@ -69,10 +69,6 @@ path-dependent concentration of feature importance caused by sequential
 residual fitting in gradient boosting---as a specific mechanistic cause of the
 well-known instability of SHAP-based feature rankings under
 multicollinearity. When correlated features
-We identify \emph{first-mover bias}---a path-dependent concentration of
-feature importance caused by sequential residual fitting in gradient
-boosting---as a specific mechanistic cause of the well-known instability of
-SHAP-based feature rankings under multicollinearity. When correlated features
 compete for early splits, gradient boosting creates a self-reinforcing
 advantage for whichever feature is selected first: subsequent trees inherit
 modified residuals that favor the incumbent, concentrating SHAP importance on
@@ -88,11 +84,6 @@ method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
 chain, confirming that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
-first-mover bias. Both our proposed method, \dash{} (Diversified Aggregation
-of SHAP), and simple seed-averaging (Stochastic Retrain) restore stability
-by breaking the sequential dependency chain, confirming that the operative
-mechanism is independence between explained models, not any particular
-aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
 $\approx 0.977$ (not significantly different), while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
@@ -196,16 +187,6 @@ We make four contributions:
     Stochastic Retrain (seed diversity) restore stability to the same
     level, confirming that the operative mechanism is independence
     rather than any particular aggregation strategy.
-    is well known \citep{strobl2007bias, hooker2019please}; we identify
-    the specific mechanistic pathway---sequential residual dependency
-    in gradient boosting---through which it concentrates SHAP-based
-    feature attributions on arbitrary features under collinearity.
-  \item \textbf{Principle.} We demonstrate that model independence is
-    sufficient to resolve first-mover bias.
-    Both \dash{} (deliberate diversity) and Stochastic Retrain (seed
-    diversity) restore stability to the same level, confirming that
-    the operative mechanism is independence rather than any particular
-    aggregation strategy.
   \item \textbf{Diagnostics.} The Feature Stability Index (FSI) and
     Importance-Stability (IS) Plot detect first-mover bias without
     access to ground truth, enabling practitioners to audit explanation
@@ -246,8 +227,6 @@ are sensitive to reference distribution choices.
 \citet{covert2021explaining} provide a unified framework connecting
 removal-based explanations (including SHAP) and discuss stability
 considerations across methods.
-\citet{marx2023but} demonstrate that SHAP-based feature attributions
-are sensitive to reference distribution choices.
 The problem is especially acute for correlated features, where SHAP must
 distribute credit among features that carry overlapping information
 \citep{kumar2020problems, chen2020true}.
@@ -402,7 +381,7 @@ explained via TreeSHAP and averaged (Stage~4), and audited for stability
 
 \subsection{Stage 1: Population Generation}
 
-We train $M$ XGBoost models with hyperparameters randomly sampled from a
+We train $M$ XGBoost \citep{chen2016xgboost} models with hyperparameters randomly sampled from a
 search space $\Theta$ (Table~\ref{tab:search_space}). The critical
 parameter is \texttt{colsample\_bytree}, sampled from
 $\{0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5\}$, which restricts each tree
@@ -602,8 +581,8 @@ We use $\varepsilon = 0.05$ in relative mode (retaining models within
 \paragraph{California Housing.}
 8 features describing housing characteristics of 20,640 California
 census blocks. Regression task predicting median house value. Moderate
-collinearity: several feature pairs with $|r| > 0.7$ (\eg income and
-house value, latitude and longitude).
+collinearity: several feature pairs with $|r| > 0.7$ (\eg rooms and
+bedrooms, latitude and longitude).
 We use relative $\varepsilon = 0.05$ for scale-appropriate filtering.
 
 \subsection{Methods compared}
@@ -615,7 +594,6 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \caption{Methods compared in the benchmark. All use XGBoost as the base learner.}
 \label{tab:methods}
 \begin{tabular}{ll>{\raggedright\arraybackslash}p{6.8cm}}
-\begin{tabular}{llp{6.8cm}}
 \toprule
 & \textbf{Method} & \textbf{Description} \\
 \midrule
@@ -693,7 +671,6 @@ substantially (Table~\ref{tab:cost}): ``compute-matched'' refers to
 total trees, not wall-clock time. The comparison isolates the
 \emph{sequential vs.\ independent} distinction rather than claiming
 cost parity. The only structural difference is that \dash{}'s models
-total tree count (though wall-clock time differs; see Table~\ref{tab:cost}). The only difference is that \dash{}'s models
 are trained independently, while LSM's trees are trained sequentially
 on progressively modified residuals.
 
@@ -715,7 +692,7 @@ immunity to the mechanism it is designed to break.
 Single Model across correlation levels (20 repetitions per $\rhovar$).
 Both \dash{} and LSM use the same low \texttt{colsample\_bytree}; the
 only difference is that \dash{}'s models are trained independently while
-LSM trains trees sequentially. Bold indicates best per $\rhovar$ level.}
+LSM trains trees sequentially. Bold indicates best per metric per $\rhovar$ level.}
 \label{tab:sweep}
 \small
 \begin{tabular}{clcccc}
@@ -726,45 +703,45 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
 \multirow{4}{*}{0.0}
   & Single Best          & $.973 \pm .001$ & .985 & .168 & .609 \\
   & Large Single Model   & $.953 \pm .003$ & .974 & .170 & .771 \\
-  & Stoch.\ Retrain      & $.975 \pm .001$ & .987 & .175 & .581 \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.972} \pm .002$ & \textbf{.985} &
-    \textbf{.164} & \textbf{.596} \\
+  & Stoch.\ Retrain      & $\mathbf{.975} \pm .001$ & \textbf{.987} & .175 & \textbf{.581} \\
+  & \dash{} (MaxMin) & $.972 \pm .002$ & .985 &
+    \textbf{.164} & .596 \\
 \addlinespace
 \midrule
 \addlinespace
 \multirow{4}{*}{0.5}
   & Single Best          & $.975 \pm .002$ & .987 & .178 & .617 \\
   & Large Single Model   & $.965 \pm .002$ & .981 & .194 & .767 \\
-  & Stoch.\ Retrain      & $.980 \pm .001$ & .989 & .173 & .585 \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
-    \textbf{.163} & \textbf{.599} \\
+  & Stoch.\ Retrain      & $\mathbf{.980} \pm .001$ & \textbf{.989} & .173 & \textbf{.585} \\
+  & \dash{} (MaxMin) & $.977 \pm .001$ & .988 &
+    \textbf{.163} & .599 \\
 \addlinespace
 \midrule
 \addlinespace
 \multirow{4}{*}{0.7}
   & Single Best          & $.969 \pm .002$ & .984 & .193 & .618 \\
   & Large Single Model   & $.963 \pm .002$ & .981 & .209 & .757 \\
-  & Stoch.\ Retrain      & $.980 \pm .001$ & .990 & .170 & .582 \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.989} &
-    \textbf{.162} & \textbf{.597} \\
+  & Stoch.\ Retrain      & $\mathbf{.980} \pm .001$ & \textbf{.990} & .170 & \textbf{.582} \\
+  & \dash{} (MaxMin) & $.977 \pm .001$ & .989 &
+    \textbf{.162} & .597 \\
 \addlinespace
 \midrule
 \addlinespace
 \multirow{4}{*}{0.9}
   & Single Best          & $.958 \pm .003$ & .978 & .224 & .614 \\
   & Large Single Model   & $.938 \pm .003$ & .967 & .262 & .738 \\
-  & Stoch.\ Retrain      & $.977 \pm .002$ & .988 & .182 & .577 \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
-    \textbf{.176} & \textbf{.594} \\
+  & Stoch.\ Retrain      & $\mathbf{.977} \pm .002$ & \textbf{.988} & .182 & \textbf{.577} \\
+  & \dash{} (MaxMin) & $\mathbf{.977} \pm .001$ & \textbf{.988} &
+    \textbf{.176} & .594 \\
 \addlinespace
 \midrule
 \addlinespace
 \multirow{4}{*}{0.95}
   & Single Best          & $.951 \pm .004$ & .975 & .246 & .608 \\
   & Large Single Model   & $.925 \pm .003$ & .961 & .284 & .733 \\
-  & Stoch.\ Retrain      & $.979 \pm .002$ & .989 & .170 & .576 \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} &
-    \textbf{.172} & \textbf{.590} \\
+  & Stoch.\ Retrain      & $\mathbf{.979} \pm .002$ & \textbf{.989} & .170 & \textbf{.576} \\
+  & \dash{} (MaxMin) & $.977 \pm .001$ & .988 &
+    \textbf{.172} & .590 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -798,7 +775,9 @@ arbitrary feature, while \dash{} distributes it proportionally.
 \caption{First-mover bias visualized: per-feature importance within a
 correlated group ($\rhovar = 0.9$, true importance $= 0.40$ each). Single
 Best and LSM concentrate on an arbitrary feature; \dash{} distributes
-proportionally. Averaged over 5~repetitions; error bars show $\pm 1$~SD.}
+proportionally. Averaged over 5~repetitions; error bars show $\pm 1$~SD.
+The $\rho_S$ values in panel titles denote Spearman correlation with
+ground truth for this group (not the within-group feature correlation $\rhovar$).}
 \label{fig:concentration}
 \end{figure}
 
@@ -814,7 +793,7 @@ Table~\ref{tab:extended} compares all methods at $\rhovar = 0.9$. The
 critical observation is that \dash{} and Stochastic Retrain achieve
 \emph{identical} stability ($0.977$ each). These methods differ substantially in design---
 \dash{} uses forced feature restriction, performance filtering, and
-diversity-aware selection, while Stochastic Retrain simply trains $N$
+diversity-aware selection, while Stochastic Retrain simply trains $K$
 models with different random seeds and the same hyperparameters---but they
 share one property: their explained models are trained independently.
 
@@ -825,7 +804,6 @@ whether they achieve model independence. Bold indicates best per metric.
 $^\dagger$Matched compute budget ($M{=}200$ models trained).
 Timing entries marked --- share infrastructure with other methods
 and were not independently measured.}
-Timing entries marked --- were not independently measured.}
 \label{tab:extended}
 \small
 \begin{tabular}{llcccc}
@@ -933,12 +911,6 @@ advantages over SR are threefold:
     distributes credit more evenly, though this difference is not
     statistically significant and should be interpreted cautiously.
 \end{enumerate}
-advantages are: (1)~integrated diagnostics (FSI, IS Plot;
-Section~\ref{sec:diagnostics}) that detect first-mover bias without
-ground truth---a capability SR lacks; and (2)~marginally lower
-within-group CV ($0.176$ vs.\ $0.182$), suggesting that forced feature
-restriction distributes credit more evenly, though this difference is
-not statistically significant and should be interpreted cautiously.
 
 \subsection{The effect scales with correlation}
 \label{sec:scaling}
@@ -967,9 +939,6 @@ tightly (stability $0.972$--$0.975$), confirming the safety desideratum:
 \dash{} does not degrade explanations when multicollinearity is absent.
 LSM already trails at $0.953 \pm 0.003$, and its gap widens monotonically
 with $\rhovar$.
-At $\rhovar = 0$, all methods perform similarly (stability $0.953$--$0.975$),
-confirming the safety desideratum: \dash{} does not degrade explanations
-when multicollinearity is absent.
 
 \begin{figure}[htbp]
 \centering
@@ -1059,7 +1028,7 @@ sufficient to destabilize single-model explanations.
 
 \paragraph{Breast Cancer Wisconsin.}
 On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
-20 repetitions), \dash{} nearly doubles stability:
+20 repetitions), \dash{} nearly triples stability:
 
 \begin{table}[htbp]
 \centering
@@ -1067,7 +1036,6 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
-Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
@@ -1285,7 +1253,6 @@ not fully restore stability (Section~\ref{sec:robustness}), as different
 models may capture qualitatively different interaction structures whose
 averaging introduces noise alongside the beneficial cancellation of
 arbitrary feature selections.
-across independently trained models.
 
 \subsection{Practical recommendations}
 
@@ -1662,20 +1629,7 @@ available at \url{https://github.com/DrakeCaraker/dash-shap}.
 \label{app:criteria}
 
 We pre-registered eleven pass/fail criteria before running the final
-benchmark. \dash{} passes all eleven: stability wins on $\geq$4/5
-$\rhovar$ levels (4/5), accuracy at $\rhovar = 0.9$ exceeds Single Best
-($0.988$ vs.\ $0.978$), equity wins on 5/5 $\rhovar$ levels, no
-degradation at $\rhovar = 0$ (gap $= 0.0003$), $K_{\text{eff}}$
-increases monotonically with $\varepsilon$, nonlinear DGP advantage at
-$\rhovar = 0.9$ ($0.873$ vs.\ $0.834$), $\geq$50\% of statistical
-tests significant (17/26 Bonferroni, 15/26 Holm--Bonferroni), and
-stability improvements on all three real-world datasets. Full
-per-criterion details are available in the project repository.
-\section{Success Criteria}
-\label{app:criteria}
-
-The benchmark defines eleven formal pass/fail criteria, all of which
-\dash{} passes:
+benchmark. \dash{} passes all eleven:
 
 \begin{enumerate}
   \item \textbf{Stability wins (linear)}: DASH $>$ Single Best on $\geq$4/5
