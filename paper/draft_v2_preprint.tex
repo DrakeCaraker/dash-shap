@@ -24,7 +24,7 @@
 \hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
 
 % --- Graphics path ---
-\graphicspath{{../results/figures/}}
+\graphicspath{{../results/figures/}{../notebooks/results/figures/}}
 
 % --- Macros ---
 \newcommand{\dash}{\textsc{DASH}}
@@ -715,7 +715,7 @@ arbitrary feature, while \dash{} distributes it proportionally.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=0.75\textwidth]{first_mover_concentration.pdf}
+\includegraphics[width=0.75\textwidth]{first_mover_concentration.png}
 \caption{First-mover bias visualized: per-feature importance within a
 correlated group ($\rhovar = 0.9$, true importance $= 0.40$ each). Single
 Best and LSM concentrate on an arbitrary feature; \dash{} distributes
@@ -756,12 +756,12 @@ $^\dagger$Matched compute budget ($M{=}200$ models trained).}
   & Single Best$^\dagger$ & $.964 \pm .002$ & .981 & .212 & 248.8 \\
   & Large Single Model   & $.938 \pm .003$ & .967 & .262 & 6.4 \\
   & LSM (Tuned)          & $.948 \pm .003$ & .972 & .272 & 88.9 \\
-  & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & --- \\
+  & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & $\sim$43 \\
 \midrule
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
   & Stochastic Retrain   & $.977 \pm .002$ & .988 & .182 & 233.5 \\
   & Random Selection$^\dagger$ & $.976 \pm .001$ & .988 & .187 & 287.2 \\
-  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .187 & --- \\
+  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .187 & $\sim$140 \\
   & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} & \textbf{.176} & 140.3 \\
 \bottomrule
 \end{tabular}
@@ -865,7 +865,7 @@ when multicollinearity is absent.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=\textwidth]{correlation_sweep.pdf}
+\includegraphics[width=\textwidth]{correlation_sweep.png}
 \caption{Stability, accuracy, and equity as a function of within-group
 correlation $\rhovar$ (linear DGP, 20~repetitions per level). Independent
 methods (\dash{}, Stochastic Retrain) are flat across correlation levels;
@@ -960,19 +960,19 @@ Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
-\textbf{Dataset} & \textbf{Method} & \textbf{Stability} & \textbf{$\Delta$Stab.} & \textbf{RMSE/AUC} \\
+\textbf{Dataset} & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{$\Delta$Stab.} & \textbf{RMSE} \\
 \midrule
 \multirow{2}{*}{Breast Cancer}
-  & Single Best ($M{=}200$) & $0.317 \pm 0.05$ & ---    & --- \\
-  & \textbf{DASH (MaxMin)} & $\mathbf{0.930} \pm 0.005$ & $+0.614$ & --- \\
+  & Single Best ($M{=}200$) & $0.317 \pm 0.053$ & & \\
+  & \textbf{DASH (MaxMin)} & $\mathbf{0.930} \pm 0.005$ & $+0.614$ & \\
 \midrule
 \multirow{3}{*}{Superconductor}
-  & Single Best            & $0.830 \pm 0.02$ & ---    & $9.18 \pm 0.11$ \\
+  & Single Best            & $0.830 \pm 0.02$ & & $9.18 \pm 0.11$ \\
   & Large Single Model     & $0.689 \pm 0.03$ & $-0.141$ & $9.34 \pm 0.09$ \\
   & \textbf{DASH (MaxMin)} & $\mathbf{0.962} \pm 0.01$ & $+0.132$ & $\mathbf{9.15} \pm 0.08$ \\
 \midrule
-\multirow{2}{*}{California Housing}
-  & Single Best            & $0.967 \pm 0.01$ & ---    & $0.460 \pm 0.009$ \\
+\multirow{2}{*}{Calif.\ Housing}
+  & Single Best            & $0.967 \pm 0.01$ & & $0.460 \pm 0.009$ \\
   & \textbf{DASH (MaxMin)} & $\mathbf{0.982} \pm 0.005$ & $+0.015$ & $\mathbf{0.450} \pm 0.005$ \\
 \bottomrule
 \end{tabular}
@@ -1042,7 +1042,7 @@ shown in Figure~\ref{fig:ablation}.
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=\textwidth]{ablation_sensitivity.pdf}
+\includegraphics[width=\textwidth]{ablation_sensitivity.png}
 \caption{Ablation sensitivity: stability as a function of each pipeline
 parameter ($M$, $K$, $\varepsilon$, $\delta$) at three correlation levels.
 Performance plateaus early in all dimensions, confirming robustness to
