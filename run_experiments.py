@@ -80,7 +80,7 @@ from dash.utils.io import save_json
 PAPER_CONFIG = {
     'M': 200,
     'K': 30,
-    'N_REPS': 20,
+    'N_REPS': 50,
     'EPSILON': 0.08,
     'DELTA': 0.05,
     'N_TRIALS_SB': 30,
