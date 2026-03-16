@@ -10,6 +10,7 @@
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{array}       % column formatting with >{}
 \usepackage{multirow}
 \usepackage{xcolor}
 \usepackage{natbib}
@@ -19,6 +20,7 @@
 \usepackage{subcaption}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
+\usepackage{bold-extra}  % provides bold small caps (OT1/cmr/bx/sc)
 \usepackage{microtype}   % better text rendering, reduces overfull hboxes
 \usepackage{hyperref}
 
@@ -591,7 +593,7 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \centering
 \caption{Methods compared in the benchmark. All use XGBoost as the base learner.}
 \label{tab:methods}
-\begin{tabular}{llp{6.8cm}}
+\begin{tabular}{ll>{\raggedright\arraybackslash}p{6.8cm}}
 \toprule
 & \textbf{Method} & \textbf{Description} \\
 \midrule
@@ -1406,8 +1408,7 @@ providing the computational infrastructure on which this work is built.
 
 
 % ===========================================================================
-\bibliographystyle{plainnat}
-% \bibliography{references}
+% Bibliography is inline (thebibliography) — no external .bib file needed.
 
 \begin{thebibliography}{99}
 
