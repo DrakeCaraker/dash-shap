@@ -1236,8 +1236,18 @@ across independently trained models.
     producing unintuitive attributions. Averaging across diverse models
     mitigates individual-model artifacts, but the fundamental tension
     between interventional SHAP and correlated features remains.
-  \item \textbf{Interaction effects.} SHAP interaction values are not
-    preserved under element-wise averaging of SHAP matrices.
+  \item \textbf{Interaction effects.} The current pipeline averages SHAP
+    value matrices $\Phi^{(i)} \in \mathbb{R}^{N' \times P}$, which
+    preserves main effects but not pairwise interaction structure.
+    However, TreeSHAP supports exact interaction values via tensors
+    $\Phi_{\text{int}}^{(i)} \in \mathbb{R}^{N' \times P \times P}$,
+    where diagonal entries are main effects and off-diagonal entries
+    are pairwise interactions. Averaging these tensors element-wise
+    across the ensemble would yield stable interaction estimates
+    by the same independence argument. The computational cost is
+    $O(TLD^2)$ per model (vs.\ $O(TLD)$ for standard SHAP), making
+    this practical for moderate $P$ but expensive for large feature
+    spaces.
   \item \textbf{Nonlinear scope boundary.} Under nonlinear DGPs,
     overall stability is lower for all methods. \dash{}'s advantage
     grows with $\rhovar$ and is clearest at $\rhovar \geq 0.7$
@@ -1265,7 +1275,11 @@ already independent, predicting higher baseline stability), neural
 networks (where gradient-based optimization creates different but
 potentially analogous path dependencies), and whether partial orders
 on feature importance can replace point rankings as a more robust
-representation of explanation structure.
+representation of explanation structure. A concrete near-term extension
+is stable feature interaction estimation: averaging TreeSHAP interaction
+tensors across the \dash{} ensemble would provide stable pairwise
+interaction rankings under multicollinearity, a capability that no
+single-model workflow can offer.
 
 
 % ===========================================================================
