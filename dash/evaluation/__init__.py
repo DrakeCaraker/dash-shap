@@ -16,6 +16,7 @@ __all__ = [
     "friedman_test",
     "holm_bonferroni",
     "feature_ablation_score",
+    "tost_equivalence",
 ]
 
 
@@ -203,6 +204,46 @@ def holm_bonferroni(p_values):
         prev_idx = sorted_idx[i - 1]
         adjusted[idx] = max(adjusted[idx], adjusted[prev_idx])
     return adjusted
+
+
+def tost_equivalence(a, b, delta=0.5):
+    """Two One-Sided T-test for equivalence (paired).
+
+    Tests H0: |mean(a) - mean(b)| >= delta vs H1: |mean(a) - mean(b)| < delta.
+
+    Parameters
+    ----------
+    a, b : array-like
+        Paired observations.
+    delta : float
+        Equivalence margin (default 0.5).
+
+    Returns
+    -------
+    t1 : float
+        Test statistic for upper bound test.
+    p1 : float
+        One-sided p-value for upper bound test.
+    t2 : float
+        Test statistic for lower bound test.
+    p2 : float
+        One-sided p-value for lower bound test.
+    equivalent : bool
+        True if both one-sided tests reject at alpha=0.05.
+    """
+    from scipy.stats import ttest_rel
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+
+    # Test 1: H0: mean(a-b) >= delta  vs  H1: mean(a-b) < delta
+    t1, p1_two = ttest_rel(a - delta, b)
+    p1 = p1_two / 2 if t1 < 0 else 1 - p1_two / 2
+
+    # Test 2: H0: mean(a-b) <= -delta  vs  H1: mean(a-b) > -delta
+    t2, p2_two = ttest_rel(a + delta, b)
+    p2 = p2_two / 2 if t2 > 0 else 1 - p2_two / 2
+
+    equivalent = bool(max(p1, p2) < 0.05)
+    return float(t1), float(p1), float(t2), float(p2), equivalent
 
 
 def feature_ablation_score(model, X, y, importance, top_k=5, metric_fn=None):
