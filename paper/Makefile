@@ -1,24 +1,23 @@
-MAIN        = draft_v4_preprint
-V3          = draft_v3_preprint
-V2          = draft_v2_preprint
-V1          = draft_v1
-DRAFTS      = $(MAIN) $(V3) $(V2) $(V1)
+# Auto-detect drafts: find all draft_v*.tex, set MAIN to highest version number
+ALL_DRAFTS  := $(basename $(wildcard draft_v*.tex))
+MAIN        := $(shell ls draft_v*.tex 2>/dev/null | sed 's/.*_v\([0-9]*\).*/\1 &/' | sort -n | tail -1 | awk '{print $$2}' | sed 's/\.tex$$//')
+DRAFTS      := $(filter-out $(MAIN),$(ALL_DRAFTS))
 LATEXMK     = latexmk
 LATEX_FLAGS = -pdf
 
-.PHONY: all v1 clean watch diff wordcount lint
+.PHONY: all draft clean watch diff wordcount lint
 
 all:
 	$(LATEXMK) $(LATEX_FLAGS) $(MAIN).tex
 
-v1:
-	$(LATEXMK) $(LATEX_FLAGS) $(V1).tex
+draft:
+	$(LATEXMK) $(LATEX_FLAGS) $(V).tex
 
 watch:
 	$(LATEXMK) $(LATEX_FLAGS) -pvc $(MAIN).tex
 
 diff:
-	latexdiff $(V1).tex $(MAIN).tex > diff.tex
+	latexdiff $(V).tex $(MAIN).tex > diff.tex
 	$(LATEXMK) $(LATEX_FLAGS) diff.tex
 
 wordcount:
@@ -28,5 +27,5 @@ lint:
 	@chktex -q $(MAIN).tex || true
 
 clean:
-	$(LATEXMK) -c $(foreach d,$(DRAFTS),$(d).tex)
+	$(LATEXMK) -c $(MAIN).tex $(foreach d,$(DRAFTS),$(d).tex)
 	rm -f diff.tex diff.pdf
