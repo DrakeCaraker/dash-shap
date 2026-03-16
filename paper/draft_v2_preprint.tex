@@ -69,6 +69,10 @@ path-dependent concentration of feature importance caused by sequential
 residual fitting in gradient boosting---as a specific mechanistic cause of the
 well-known instability of SHAP-based feature rankings under
 multicollinearity. When correlated features
+We identify \emph{first-mover bias}---a path-dependent concentration of
+feature importance caused by sequential residual fitting in gradient
+boosting---as a specific mechanistic cause of the well-known instability of
+SHAP-based feature rankings under multicollinearity. When correlated features
 compete for early splits, gradient boosting creates a self-reinforcing
 advantage for whichever feature is selected first: subsequent trees inherit
 modified residuals that favor the incumbent, concentrating SHAP importance on
@@ -84,6 +88,11 @@ method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
 chain, confirming that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
+first-mover bias. Both our proposed method, \dash{} (Diversified Aggregation
+of SHAP), and simple seed-averaging (Stochastic Retrain) restore stability
+by breaking the sequential dependency chain, confirming that the operative
+mechanism is independence between explained models, not any particular
+aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
 $\approx 0.977$ (not significantly different), while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
@@ -187,6 +196,16 @@ We make four contributions:
     Stochastic Retrain (seed diversity) restore stability to the same
     level, confirming that the operative mechanism is independence
     rather than any particular aggregation strategy.
+    is well known \citep{strobl2007bias, hooker2019please}; we identify
+    the specific mechanistic pathway---sequential residual dependency
+    in gradient boosting---through which it concentrates SHAP-based
+    feature attributions on arbitrary features under collinearity.
+  \item \textbf{Principle.} We demonstrate that model independence is
+    sufficient to resolve first-mover bias.
+    Both \dash{} (deliberate diversity) and Stochastic Retrain (seed
+    diversity) restore stability to the same level, confirming that
+    the operative mechanism is independence rather than any particular
+    aggregation strategy.
   \item \textbf{Diagnostics.} The Feature Stability Index (FSI) and
     Importance-Stability (IS) Plot detect first-mover bias without
     access to ground truth, enabling practitioners to audit explanation
@@ -227,6 +246,8 @@ are sensitive to reference distribution choices.
 \citet{covert2021explaining} provide a unified framework connecting
 removal-based explanations (including SHAP) and discuss stability
 considerations across methods.
+\citet{marx2023but} demonstrate that SHAP-based feature attributions
+are sensitive to reference distribution choices.
 The problem is especially acute for correlated features, where SHAP must
 distribute credit among features that carry overlapping information
 \citep{kumar2020problems, chen2020true}.
@@ -594,6 +615,7 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \caption{Methods compared in the benchmark. All use XGBoost as the base learner.}
 \label{tab:methods}
 \begin{tabular}{ll>{\raggedright\arraybackslash}p{6.8cm}}
+\begin{tabular}{llp{6.8cm}}
 \toprule
 & \textbf{Method} & \textbf{Description} \\
 \midrule
@@ -671,6 +693,7 @@ substantially (Table~\ref{tab:cost}): ``compute-matched'' refers to
 total trees, not wall-clock time. The comparison isolates the
 \emph{sequential vs.\ independent} distinction rather than claiming
 cost parity. The only structural difference is that \dash{}'s models
+total tree count (though wall-clock time differs; see Table~\ref{tab:cost}). The only difference is that \dash{}'s models
 are trained independently, while LSM's trees are trained sequentially
 on progressively modified residuals.
 
@@ -802,6 +825,7 @@ whether they achieve model independence. Bold indicates best per metric.
 $^\dagger$Matched compute budget ($M{=}200$ models trained).
 Timing entries marked --- share infrastructure with other methods
 and were not independently measured.}
+Timing entries marked --- were not independently measured.}
 \label{tab:extended}
 \small
 \begin{tabular}{llcccc}
@@ -909,6 +933,12 @@ advantages over SR are threefold:
     distributes credit more evenly, though this difference is not
     statistically significant and should be interpreted cautiously.
 \end{enumerate}
+advantages are: (1)~integrated diagnostics (FSI, IS Plot;
+Section~\ref{sec:diagnostics}) that detect first-mover bias without
+ground truth---a capability SR lacks; and (2)~marginally lower
+within-group CV ($0.176$ vs.\ $0.182$), suggesting that forced feature
+restriction distributes credit more evenly, though this difference is
+not statistically significant and should be interpreted cautiously.
 
 \subsection{The effect scales with correlation}
 \label{sec:scaling}
@@ -937,6 +967,9 @@ tightly (stability $0.972$--$0.975$), confirming the safety desideratum:
 \dash{} does not degrade explanations when multicollinearity is absent.
 LSM already trails at $0.953 \pm 0.003$, and its gap widens monotonically
 with $\rhovar$.
+At $\rhovar = 0$, all methods perform similarly (stability $0.953$--$0.975$),
+confirming the safety desideratum: \dash{} does not degrade explanations
+when multicollinearity is absent.
 
 \begin{figure}[htbp]
 \centering
@@ -1034,6 +1067,7 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
+Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
@@ -1251,6 +1285,7 @@ not fully restore stability (Section~\ref{sec:robustness}), as different
 models may capture qualitatively different interaction structures whose
 averaging introduces noise alongside the beneficial cancellation of
 arbitrary feature selections.
+across independently trained models.
 
 \subsection{Practical recommendations}
 
@@ -1411,6 +1446,8 @@ providing the computational infrastructure on which this work is built.
 
 % ===========================================================================
 % Bibliography is inline (thebibliography) — no external .bib file needed.
+\bibliographystyle{plainnat}
+% \bibliography{references}
 
 \begin{thebibliography}{99}
 
@@ -1634,6 +1671,36 @@ $\rhovar = 0.9$ ($0.873$ vs.\ $0.834$), $\geq$50\% of statistical
 tests significant (17/26 Bonferroni, 15/26 Holm--Bonferroni), and
 stability improvements on all three real-world datasets. Full
 per-criterion details are available in the project repository.
+\section{Success Criteria}
+\label{app:criteria}
+
+The benchmark defines eleven formal pass/fail criteria, all of which
+\dash{} passes:
+
+\begin{enumerate}
+  \item \textbf{Stability wins (linear)}: DASH $>$ Single Best on $\geq$4/5
+    $\rhovar$ levels $\to$ \textbf{PASS} (4/5)
+  \item \textbf{Accuracy at $\rhovar = 0.9$}: DASH $\geq$ SB $\to$
+    \textbf{PASS} (DASH $= 0.9879$ vs.\ SB $= 0.9784$)
+  \item \textbf{Equity wins (linear)}: DASH $<$ Single Best CV on $\geq$4/5
+    $\rhovar$ levels $\to$ \textbf{PASS} (5/5)
+  \item \textbf{Safety control at $\rhovar = 0$}: No degradation vs.\
+    baselines $\to$ \textbf{PASS} (gap $= 0.0003$)
+  \item \textbf{$K_{\text{eff}}$ increases with $\varepsilon$}: monotonic
+    $\to$ \textbf{PASS} ($4.0 \to 6.5 \to 12.2 \to 16.2$)
+  \item \textbf{Nonlinear DGP}: DASH $>$ SB stability at $\rhovar = 0.9$
+    $\to$ \textbf{PASS} (DASH $= 0.8734$ vs.\ SB $= 0.8336$)
+  \item \textbf{Statistical significance}: $\geq$50\% of tests significant
+    $\to$ \textbf{PASS} (17/26 Bonferroni, 15/26 Holm--Bonferroni)
+  \item \textbf{Superconductor}: DASH stability $>$ SB $\to$ \textbf{PASS}
+    ($0.962$ vs.\ $0.830$)
+  \item \textbf{California Housing}: DASH stability $>$ SB $\to$ \textbf{PASS}
+    ($0.982$ vs.\ $0.967$)
+  \item \textbf{Breast Cancer}: DASH stability $>$ SB $\to$ \textbf{PASS}
+    ($0.930$ vs.\ $0.317$)
+  \item \textbf{Variance decomposition}: DASH model-selection variance $<$ SB
+    $\to$ \textbf{PASS} ($0.006$ vs.\ $0.023$)
+\end{enumerate}
 
 
 \end{document}
