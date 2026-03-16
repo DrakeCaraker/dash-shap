@@ -4,6 +4,11 @@
 % Caraker, Arnold, Rhoads (2026)
 %
 % draft_v6_preprint — revised per ArXiv readiness review (v6 review fixes):
+%   - Added David Rhoads ORCID (0009-0005-3015-5948) to author block
+%   - Fixed Algorithm 1 pseudocode: epsilon → epsilon_0 for FSI (consistency with Eq. 5)
+%   - Fixed ablation figure caption: "plateaus" → "invariant" (matches body text)
+%   - Added timing note explaining DASH vs Random Selection speed discrepancy
+%   - Added CC-BY 4.0 license statement
 %   - Changed "pre-registered" to "pre-specified" (Appendix C)
 %   - Added variance decomposition approximate-decomposition caveat (footnote)
 %   - Fixed decimal precision consistency in nonlinear DGP section
@@ -97,7 +102,7 @@
 \author{
   Drake Caraker\thanks{Corresponding author: \texttt{drakecaraker@gmail.com}; ORCID: \href{https://orcid.org/0009-0009-5639-7899}{0009-0009-5639-7899}} \quad
   Bryan Arnold \quad
-  David Rhoads \\[4pt]
+  David Rhoads\thanks{ORCID: \href{https://orcid.org/0009-0005-3015-5948}{0009-0005-3015-5948}} \\[4pt]
   \textit{Independent Researchers} \\[2pt]
   \small\texttt{puremath86@gmail.com} (Arnold) \quad
   \small\texttt{drhoads9@gmail.com} (Rhoads)
@@ -1528,6 +1533,11 @@ single node, and are reported for relative comparison only.
 The authors thank the open-source XGBoost and SHAP communities for
 providing the computational infrastructure on which this work is built.
 
+\paragraph{License.}
+This work is licensed under the Creative Commons Attribution 4.0
+International License (CC-BY 4.0). To view a copy of this license, visit
+\url{https://creativecommons.org/licenses/by/4.0/}.
+
 
 % ===========================================================================
 % Bibliography is inline (thebibliography) — no external .bib file needed.
@@ -1738,7 +1748,7 @@ H.~Zou and T.~Hastie.
 \STATE \textbf{Stage 5: Diagnostics}
 \STATE $\bar{I}_j \gets \frac{1}{N'}\sum_n |\bar{\Phi}_{nj}|$ for each
   feature $j$
-\STATE $\text{FSI}_j \gets \bar{\sigma}_j / (\bar{I}_j + \epsilon)$ for
+\STATE $\text{FSI}_j \gets \bar{\sigma}_j / (\bar{I}_j + \epsilon_0)$ for
   each feature $j$
 \RETURN $\bar{\Phi}$, FSI, IS Plot
 \end{algorithmic}
@@ -1797,7 +1807,9 @@ $M \in \{50, 100, 200, 500\}$). We use $M = 200$ as a conservative default.
 \includegraphics[width=0.6\textwidth,alt={Sensitivity plot of stability vs population size M at two correlation levels}]{ablation_sensitivity.png}
 \caption{Ablation sensitivity: stability as a function of population size $M$
 at two correlation levels ($\rhovar = 0.0$ and $\rhovar = 0.9$).
-Stability plateaus past $M = 100$, confirming that $M = 200$ is sufficient.
+Stability is effectively invariant to population size
+(within 0.001 across $M \in \{50, 100, 200, 500\}$), confirming that
+$M = 200$ is a conservative default.
 Additional ablation results for $K$, $\varepsilon$, and $\delta$ are reported
 in Table~\ref{tab:epsilon} and the inline text; full multi-panel ablation
 figures are planned for the journal version.}
@@ -1830,6 +1842,15 @@ Single Best ($M{=}200$)  & 200 & 1  & 248.8 & $5.7\times$ \\
 Random Selection  & 200 & $K_{\text{eff}}$ & 287.2 & $6.6\times$ \\
 \bottomrule
 \end{tabular}
+\smallskip
+
+\noindent\textit{Note:} Random Selection is slower than \dash{} despite
+a similar pipeline (both train $M{=}200$ models and compute SHAP for
+$K_{\text{eff}}$ models) because \dash{}'s diversity selection identifies
+a compact subset early, whereas Random Selection's lack of diversity
+guarantees leads to higher variance in per-run $K_{\text{eff}}$ and
+additional overhead from the random sampling procedure across the full
+filtered pool.
 \end{table}
 
 \section{Pre-Specified Success Criteria}
