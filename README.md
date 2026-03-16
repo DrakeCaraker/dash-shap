@@ -47,6 +47,46 @@ Full results: **[Benchmark Results](docs/BENCHMARK_RESULTS.md)** | Methodology: 
 
 ---
 
+## When to Use DASH
+
+### Detecting the problem
+
+Before trusting a SHAP-based feature ranking from a gradient-boosted model, train multiple models with different random seeds and compare their importance rankings. If rankings differ substantially, your explanations are affected by **first-mover bias** — the sequential residual fitting in gradient boosting arbitrarily concentrates importance on whichever correlated feature the model happens to use first.
+
+### When DASH is most valuable
+
+Use DASH when:
+
+- **Features are correlated** — The stability advantage is statistically significant at ρ ≥ 0.7 and grows with correlation severity. At ρ = 0.9, DASH improves stability from 0.958 to 0.977 over the single-best baseline.
+- **Explanation stability matters** — In regulated, high-stakes, or scientific settings where explanations must be reproducible across model retrains.
+- **Equitable credit distribution is needed** — DASH distributes importance proportionally across correlated feature groups (within-group CV = 0.176) rather than concentrating it on an arbitrary group member.
+- **You need to audit explanations without ground truth** — DASH's Feature Stability Index (FSI) and Importance-Stability (IS) plots detect which specific features are affected by first-mover bias. Quadrant II features (high importance, high instability) should be interpreted as collinear cluster members rather than individually important features.
+
+### When simpler alternatives suffice
+
+**Stochastic Retrain** (same hyperparameters, different seeds) achieves stability equivalent to DASH (~0.977 at ρ = 0.9) with minimal implementation effort. Use it when diagnostics and equity are not required.
+
+### DASH vs. other methods
+
+| Method | Stability | Equity | Diagnostics | Notes |
+|---|---|---|---|---|
+| **Single Best Model** | Unstable under collinearity (0.317 on Breast Cancer) | Poor — concentrates credit arbitrarily | None | Standard workflow; unreliable when features are correlated |
+| **Large Single Model** | *Worst* of all methods tested | Worst | None | More sequential trees *amplifies* first-mover bias — do not scale up single models |
+| **Stochastic Retrain** | Equivalent to DASH (~0.977) | Moderate | None | Sufficient when only stability matters; lacks equity and diagnostics |
+| **Stability Selection** | N/A (feature selection, not explanation) | N/A | N/A | Complementary: perturbs *data* and selects features; DASH perturbs *models* and distributes credit. Use both together. |
+| **Ensemble SHAP** | Good | Moderate | None | Standard ensembles lack forced feature restriction and diversity selection, producing less diverse models |
+| **DASH** | **Best or tied-best** | **Best** (lowest within-group CV) | **FSI + IS plots** | Full pipeline with diagnostics and equity |
+
+### What NOT to do
+
+Do not increase the size of a single model to fix instability. The Large Single Model experiment — matching DASH's total tree count in one sequential model — produces the **worst** explanations of any method tested, confirming that sequential dependency, not model capacity, drives the problem.
+
+### Current scope
+
+DASH currently targets **XGBoost + interventional TreeSHAP**. It averages main-effect SHAP value matrices; interaction tensor averaging is theoretically supported but not yet implemented. Extension to other model families (e.g., neural networks with KernelSHAP) is planned for future work.
+
+---
+
 ## Installation
 
 ```bash
