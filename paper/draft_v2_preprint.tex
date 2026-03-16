@@ -22,7 +22,11 @@
 \usepackage{microtype}   % better text rendering, reduces overfull hboxes
 \usepackage{hyperref}
 
-\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\hypersetup{
+  colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue,
+  pdftitle={First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution},
+  pdfauthor={Drake Caraker, Bryan Arnold, David Rhoads}
+}
 
 % --- Graphics path ---
 \graphicspath{{../results/figures/}{../notebooks/results/figures/}}
@@ -731,7 +735,7 @@ arbitrary feature, while \dash{} distributes it proportionally.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.75\textwidth]{first_mover_concentration.png}
+\includegraphics[width=0.75\textwidth,alt={Bar chart showing per-feature importance within a correlated group for Single Best, LSM, and DASH methods}]{first_mover_concentration.png}
 \caption{First-mover bias visualized: per-feature importance within a
 correlated group ($\rhovar = 0.9$, true importance $= 0.40$ each). Single
 Best and LSM concentrate on an arbitrary feature; \dash{} distributes
@@ -886,7 +890,7 @@ when multicollinearity is absent.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\textwidth]{correlation_sweep.png}
+\includegraphics[width=\textwidth,alt={Line plots of stability, accuracy, and equity vs correlation level for all methods}]{correlation_sweep.png}
 \caption{Stability, accuracy, and equity as a function of within-group
 correlation $\rhovar$ (linear DGP, 20~repetitions per level). Independent
 methods (\dash{}, Stochastic Retrain) are flat across correlation levels;
@@ -938,14 +942,14 @@ Retrain.
 \centering
 \begin{subfigure}[t]{0.48\textwidth}
   \centering
-  \includegraphics[width=\textwidth]{is_plot_breast_cancer.png}
+  \includegraphics[width=\textwidth,alt={Importance-Stability scatter plot for Breast Cancer dataset with features colored by quadrant}]{is_plot_breast_cancer.png}
   \caption{IS~Plot: features colored by quadrant.}
   \label{fig:is_plot}
 \end{subfigure}
 \hfill
 \begin{subfigure}[t]{0.48\textwidth}
   \centering
-  \includegraphics[width=\textwidth]{disagreement_breast_cancer.png}
+  \includegraphics[width=\textwidth,alt={Local disagreement map showing SHAP values with error bars across ensemble models}]{disagreement_breast_cancer.png}
   \caption{Local disagreement map for the highest-variance observation.}
   \label{fig:disagreement}
 \end{subfigure}
@@ -1067,7 +1071,7 @@ shown in Figure~\ref{fig:ablation}.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\textwidth]{ablation_sensitivity.png}
+\includegraphics[width=\textwidth,alt={Sensitivity plots of stability vs pipeline parameters M, K, epsilon, and delta}]{ablation_sensitivity.png}
 \caption{Ablation sensitivity: stability as a function of each pipeline
 parameter ($M$, $K$, $\varepsilon$, $\delta$) at three correlation levels.
 Performance plateaus early in all dimensions, confirming robustness to
