@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+title: "First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution"
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+authors:
+  - given-names: Drake
+    family-names: Caraker
+  - given-names: Bryan
+    family-names: Arnold
+  - given-names: David
+    family-names: Rhoads
+doi: 10.5281/zenodo.19060133
+url: https://github.com/DrakeCaraker/dash-shap
+license: MIT
+date-released: "2026-03-17"
