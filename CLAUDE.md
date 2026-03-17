@@ -27,15 +27,19 @@ paper/            LaTeX source
 
 - `dash.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
 - `run_experiments.py` — CLI experiment runner (10 experiments, plotting, JSON output)
+- `run_experiments_parallel.py` — **performance-optimized fork** (identical results, ~3-5x faster via population sharing + parallel SHAP)
 - `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook
 - `notebooks/demo_benchmark_7.ipynb` — **in development (TMLR)** interactive benchmark notebook
-- `notebooks/explore_experiment_results.ipynb` — interactive viewer for `run_experiments.py` output
+- `notebooks/demo_benchmark_7_parallel.ipynb` — **parallel fork** of notebook 7 (uses `run_experiments_parallel`)
+- `notebooks/explore_experiment_results.ipynb` — interactive viewer for experiment output
+- `notebooks/explore_experiment_results_parallel.ipynb` — viewer compatible with both runners
 
 ## Experiment Synchronization
 
 - `run_experiments.py` is the canonical **non-interactive** experimental pipeline
+- `run_experiments_parallel.py` is the **performance-optimized fork** — produces identical JSON output via population sharing and parallel SHAP
 - `notebooks/demo_benchmark_7.ipynb` is the canonical **interactive** experimental pipeline — both must produce the same results
-- `notebooks/explore_experiment_results.ipynb` visualizes `run_experiments.py` output interactively — updates to either must be reflected in both
+- `notebooks/explore_experiment_results.ipynb` visualizes experiment output interactively — works with either runner
 
 ## Canonical Configuration (PAPER_CONFIG)
 
@@ -74,9 +78,21 @@ epsilon_mode = 'relative'
 ```bash
 pytest                                         # all tests
 pytest tests/test_evaluation.py                # single file
-python run_experiments.py                      # all 10 experiments
+python run_experiments.py                      # all 10 experiments (original)
 python run_experiments.py --experiments linear_sweep  # one experiment
+python run_experiments_parallel.py             # all experiments (optimized, ~3-5x faster)
+python run_experiments_parallel.py --experiments linear_sweep
 ```
+
+## Parallel Optimizations
+
+`run_experiments_parallel.py` produces **identical results** to `run_experiments.py` via three optimizations:
+
+1. **Population sharing** — DASH, RandomSelection, SingleBest(M=200), and NaiveTop-N share the same model population per rep (same seeds, same search space). Eliminates ~3x redundant training in the linear sweep.
+2. **Parallel SHAP** — `n_jobs=-1` passed to `compute_consensus()` and all baselines for joblib-parallelized TreeSHAP computation.
+3. **Vectorized stability** — `stability_bootstrap_ci()` uses pre-computed rank matrices and `np.corrcoef` instead of per-pair Spearman calls.
+
+Core library changes are backward-compatible: `n_jobs=1` default preserves sequential behavior. `fit_from_population()` methods are additive (new API, existing `fit()` unchanged).
 
 ## Git Hooks
 

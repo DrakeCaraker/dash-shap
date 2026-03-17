@@ -89,6 +89,26 @@ def importance_stability(vectors):
     return float(np.mean(corrs))
 
 
+def _rank_matrix(vectors):
+    """Rank-transform all vectors into an (n, P) matrix."""
+    from scipy.stats import rankdata
+    return np.array([rankdata(v) for v in vectors])
+
+
+def _stability_from_rank_matrix(rank_matrix):
+    """Compute mean pairwise Spearman from pre-computed ranks.
+
+    Spearman correlation equals Pearson correlation on ranks.
+    Uses np.corrcoef for vectorized computation.
+    """
+    n = rank_matrix.shape[0]
+    if n < 2:
+        return float('nan')
+    corr = np.corrcoef(rank_matrix)
+    mask = np.triu(np.ones((n, n), dtype=bool), k=1)
+    return float(np.mean(corr[mask]))
+
+
 def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
     """BCa bootstrap confidence interval for importance_stability.
 
@@ -102,15 +122,16 @@ def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
     n = len(vectors)
     if n < 2:
         return float('nan'), 0.0, float('nan'), float('nan')
-    point = importance_stability(vectors)
+
+    # Pre-compute rank matrix once for all bootstrap/jackknife iterations
+    rank_matrix = _rank_matrix(vectors)
+    point = _stability_from_rank_matrix(rank_matrix)
 
     # Bootstrap distribution
-    boots = []
-    for _ in range(n_boot):
+    boots = np.empty(n_boot)
+    for b in range(n_boot):
         idx = rng.choice(n, size=n, replace=True)
-        sample = [vectors[i] for i in idx]
-        boots.append(importance_stability(sample))
-    boots = np.array(boots)
+        boots[b] = _stability_from_rank_matrix(rank_matrix[idx])
     se = float(np.std(boots, ddof=1))
 
     # BCa bias-correction factor z0
@@ -120,11 +141,11 @@ def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
     z0 = norm.ppf(prop_below)
 
     # BCa acceleration factor from jackknife
-    jack_stats = []
+    all_idx = np.arange(n)
+    jack_stats = np.empty(n)
     for i in range(n):
-        loo = [vectors[j] for j in range(n) if j != i]
-        jack_stats.append(importance_stability(loo))
-    jack_stats = np.array(jack_stats)
+        loo_idx = np.concatenate([all_idx[:i], all_idx[i + 1:]])
+        jack_stats[i] = _stability_from_rank_matrix(rank_matrix[loo_idx])
     jack_mean = np.mean(jack_stats)
     num = np.sum((jack_mean - jack_stats) ** 3)
     den = 6.0 * (np.sum((jack_mean - jack_stats) ** 2)) ** 1.5
