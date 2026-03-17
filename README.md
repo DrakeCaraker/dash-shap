@@ -129,15 +129,30 @@ pipeline.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 importance = pipeline.global_importance_
 ranking = pipeline.get_importance_ranking()
 
-# Diagnostics
-fig = pipeline.plot_importance_stability()   # Importance-Stability plot
-fsi = pipeline.get_fsi()                     # Feature Stability Index
+# Diagnostics — see docs/DIAGNOSTICS.md for interpretation
+fig = pipeline.plot_importance_stability()   # IS plot: 4 quadrants of feature behavior
+
+fsi = pipeline.get_fsi()
+print(fsi.summary(top_k=10))                # Importance + stability per feature
+
+# Quadrant labels: which features are stable vs. collinear?
+labels = fsi.get_quadrant_labels()
+robust = [f for f, l in zip(fsi.feature_names, labels) if "Robust" in l]
+
+# Local disagreement map for the highest-variance observation
+from dash.core.diagnostics import local_disagreement_map
+import numpy as np
+var_per_obs = np.mean(pipeline.variance_matrix_, axis=1)
+fig = local_disagreement_map(                # Bar chart with cross-model error bars
+    pipeline.all_shap_matrices_, np.argmax(var_per_obs),
+    feature_names=pipeline.feature_names_,
+)
 
 # Ensemble predictions
 predictions = pipeline.get_consensus_ensemble_predictions(X_test)
 ```
 
-Full API: **[API Reference](docs/API_REFERENCE.md)**
+Diagnostic interpretation: **[Diagnostics Guide](docs/DIAGNOSTICS.md)** | Full API: **[API Reference](docs/API_REFERENCE.md)**
 
 ---
 
