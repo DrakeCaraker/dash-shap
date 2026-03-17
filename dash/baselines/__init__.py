@@ -9,6 +9,7 @@ __all__ = [
     "RandomSelectionBaseline",
     "RandomForestBaseline",
     "PermutationImportanceBaseline",
+    "LightGBMSingleBestBaseline",
 ]
 
 
@@ -37,4 +38,7 @@ def __getattr__(name):
     elif name == "PermutationImportanceBaseline":
         from dash.baselines.permutation_importance import PermutationImportanceBaseline
         return PermutationImportanceBaseline
+    elif name == "LightGBMSingleBestBaseline":
+        from dash.baselines.lightgbm_single import LightGBMSingleBestBaseline
+        return LightGBMSingleBestBaseline
     raise AttributeError(f"module 'dash.baselines' has no attribute {name}")
