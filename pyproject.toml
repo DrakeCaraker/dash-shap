@@ -7,6 +7,17 @@ name = "dash-shap"
 version = "0.1.0"
 description = "DASH: Diversified Aggregation of SHAP"
 requires-python = ">=3.9"
+license = {text = "MIT"}
+keywords = ["shap", "explainability", "xgboost", "feature-importance", "collinearity"]
+authors = [
+  {name = "Drake Caraker"},
+  {name = "Bryan Arnold"},
+  {name = "David Rhoads"},
+]
+
+[project.urls]
+Homepage = "https://github.com/DrakeCaraker/dash-shap"
+Paper = "https://doi.org/10.5281/zenodo.19060133"
 
 [tool.setuptools.packages.find]
 include = ["dash*"]
