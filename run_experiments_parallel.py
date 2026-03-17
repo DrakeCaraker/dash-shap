@@ -491,7 +491,8 @@ def experiment_linear_sweep():
                 dash_pipeline.models_, dash_pipeline.val_scores_, Xexp,
             )
             imp = naive.global_importance_
-            rmse_val = np.nan
+            preds = naive.get_consensus_ensemble_predictions(Xte)
+            rmse_val = rmse_score(yte, preds)
             method_data['Naive Top-N']['t_accum'] += time.time() - t_m
             _collect_rep(method_data['Naive Top-N'], imp, true_imp, grps, rmse_val, naive)
 

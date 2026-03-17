@@ -481,7 +481,8 @@ def experiment_linear_sweep():
                         cached.models_, cached.val_scores_, Xexp,
                     )
                     imp = naive.global_importance_
-                    rmse_val = np.nan  # No ensemble predictions for this baseline
+                    preds = naive.get_consensus_ensemble_predictions(Xte)
+                    rmse_val = rmse_score(yte, preds)
                     m = naive  # Update m so k_eff tracking below uses correct object
 
                 r, _ = importance_accuracy(imp, true_imp)
