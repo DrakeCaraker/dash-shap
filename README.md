@@ -98,6 +98,12 @@ pip install -e .
 
 **Requirements:** Python >= 3.9. No GPU needed.
 
+Activate the pre-push hook (blocks `.pkl` files and files >10MB):
+
+```bash
+git config core.hooksPath .githooks
+```
+
 | Package | Version | Purpose |
 |---|---|---|
 | xgboost | >= 2.0.0 | Gradient boosting models |

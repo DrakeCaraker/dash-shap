@@ -19,7 +19,8 @@ dash/
   utils/          I/O helpers, SHAP utilities
 notebooks/        Progressive experiment notebooks (demo_benchmark_{N}.ipynb)
 tests/            pytest suite (test_pipeline, test_baselines, test_evaluation, test_synthetic)
-docs/             API_REFERENCE.md, BENCHMARK_RESULTS.md
+docs/             API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md
+docs/archive/     Historical documents (IMPLEMENTATION_PLAN.md, PEER_REVIEW.md)
 paper/            LaTeX source
 ```
 
@@ -31,22 +32,21 @@ paper/            LaTeX source
 - `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook
 - `notebooks/demo_benchmark_7.ipynb` — **in development (TMLR)** interactive benchmark notebook
 - `notebooks/demo_benchmark_7_parallel.ipynb` — **parallel fork** of notebook 7 (uses `run_experiments_parallel`)
-- `notebooks/explore_experiment_results.ipynb` — interactive viewer for experiment output
-- `notebooks/explore_experiment_results_parallel.ipynb` — viewer compatible with both runners
+- `notebooks/explore_experiment_results.ipynb` — interactive viewer for experiment output (works with both runners)
 
 ## Experiment Synchronization
 
 - `run_experiments.py` is the canonical **non-interactive** experimental pipeline
 - `run_experiments_parallel.py` is the **performance-optimized fork** — produces identical JSON output via population sharing and parallel SHAP
 - `notebooks/demo_benchmark_7.ipynb` is the canonical **interactive** experimental pipeline — both must produce the same results
-- `notebooks/explore_experiment_results.ipynb` visualizes experiment output interactively — works with either runner
+- `notebooks/explore_experiment_results.ipynb` visualizes experiment output interactively — works with both runners
 
 ## Canonical Configuration (PAPER_CONFIG)
 
 ```python
 M = 200          # population size
 K = 30           # selected models
-N_REPS = 50      # repetitions per experiment
+N_REPS = 50      # repetitions per experiment (ArXiv used 20; TMLR target is 50)
 EPSILON = 0.08   # absolute filter threshold (synthetic)
 DELTA = 0.05     # deduplication Spearman threshold
 SEED = 42
@@ -69,8 +69,8 @@ epsilon_mode = 'relative'
 - **4-way data split** in synthetic generators: X_train, X_val, X_explain (SHAP background), X_test (RMSE eval)
 - **Checkpoint pattern** in notebooks: `save_checkpoint(name, data)` / `load_checkpoint(name)` writes `.pkl` to `checkpoints/`
 - **Notebook naming**: `demo_benchmark_{N}.ipynb` — **6 is authoritative for ArXiv**; **7 is authoritative for TMLR (in development, not yet run)**
-- **Current paper draft**: `paper/draft_v5_preprint.tex` (ArXiv-ready after 3 review rounds)
-- **Tests**: `pytest` from repo root. ~47 tests across 4 files. No GPU required.
+- **Current paper draft**: `paper/draft_v6_preprint.tex` (latest; v5 was ArXiv-ready after 3 review rounds)
+- **Tests**: `pytest` from repo root. No GPU required.
 - **Parallelism** via `joblib` (n_jobs parameter on DASHPipeline)
 
 ## Running
