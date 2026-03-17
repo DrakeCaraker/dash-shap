@@ -241,6 +241,31 @@ def test_tost_equivalence_large_diff():
     assert equiv is False
 
 
+def test_bootstrap_stability_test_significant():
+    """Clearly different importance vectors should yield significant p-value."""
+    from dash.evaluation import bootstrap_stability_test
+    rng = np.random.RandomState(42)
+    # Method A: stable importance (same order every time)
+    imp_a = [np.array([5.0, 3.0, 1.0, 0.5, 0.1]) + rng.randn(5) * 0.01 for _ in range(20)]
+    # Method B: noisy importance (shuffled)
+    imp_b = [rng.permutation([5.0, 3.0, 1.0, 0.5, 0.1]) for _ in range(20)]
+    diff, pval, ci_lo, ci_hi = bootstrap_stability_test(imp_a, imp_b, n_bootstrap=1000)
+    assert diff > 0  # A is more stable than B
+    assert pval < 0.05
+
+
+def test_bootstrap_stability_test_equivalent():
+    """Nearly identical vectors should yield non-significant p-value."""
+    from dash.evaluation import bootstrap_stability_test
+    rng = np.random.RandomState(42)
+    base = np.array([5.0, 3.0, 1.0, 0.5, 0.1])
+    imp_a = [base + rng.randn(5) * 0.01 for _ in range(20)]
+    imp_b = [base + rng.randn(5) * 0.01 for _ in range(20)]
+    diff, pval, ci_lo, ci_hi = bootstrap_stability_test(imp_a, imp_b, n_bootstrap=1000)
+    assert abs(diff) < 0.1  # small difference
+    assert pval > 0.01  # not significant
+
+
 def test_performance_filter_relative():
     """Relative epsilon mode filters based on fraction of best score."""
     from dash.core.filtering import performance_filter

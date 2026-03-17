@@ -17,6 +17,7 @@ __all__ = [
     "holm_bonferroni",
     "feature_ablation_score",
     "tost_equivalence",
+    "bootstrap_stability_test",
 ]
 
 
@@ -265,6 +266,55 @@ def tost_equivalence(a, b, delta=0.5):
 
     equivalent = bool(max(p1, p2) < 0.05)
     return float(t1), float(p1), float(t2), float(p2), equivalent
+
+
+def bootstrap_stability_test(imp_runs_a, imp_runs_b, n_bootstrap=10000, seed=42):
+    """Bootstrap permutation test for stability difference between two methods.
+
+    Resamples repetition indices with replacement, recomputes stability for
+    both methods on each bootstrap sample, and reports a two-sided p-value
+    for H0: stability_a == stability_b.
+
+    Parameters
+    ----------
+    imp_runs_a, imp_runs_b : list of arrays
+        Per-repetition importance vectors for method A and B (same length).
+    n_bootstrap : int
+        Number of bootstrap resamples.
+    seed : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    observed_diff : float
+        stability_a - stability_b (point estimate).
+    p_value : float
+        Two-sided bootstrap p-value.
+    ci_lo, ci_hi : float
+        95% percentile CI on the stability difference.
+    """
+    rng = np.random.RandomState(seed)
+    n = len(imp_runs_a)
+    assert len(imp_runs_b) == n, "Both methods must have the same number of reps"
+
+    rank_a = _rank_matrix(imp_runs_a)
+    rank_b = _rank_matrix(imp_runs_b)
+    observed_diff = _stability_from_rank_matrix(rank_a) - _stability_from_rank_matrix(rank_b)
+
+    boot_diffs = np.empty(n_bootstrap)
+    for b in range(n_bootstrap):
+        idx = rng.choice(n, size=n, replace=True)
+        boot_diffs[b] = (_stability_from_rank_matrix(rank_a[idx])
+                         - _stability_from_rank_matrix(rank_b[idx]))
+
+    # Two-sided p-value: fraction of bootstrap diffs at least as extreme as 0
+    # under the null (centered at observed_diff)
+    centered = boot_diffs - observed_diff
+    p_value = float(np.mean(np.abs(centered) >= np.abs(observed_diff)))
+
+    ci_lo = float(np.percentile(boot_diffs, 2.5))
+    ci_hi = float(np.percentile(boot_diffs, 97.5))
+    return observed_diff, p_value, ci_lo, ci_hi
 
 
 def feature_ablation_score(model, X, y, importance, top_k=5, metric_fn=None):

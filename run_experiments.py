@@ -66,11 +66,17 @@ from dash.baselines import (
     StochasticRetrainBaseline, EnsembleSHAPBaseline, RandomSelectionBaseline,
     RandomForestBaseline, PermutationImportanceBaseline,
 )
+try:
+    import lightgbm  # noqa: F401
+    from dash.baselines import LightGBMSingleBestBaseline
+    _HAS_LIGHTGBM = True
+except ImportError:
+    _HAS_LIGHTGBM = False
 from dash.evaluation import (
     dgp_agreement, importance_accuracy, group_level_accuracy, group_level_mse,
     importance_stability, stability_bootstrap_ci, within_group_equity,
     compare_methods, cohens_d, friedman_test, holm_bonferroni,
-    feature_ablation_score, tost_equivalence,
+    feature_ablation_score, tost_equivalence, bootstrap_stability_test,
 )
 from dash.utils.io import save_json
 
@@ -759,6 +765,8 @@ def experiment_table2_baselines():
         'Ensemble SHAP', 'Stochastic Retrain', 'Random Forest',
         'Permutation Importance', 'DASH (Dedup)',
     ]
+    if _HAS_LIGHTGBM:
+        table2_methods.append('LightGBM Single Best')
     table2_results = {}
     feature_names = make_feature_names()
 
@@ -791,6 +799,12 @@ def experiment_table2_baselines():
                     n_trials=N_TRIALS_SB, task='regression', seed=rep_seed,
                 )
                 m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, y_ref=yexp)
+                imp = m.global_importance_
+            elif name == 'LightGBM Single Best':
+                m = LightGBMSingleBestBaseline(
+                    n_estimators=500, task='regression', seed=rep_seed,
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
                 imp = m.global_importance_
             else:  # DASH (Dedup)
                 dm = DASHPipeline(
@@ -1626,6 +1640,65 @@ def check_success_criteria(sweep_results, epsilon_results=None,
 
 
 ###############################################################################
+# EXPERIMENT: Background Size Sensitivity (REVIEW_v7 B5)
+###############################################################################
+
+def experiment_background_sensitivity():
+    """Sweep background dataset size B ∈ {50, 100, 200, 500} at ρ=0.9."""
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Background Size Sensitivity at ρ=0.9")
+    log("=" * 70)
+
+    B_VALUES = [50, 100, 200, 500]
+    feature_names = make_feature_names()
+    results = {}
+
+    for B in B_VALUES:
+        imp_runs, acc_runs, eq_runs = [], [], []
+        for rep in range(N_REPS):
+            rep_seed = SEED + rep
+            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
+                generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed)
+
+            dm = DASHPipeline(
+                M=M, K=K, epsilon=EPSILON, delta=DELTA,
+                selection_method='maxmin', n_jobs=-1,
+                background_size=B,
+                seed=rep_seed, verbose=False,
+            )
+            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+            imp = dm.global_importance_
+
+            r, _ = dgp_agreement(imp, true_imp)
+            acc_runs.append(r)
+            eq_runs.append(within_group_equity(imp, grps))
+            imp_runs.append(imp)
+
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        results[str(B)] = {
+            'stability': stab,
+            'stability_se': stab_se,
+            'stability_ci_lo': stab_ci_lo,
+            'stability_ci_hi': stab_ci_hi,
+            'accuracy_mean': float(np.mean(acc_runs)),
+            'accuracy_std': float(np.std(acc_runs, ddof=1)),
+            'equity_mean': float(np.mean(eq_runs)),
+            'equity_std': float(np.std(eq_runs, ddof=1)),
+        }
+        log(f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  "
+            f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
+
+    save_json(results, f"{OUT}/tables/background_sensitivity.json")
+    log(f"  Saved: {OUT}/tables/background_sensitivity.json")
+
+    elapsed = time.time() - t0
+    log(f"  Background sensitivity completed in {elapsed/60:.1f} min")
+    return results
+
+
+###############################################################################
 # EXPERIMENT: Success Criteria (m7 — registered as runnable experiment)
 ###############################################################################
 
@@ -1898,6 +1971,7 @@ EXPERIMENTS = {
     'variance_decomposition': experiment_variance_decomposition,
     'first_mover_visualization': experiment_first_mover_visualization,
     'first_mover_bias': experiment_first_mover_bias,
+    'background_sensitivity': experiment_background_sensitivity,
     'success_criteria': experiment_success_criteria,
 }
 
@@ -1915,6 +1989,7 @@ DEFAULT_ORDER = [
     'ablation',
     'variance_decomposition',
     'first_mover_bias',
+    'background_sensitivity',
 ]
 
 
