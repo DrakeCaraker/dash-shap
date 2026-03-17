@@ -26,14 +26,15 @@ class StochasticRetrainBaseline:
             configs = sample_configurations(
                 DEFAULT_SEARCH_SPACE, 100, seed=self.seed,
             )
-            best_score, best_config = -np.inf, configs[0]
-            for i, config in enumerate(configs):
-                _, score = train_single_model(
+            results = Parallel(n_jobs=self.n_jobs)(
+                delayed(train_single_model)(
                     config, X_train, y_train, X_val, y_val,
                     task=self.task, seed=self.seed + i,
                 )
-                if score > best_score:
-                    best_score, best_config = score, config
+                for i, config in enumerate(configs)
+            )
+            best_idx = max(range(len(results)), key=lambda i: results[i][1])
+            best_config = configs[best_idx]
 
         def _train(i):
             model, score = train_single_model(
@@ -51,6 +52,7 @@ class StochasticRetrainBaseline:
 
         consensus, all_shap = compute_consensus(
             models, list(models.keys()), X_ref, seed=self.seed, verbose=False,
+            n_jobs=self.n_jobs,
         )
         _, _, self.fsi_, self.global_importance_ = compute_diagnostics(all_shap)
         return self

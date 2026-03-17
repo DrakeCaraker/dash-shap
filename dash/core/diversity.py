@@ -61,19 +61,26 @@ def greedy_maxmin_selection(
     verbose=True,
 ):
     """Select up to K models maximizing minimum pairwise diversity."""
-    normed = {
-        i: v / (np.linalg.norm(v) + 1e-10)
-        for i, v in importance_vectors.items()
-    }
+    # Pre-compute normalized vectors and pairwise cosine similarity matrix
+    indices = list(importance_vectors.keys())
+    idx_to_pos = {idx: pos for pos, idx in enumerate(indices)}
+    normed_matrix = np.array([
+        importance_vectors[i] / (np.linalg.norm(importance_vectors[i]) + 1e-10)
+        for i in indices
+    ])
+    sim_matrix = normed_matrix @ normed_matrix.T
+
     best_idx = max(performance_scores, key=performance_scores.get)
     selected = [best_idx]
-    candidates = set(importance_vectors.keys()) - {best_idx}
+    candidates = set(indices) - {best_idx}
 
     while len(selected) < K and candidates:
         best_candidate, best_min_dist = None, -1.0
+        selected_positions = [idx_to_pos[s] for s in selected]
         for c in candidates:
+            c_pos = idx_to_pos[c]
             min_dist = min(
-                1.0 - np.dot(normed[c], normed[s]) for s in selected
+                1.0 - sim_matrix[c_pos, s_pos] for s_pos in selected_positions
             )
             if min_dist > best_min_dist:
                 best_min_dist = min_dist

@@ -102,11 +102,68 @@ class RandomSelectionBaseline:
         self.consensus_matrix_, self.all_shap_matrices_ = compute_consensus(
             self.models_, self.selected_indices_, X_ref,
             background_size=self.background_size, seed=self.seed,
-            verbose=self.verbose,
+            verbose=self.verbose, n_jobs=self.n_jobs,
         )
         self.timing_["stage4_shap"] = time.time() - t0
 
         # Stage 5: Diagnostics (same as DASH)
+        t0 = time.time()
+        _, self.variance_matrix_, self.fsi_, self.global_importance_ = (
+            compute_diagnostics(self.all_shap_matrices_)
+        )
+        self.timing_["stage5_diagnostics"] = time.time() - t0
+
+        return self
+
+    def fit_from_population(self, models, val_scores, X_ref, feature_names=None):
+        """Reuse a pre-trained population instead of training from scratch.
+
+        Skips Stage 1 (population generation) and applies own filtering,
+        random selection, consensus SHAP, and diagnostics.
+        """
+        self.models_ = models
+        self.val_scores_ = val_scores
+
+        # Stage 2: Performance Filtering (same as fit())
+        t0 = time.time()
+        self.filtered_indices_ = performance_filter(
+            self.val_scores_, epsilon=self.epsilon,
+            higher_is_better=True, mode=self.epsilon_mode,
+            verbose=self.verbose,
+        )
+        self.timing_["stage2_filtering"] = time.time() - t0
+        if len(self.filtered_indices_) < 2:
+            raise ValueError(
+                f"Only {len(self.filtered_indices_)} models passed filter. "
+                f"Increase epsilon."
+            )
+
+        # Stage 3: RANDOM selection (same as fit())
+        t0 = time.time()
+        rng = np.random.RandomState(self.seed + 999)
+        if len(self.filtered_indices_) > self.K:
+            self.selected_indices_ = list(
+                rng.choice(self.filtered_indices_, size=self.K, replace=False)
+            )
+        else:
+            self.selected_indices_ = list(self.filtered_indices_)
+        if self.verbose:
+            print(
+                f"Random selection: {len(self.selected_indices_)} models "
+                f"from {len(self.filtered_indices_)} candidates"
+            )
+        self.timing_["stage3_selection"] = time.time() - t0
+
+        # Stage 4: Consensus SHAP (same as fit())
+        t0 = time.time()
+        self.consensus_matrix_, self.all_shap_matrices_ = compute_consensus(
+            self.models_, self.selected_indices_, X_ref,
+            background_size=self.background_size, seed=self.seed,
+            verbose=self.verbose, n_jobs=self.n_jobs,
+        )
+        self.timing_["stage4_shap"] = time.time() - t0
+
+        # Stage 5: Diagnostics (same as fit())
         t0 = time.time()
         _, self.variance_matrix_, self.fsi_, self.global_importance_ = (
             compute_diagnostics(self.all_shap_matrices_)
