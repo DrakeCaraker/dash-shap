@@ -4,6 +4,7 @@
 
 **Authoritative notebook**: `notebooks/demo_benchmark_6.ipynb` (ArXiv canonical). **In development**: `notebooks/demo_benchmark_7.ipynb` (TMLR, 53 cells, mechanism-first structure, checkpointed)
 **Automated script**: `run_experiments.py` (mirrors the notebook, outputs to `results/`)
+**Parallel fork**: `run_experiments_parallel.py` (identical results, ~3-5x faster via population sharing + parallel SHAP)
 
 ## The Problem DASH Solves
 
@@ -117,6 +118,17 @@ Single Best, Single Best (M=200), Large Single Model, LSM (Tuned), Stochastic Re
 **At rho=0.9 and rho=0.95**: DASH should dominate. Single Best stability should degrade sharply. The equity gap should be large.
 
 The correlation sweep plot (3 panels: stability, accuracy, equity vs rho) is the paper's central figure.
+
+### Performance optimization (parallel fork)
+
+`run_experiments_parallel.py` restructures the linear sweep from method-outer/rep-inner to **rep-outer/method-inner**, enabling population sharing:
+
+- **DASH** trains M=200 models per rep (Stage 1)
+- **RandomSelection** reuses DASH's population via `fit_from_population()` (skips Stage 1, applies own random selection at Stage 3)
+- **SingleBest(M=200)** reuses DASH's population via `fit_from_population()` (picks best model from same pool)
+- **NaiveTop-N** reuses DASH's population (existing mechanism)
+
+This eliminates ~3x redundant population training. All seed chains, filtering, selection, and SHAP computation remain identical — the population is shared because these methods train the same population by design (same M, same seed, same search space). See EXPERIMENT_GUIDE method descriptions: Random Selection "trains the same population as DASH" and Single Best (M=200) searches "over 200 trials" with the same seed.
 
 ---
 

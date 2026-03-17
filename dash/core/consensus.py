@@ -2,9 +2,21 @@
 import numpy as np
 import shap
 from typing import Dict, List, Tuple
+from joblib import Parallel, delayed
 from tqdm import tqdm
 
 __all__ = ["compute_consensus"]
+
+
+def _compute_shap_for_model(model, bg_data, X_ref):
+    """Compute interventional TreeSHAP values for a single model."""
+    explainer = shap.TreeExplainer(
+        model, data=bg_data, feature_perturbation="interventional",
+    )
+    sv = explainer.shap_values(X_ref)
+    if isinstance(sv, list):
+        sv = np.mean(sv, axis=0)
+    return sv
 
 
 def compute_consensus(
@@ -14,6 +26,7 @@ def compute_consensus(
     background_size=100,
     seed=None,
     verbose=True,
+    n_jobs=1,
 ):
     """Compute consensus SHAP matrix via element-wise averaging.
 
@@ -25,6 +38,9 @@ def compute_consensus(
     seed : int or None
         If provided, randomly samples background rows from X_ref.
         If None, uses the first ``background_size`` rows (deterministic).
+    n_jobs : int
+        Number of parallel jobs for SHAP computation. Default 1 (sequential).
+        Set to -1 to use all available cores.
     """
     K = len(selected_indices)
     N_prime, P = X_ref.shape
@@ -37,19 +53,21 @@ def compute_consensus(
     else:
         bg_data = X_ref[:n_bg]
 
-    iterator = enumerate(selected_indices)
-    if verbose:
-        iterator = tqdm(list(iterator), desc="Computing SHAP")
-
-    for k, idx in iterator:
-        model = models[idx]
-        explainer = shap.TreeExplainer(
-            model, data=bg_data, feature_perturbation="interventional",
+    if n_jobs == 1:
+        iterator = enumerate(selected_indices)
+        if verbose:
+            iterator = tqdm(list(iterator), desc="Computing SHAP")
+        for k, idx in iterator:
+            all_shap[k] = _compute_shap_for_model(models[idx], bg_data, X_ref)
+    else:
+        if verbose:
+            print(f"Computing SHAP for {K} models with n_jobs={n_jobs}...")
+        results = Parallel(n_jobs=n_jobs)(
+            delayed(_compute_shap_for_model)(models[idx], bg_data, X_ref)
+            for idx in selected_indices
         )
-        sv = explainer.shap_values(X_ref)
-        if isinstance(sv, list):
-            sv = np.mean(sv, axis=0)
-        all_shap[k] = sv
+        for k, sv in enumerate(results):
+            all_shap[k] = sv
 
     consensus = np.mean(all_shap, axis=0)
 
