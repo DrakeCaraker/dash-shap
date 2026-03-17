@@ -149,7 +149,7 @@ class DASHPipeline:
         self.consensus_matrix_, self.all_shap_matrices_ = compute_consensus(
             self.models_, self.selected_indices_, X_ref,
             background_size=self.background_size, seed=self.seed,
-            verbose=self.verbose,
+            verbose=self.verbose, n_jobs=self.n_jobs,
         )
         self.timing_["stage4_shap"] = time.time() - t0
 

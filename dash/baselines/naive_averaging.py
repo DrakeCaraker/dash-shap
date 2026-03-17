@@ -8,9 +8,10 @@ __all__ = ["NaiveAveragingBaseline"]
 
 
 class NaiveAveragingBaseline:
-    def __init__(self, N=20, task="regression"):
+    def __init__(self, N=20, task="regression", n_jobs=1):
         self.N = N
         self.task = task
+        self.n_jobs = n_jobs
         self.global_importance_ = None
         self.fsi_ = None
 
@@ -20,7 +21,7 @@ class NaiveAveragingBaseline:
         )
         top_n = sorted_idx[:self.N]
         consensus, all_shap = compute_consensus(
-            models, top_n, X_ref, verbose=False,
+            models, top_n, X_ref, verbose=False, n_jobs=self.n_jobs,
         )
         _, _, self.fsi_, self.global_importance_ = compute_diagnostics(all_shap)
         return self
