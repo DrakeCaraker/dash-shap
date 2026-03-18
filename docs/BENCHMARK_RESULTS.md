@@ -2,7 +2,7 @@
 
 **Canonical source:** `notebooks/demo_benchmark_6.ipynb` (M=200, K=30, 20 repetitions, PAPER_CONFIG)
 
-> All numbers in this document are sourced from `demo_benchmark_6.ipynb` unless otherwise noted. The paper (`paper/draft_v5_preprint.tex`) and this document should always agree; any discrepancy should be resolved in favor of `demo_benchmark_6.ipynb`.
+> All numbers in this document are sourced from `demo_benchmark_6.ipynb` unless otherwise noted. The paper (`paper/draft_v6_preprint.tex`) and this document should always agree; any discrepancy should be resolved in favor of `demo_benchmark_6.ipynb`.
 
 ---
 
