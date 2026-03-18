@@ -7,6 +7,23 @@ on:
     branches: [main]
 
 jobs:
+  freshness:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check if branch is up to date with main
+        run: |
+          git fetch origin main
+          behind=$(git rev-list --count HEAD..origin/main)
+          if [ "$behind" -gt 0 ]; then
+            echo "::warning::Branch is $behind commit(s) behind main. Consider rebasing: git rebase origin/main"
+          else
+            echo "Branch is up to date with main."
+          fi
+
   test:
     runs-on: ubuntu-latest
     strategy:
