@@ -9,6 +9,7 @@ __all__ = [
     "group_level_accuracy",
     "group_level_mse",
     "importance_stability",
+    "topk_overlap_stability",
     "stability_bootstrap_ci",
     "within_group_equity",
     "cohens_d",
@@ -18,6 +19,7 @@ __all__ = [
     "feature_ablation_score",
     "tost_equivalence",
     "bootstrap_stability_test",
+    "fsi_collinearity_correlation",
 ]
 
 
@@ -343,3 +345,85 @@ def feature_ablation_score(model, X, y, importance, top_k=5, metric_fn=None):
     X_ablated[:, top_features] = 0.0
     ablated_score = metric_fn(y, model.predict(X_ablated))
     return float(ablated_score - baseline_score)
+
+
+def topk_overlap_stability(vectors, k=5):
+    """Mean pairwise Jaccard similarity of top-k feature sets across runs.
+
+    Complements full-rank Spearman stability by measuring practitioner-facing
+    top-k membership consistency.
+
+    Parameters
+    ----------
+    vectors : list of array-like
+        Importance vectors from repeated runs (absolute values used).
+    k : int
+        Number of top features to compare.
+
+    Returns
+    -------
+    float
+        Mean pairwise Jaccard similarity in [0, 1].
+    """
+    from itertools import combinations
+
+    top_sets = [set(np.argsort(np.abs(v))[-k:]) for v in vectors]
+    n = len(top_sets)
+    if n < 2:
+        return 1.0
+
+    similarities = []
+    for i, j in combinations(range(n), 2):
+        intersection = len(top_sets[i] & top_sets[j])
+        union = len(top_sets[i] | top_sets[j])
+        similarities.append(intersection / union if union > 0 else 1.0)
+
+    return float(np.mean(similarities))
+
+
+def fsi_collinearity_correlation(fsi_values, feature_rho, groups=None):
+    """Spearman correlation between FSI values and feature-level collinearity.
+
+    Validates that high-FSI features correspond to members of highly
+    correlated groups, as expected under the first-mover bias hypothesis.
+
+    Parameters
+    ----------
+    fsi_values : array-like, shape (n_features,)
+        Feature Stability Index values from DASH diagnostics.
+    feature_rho : array-like, shape (n_features,)
+        Per-feature collinearity level. For synthetic data with group
+        structure, this is typically the within-group correlation rho
+        for each feature (0 for independent features).
+    groups : array-like, optional
+        Group labels per feature. If provided, computes group-level
+        correlation (mean FSI per group vs group rho) in addition to
+        feature-level.
+
+    Returns
+    -------
+    dict
+        'feature_spearman': Spearman rho at feature level
+        'feature_pvalue': p-value for feature-level correlation
+        'group_spearman': Spearman rho at group level (if groups provided)
+        'group_pvalue': p-value for group-level correlation (if groups provided)
+    """
+    fsi_values = np.asarray(fsi_values, dtype=float)
+    feature_rho = np.asarray(feature_rho, dtype=float)
+
+    rho, pval = spearmanr(fsi_values, feature_rho)
+    result = {
+        'feature_spearman': float(rho),
+        'feature_pvalue': float(pval),
+    }
+
+    if groups is not None:
+        groups = np.asarray(groups)
+        group_ids = np.unique(groups)
+        group_fsi = np.array([np.mean(fsi_values[groups == g]) for g in group_ids])
+        group_rho_vals = np.array([np.mean(feature_rho[groups == g]) for g in group_ids])
+        g_rho, g_pval = spearmanr(group_fsi, group_rho_vals)
+        result['group_spearman'] = float(g_rho)
+        result['group_pvalue'] = float(g_pval)
+
+    return result
