@@ -367,6 +367,27 @@ def _log_pairwise_significance(results, dash_name, method_names, dataset_label):
         log(f"\n  Holm-Bonferroni corrected p-values:")
         for (bname, label), adj_p in zip(raw_keys, adjusted):
             log(f"    {bname:<22} {label:<12} p_HB={adj_p:.4g}")
+    # Bootstrap stability hypothesis test (REVIEW_v7 M3)
+    if 'imp_runs' in dash:
+        log(f"\n  Bootstrap stability tests ({dataset_label}):")
+        log(f"  {'Baseline':<22} {'Δ Stab':>10} {'p-value':>10} {'95% CI':>22}")
+        log("  " + "-" * 70)
+        for bname in baselines:
+            bl = results[bname]
+            if 'imp_runs' not in bl:
+                continue
+            try:
+                diff, pval, ci_lo, ci_hi = bootstrap_stability_test(
+                    dash['imp_runs'], bl['imp_runs'])
+                sig = '***' if pval < 0.001 else '**' if pval < 0.01 else '*' if pval < 0.05 else 'n.s.'
+                log(f"  {bname:<22} {diff:+10.4f} {pval:10.4f} [{ci_lo:+.4f}, {ci_hi:+.4f}]  {sig}")
+                sig_results[bname]['stability'] = {
+                    'diff': float(diff), 'p': float(pval),
+                    'ci_lo': float(ci_lo), 'ci_hi': float(ci_hi),
+                }
+            except Exception as e:
+                log(f"  {bname:<22} SKIP ({e})")
+
     # Store in results for JSON serialisation
     results['_significance'] = sig_results
 
@@ -599,6 +620,38 @@ def experiment_linear_sweep():
                 f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
                 f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
                 f"({md['t_accum']:.1f}s)")
+
+    # Bootstrap stability tests for sweep results (REVIEW_v7 M3)
+    log("\n  Bootstrap stability tests (sweep):")
+    log(f"  {'rho':>5} {'Comparison':<35} {'d Stab':>10} {'p-value':>10} {'95% CI':>22}  Sig")
+    log("  " + "=" * 90)
+    stab_test_results = {}
+    dash_name = 'DASH (MaxMin)'
+    for rho in rho_levels:
+        if rho not in sweep_results or dash_name not in sweep_results[rho]:
+            continue
+        dash_imp = sweep_results[rho][dash_name].get('imp_runs')
+        if dash_imp is None:
+            continue
+        stab_test_results[str(rho)] = {}
+        for bname in sweep_methods:
+            if bname == dash_name:
+                continue
+            bl_imp = sweep_results[rho].get(bname, {}).get('imp_runs')
+            if bl_imp is None:
+                continue
+            try:
+                diff, pval, ci_lo, ci_hi = bootstrap_stability_test(dash_imp, bl_imp)
+                sig = '***' if pval < 0.001 else '**' if pval < 0.01 else '*' if pval < 0.05 else 'n.s.'
+                label = f'{dash_name} vs {bname}'
+                log(f"  {rho:5.2f} {label:<35} {diff:+10.4f} {pval:10.4f} [{ci_lo:+.4f}, {ci_hi:+.4f}]  {sig}")
+                stab_test_results[str(rho)][bname] = {
+                    'diff': float(diff), 'p': float(pval),
+                    'ci_lo': float(ci_lo), 'ci_hi': float(ci_hi),
+                }
+            except Exception:
+                pass
+    sweep_results['_stability_tests'] = stab_test_results
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
