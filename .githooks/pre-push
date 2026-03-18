@@ -1,7 +1,24 @@
 #!/usr/bin/env bash
-# Pre-push hook: block .pkl files and files >1MB from being pushed.
+# Pre-push hook: block .pkl files and files >10MB from being pushed.
+# Also warns if branch has drifted behind origin/main.
 # Install: git config core.hooksPath .githooks
 
+# --- Drift warning (non-blocking) ---
+branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+if [ "$branch" != "main" ] && [ "$branch" != "HEAD" ]; then
+    # Best-effort fetch — skip silently if offline
+    git fetch origin main --quiet 2>/dev/null
+    if git rev-parse origin/main >/dev/null 2>&1; then
+        behind=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
+        if [ "$behind" -gt 0 ]; then
+            echo "WARNING: Branch '$branch' is $behind commit(s) behind origin/main."
+            echo "  Consider rebasing: git rebase origin/main"
+            echo ""
+        fi
+    fi
+fi
+
+# --- File checks (blocking) ---
 MAX_SIZE=10485760  # 10MB
 ERRORS=0
 

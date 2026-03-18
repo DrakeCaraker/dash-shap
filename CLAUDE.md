@@ -96,11 +96,19 @@ Core library changes are backward-compatible: `n_jobs=1` default preserves seque
 
 ## Git Hooks
 
-Pre-push hook blocks `.pkl` files and files >10MB. Activate after cloning:
+Pre-push hook blocks `.pkl` files and files >10MB, and warns if the branch has drifted behind `origin/main`. Activate after cloning:
 
 ```bash
 git config core.hooksPath .githooks
 ```
+
+### Drift Prevention
+
+Three layers detect when a branch falls behind `main`:
+
+1. **Pre-push hook** (`.githooks/pre-push`) — warns with commit count on every push (non-blocking)
+2. **Session-start hook** (`.claude/hooks/session-start.sh`) — shows drift status when a Claude session begins
+3. **CI freshness check** (`.github/workflows/ci.yml`, `freshness` job) — posts a GitHub warning annotation on stale PRs
 
 ## Do NOT
 
