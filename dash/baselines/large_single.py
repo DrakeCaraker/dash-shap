@@ -118,6 +118,6 @@ class LargeSingleModelBaseline:
         explainer = shap.TreeExplainer(
             self.model_, data=bg, feature_perturbation="interventional",
         )
-        sv = explainer.shap_values(X_ref)
+        sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)
         return self

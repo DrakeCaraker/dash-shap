@@ -1914,7 +1914,7 @@ def experiment_first_mover_bias():
             )
             model.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
             explainer = shap.TreeExplainer(model)
-            sv = explainer.shap_values(Xexp[:200])
+            sv = explainer.shap_values(Xexp[:200], check_additivity=False)
             imp_single = np.mean(np.abs(sv), axis=0)
             grp_imp = imp_single[group_features]
             conc = np.max(grp_imp) / (np.sum(grp_imp) + 1e-10)
@@ -1934,7 +1934,7 @@ def experiment_first_mover_bias():
                     random_state=m_seed,
                 )
                 mdl.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
-                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200])
+                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200], check_additivity=False)
                 imp_accum += np.mean(np.abs(sv_m), axis=0)
             imp_avg = imp_accum / m_models
             grp_imp_avg = imp_avg[group_features]

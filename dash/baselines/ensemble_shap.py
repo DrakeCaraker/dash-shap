@@ -60,7 +60,7 @@ class EnsembleSHAPBaseline:
         explainer = shap.TreeExplainer(
             self.model_, data=bg, feature_perturbation="interventional",
         )
-        sv = explainer.shap_values(X_ref)
+        sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)
         # FSI is undefined for single-model baselines (no inter-model variation).
         # Set to NaN rather than zero to avoid misinterpretation as perfect agreement.
