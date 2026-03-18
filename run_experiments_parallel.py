@@ -79,9 +79,11 @@ except ImportError:
 from dash.evaluation import (
     dgp_agreement, importance_accuracy, group_level_accuracy, group_level_mse,
     importance_stability, stability_bootstrap_ci, within_group_equity,
+    topk_overlap_stability, fsi_collinearity_correlation,
     compare_methods, cohens_d, friedman_test, holm_bonferroni,
     feature_ablation_score, tost_equivalence, bootstrap_stability_test,
 )
+from dash.core.diagnostics import compute_diagnostics
 from dash.utils.io import save_json
 from dash.utils.checkpoint import save_checkpoint, load_checkpoint, has_checkpoint, clear_checkpoints_by_prefix, _sanitize_ckpt_name
 
@@ -452,6 +454,8 @@ def experiment_linear_sweep(resume=False, cleanup=True):
     ]
     sweep_results = {rho: {} for rho in rho_levels}
     feature_names = make_feature_names()  # m6: dynamic
+    fsi_by_rho = {}   # FSI validation: collect DASH FSI per rho (reviewer #7)
+    grps_by_rho = {}  # Groups array per rho (deterministic, saved once)
 
     for rho in rho_levels:
         ckpt_name = f"linear_sweep_rho_{rho}"
@@ -489,6 +493,10 @@ def experiment_linear_sweep(resume=False, cleanup=True):
             rmse_val = rmse_score(yte, preds)
             method_data['DASH (MaxMin)']['t_accum'] += time.time() - t_m
             _collect_rep(method_data['DASH (MaxMin)'], imp, true_imp, grps, rmse_val, dash_pipeline)
+            # FSI validation (reviewer #7): collect per-rep FSI from DASH
+            if hasattr(dash_pipeline, 'fsi_') and dash_pipeline.fsi_ is not None:
+                fsi_by_rho.setdefault(rho, []).append(dash_pipeline.fsi_.copy())
+            grps_by_rho[rho] = grps  # deterministic per rho, save last
 
             # --- SingleBest(M=200): reuse DASH population ---
             t_m = time.time()
@@ -597,12 +605,14 @@ def experiment_linear_sweep(resume=False, cleanup=True):
         for name in sweep_methods:
             md = method_data[name]
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md['imp_runs'])
+            topk5 = topk_overlap_stability(md['imp_runs'], k=5)
             n_reps = len(md['acc_runs'])
             sweep_results[rho][name] = {
                 'stability': stab,
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'topk5_stability': topk5,
                 'k_eff_mean': float(np.mean(md['keff_runs'])) if md['keff_runs'] else None,
                 'k_eff_std': float(np.std(md['keff_runs'], ddof=1)) if len(md['keff_runs']) > 1 else None,
                 'accuracy_mean': np.mean(md['acc_runs']),
@@ -624,12 +634,37 @@ def experiment_linear_sweep(resume=False, cleanup=True):
                 'rmse_runs': np.array(md['rmse_runs']),
                 'imp_runs': md['imp_runs'],
             }
-            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
                 f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
                 f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
                 f"({md['t_accum']:.1f}s)")
 
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=sweep_results[rho])
+
+    # FSI collinearity validation (reviewer #7): show FSI rises with rho
+    log("\n  FSI Collinearity Validation (DASH):")
+    log(f"  {'rho':>5} {'Mean FSI (signal)':>18} {'Mean FSI (noise)':>18} {'Ratio':>8}")
+    log("  " + "=" * 55)
+    fsi_validation = {}
+    for rho in rho_levels:
+        fsi_list = fsi_by_rho.get(rho, [])
+        grps_arr = grps_by_rho.get(rho)
+        if not fsi_list or grps_arr is None:
+            continue
+        mean_fsi = np.mean(fsi_list, axis=0)
+        n_groups = len(np.unique(grps_arr))
+        signal_mask = grps_arr < (n_groups - 1)  # last group is noise (beta=0)
+        mean_fsi_signal = float(np.mean(mean_fsi[signal_mask]))
+        mean_fsi_noise = float(np.mean(mean_fsi[~signal_mask]))
+        ratio = mean_fsi_signal / max(mean_fsi_noise, 1e-10)
+        fsi_validation[str(rho)] = {
+            'mean_fsi_signal': mean_fsi_signal,
+            'mean_fsi_noise': mean_fsi_noise,
+            'mean_fsi_all': float(np.mean(mean_fsi)),
+            'signal_noise_ratio': ratio,
+        }
+        log(f"  {rho:5.2f} {mean_fsi_signal:18.4f} {mean_fsi_noise:18.4f} {ratio:8.2f}")
+    sweep_results['_fsi_validation'] = fsi_validation
 
     # Bootstrap stability tests for sweep results (REVIEW_v7 M3)
     log("\n  Bootstrap stability tests (sweep):")
@@ -760,19 +795,21 @@ def experiment_overlapping(resume=False, cleanup=True):
             save_checkpoint(f"overlapping_batch_{rep+1}", checkpoint_dir=CKPT_DIR,
                           results=results, completed_reps=rep+1)
 
-    log(f"\n  {'Method':<20} {'Stability':>10} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}")
-    log("  " + "=" * 85)
+    log(f"\n  {'Method':<20} {'Stability':>10} {'Top-5':>8} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}")
+    log("  " + "=" * 93)
     overlap_results = {}
     for name in method_names:
         stab = importance_stability(results[name]['imp_runs'])
+        topk5 = topk_overlap_stability(results[name]['imp_runs'], k=5)
         acc = np.mean(results[name]['acc_runs'])
         grp = np.mean(results[name]['grp_acc_runs'])
         gmse = np.mean(results[name]['gmse_runs'])
         eq = np.mean(results[name]['eq_runs'])
         rmse = np.mean(results[name]['rmse_runs'])
-        log(f"  {name:<20} {stab:>10.4f} {acc:>10.4f} {grp:>10.4f} {gmse:>10.6f} {eq:>10.4f} {rmse:>10.4f}")
+        log(f"  {name:<20} {stab:>10.4f} {topk5:>8.4f} {acc:>10.4f} {grp:>10.4f} {gmse:>10.6f} {eq:>10.4f} {rmse:>10.4f}")
         overlap_results[name] = {
             'stability': stab,
+            'topk5_stability': topk5,
             'accuracy_mean': acc, 'accuracy_std': float(np.std(results[name]['acc_runs'])),
             'group_accuracy_mean': grp,
             'group_mse_mean': gmse, 'group_mse_std': float(np.std(results[name]['gmse_runs'], ddof=1)),
@@ -878,11 +915,13 @@ def experiment_nonlinear_sweep(resume=False, cleanup=True):
                     keff_runs.append(len(m.selected_indices_))
 
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+            topk5 = topk_overlap_stability(imp_runs, k=5)
             nl_sweep[rho][name] = {
                 'stability': stab,
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'topk5_stability': topk5,
                 'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
                 'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
                 'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
@@ -891,7 +930,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=True):
                 'rmse_std': float(np.std(rmse_runs, ddof=1)),
                 'rmse_runs': np.array(rmse_runs),
             }
-            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  eq={np.mean(eq_runs):.4f}  "
+            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  eq={np.mean(eq_runs):.4f}  "
                 f"RMSE={np.mean(rmse_runs):.4f}")
 
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=nl_sweep[rho])
@@ -985,16 +1024,18 @@ def experiment_table2_baselines(resume=False, cleanup=True):
             imp_runs.append(imp)
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5 = topk_overlap_stability(imp_runs, k=5)
         table2_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5,
             'accuracy_mean': np.mean(acc_runs), 'accuracy_std': np.std(acc_runs, ddof=1),
             'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
             'acc_runs': np.array(acc_runs), 'eq_runs': np.array(eq_runs),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=table2_results[name])
 
@@ -1099,11 +1140,13 @@ def experiment_real_california(resume=False, cleanup=True):
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5 = topk_overlap_stability(imp_runs, k=5)
         cal_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
@@ -1111,7 +1154,7 @@ def experiment_real_california(resume=False, cleanup=True):
             'rmse_runs': np.array(rmse_runs),
             'ablation_runs': np.array(ablation_runs),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=cal_results[name])
@@ -1224,18 +1267,20 @@ def experiment_real_breast_cancer(resume=False, cleanup=True):
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5 = topk_overlap_stability(imp_runs, k=5)
         bc_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'ablation_mean': np.mean(ablation_runs),
             'ablation_std': np.std(ablation_runs, ddof=1),
             'ablation_runs': np.array(ablation_runs),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=bc_results[name])
 
@@ -1368,11 +1413,13 @@ def experiment_real_superconductor(resume=False, cleanup=True):
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5 = topk_overlap_stability(imp_runs, k=5)
         sc_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
@@ -1380,7 +1427,7 @@ def experiment_real_superconductor(resume=False, cleanup=True):
             'rmse_runs': np.array(rmse_runs),
             'ablation_runs': np.array(ablation_runs),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=sc_results[name])
@@ -1480,16 +1527,19 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=True):
             save_checkpoint(f"epsilon_sens_batch_{rep+1}", checkpoint_dir=CKPT_DIR,
                           eps_results=eps_results, completed_reps=rep+1)
 
-    log(f"\n  {'ε':>6} {'Models Passing':>16} {'K_eff':>12} {'Stability':>10} {'Accuracy':>10}")
-    log("  " + "=" * 60)
+    log(f"\n  {'ε':>6} {'Models Passing':>16} {'K_eff':>12} {'Stability':>10} {'Top-5':>8} {'Accuracy':>10}")
+    log("  " + "=" * 70)
     for eps in EPS_VALUES:
         stab = importance_stability(eps_results[eps]['imp_runs'])
+        topk5 = topk_overlap_stability(eps_results[eps]['imp_runs'], k=5)
         eps_results[eps]['stability'] = stab
+        eps_results[eps]['topk5_stability'] = topk5
         log(f"  {eps:>6.2f} {np.mean(eps_results[eps]['n_passing']):>12.1f}±"
             f"{np.std(eps_results[eps]['n_passing']):<4.1f}"
             f"{np.mean(eps_results[eps]['k_eff']):>8.1f}±"
             f"{np.std(eps_results[eps]['k_eff']):<4.1f}"
             f"{stab:>10.4f}"
+            f"{topk5:>8.4f}"
             f"{np.mean(eps_results[eps]['acc_runs']):>10.4f}")
 
     save_json(eps_results, f"{OUT}/tables/epsilon_sensitivity.json")
@@ -1568,13 +1618,15 @@ def experiment_ablation(resume=False, cleanup=True):
 
                 if len(imp_runs) >= 2:
                     stab = importance_stability(imp_runs)
+                    topk5 = topk_overlap_stability(imp_runs, k=5)
                     abl_results[abl_rho][param_name][val] = {
                         'stability': stab,
+                        'topk5_stability': topk5,
                         'accuracy_mean': np.mean(acc_runs),
                         'accuracy_std': np.std(acc_runs, ddof=1),
                         'n_successful': len(imp_runs),
                     }
-                    log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)")
+                    log(f"    stab={stab:.4f}  topk5={topk5:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)")
                 else:
                     abl_results[abl_rho][param_name][val] = {
                         'stability': float('nan'),
@@ -1671,15 +1723,16 @@ def experiment_variance_decomposition(resume=False, cleanup=True):
                           results=results, completed_reps=rep+1)
 
     # Compute stability for each condition × method
-    log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10}")
-    log("  " + "=" * 50)
+    log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10} {'Top-5':>8}")
+    log("  " + "=" * 58)
     summary = {}
     for cond in conditions:
         summary[cond] = {}
         for m in methods:
             stab = importance_stability(results[cond][m])
-            summary[cond][m] = {'stability': stab}
-            log(f"  {cond:<16} {m:<20} {stab:>10.4f}")
+            topk5 = topk_overlap_stability(results[cond][m], k=5)
+            summary[cond][m] = {'stability': stab, 'topk5_stability': topk5}
+            log(f"  {cond:<16} {m:<20} {stab:>10.4f} {topk5:>8.4f}")
 
     # Variance decomposition ratios
     # CAVEAT: (1 - stability) is a proxy for instability, not a proper
@@ -1940,17 +1993,19 @@ def experiment_background_sensitivity(resume=False, cleanup=True):
             imp_runs.append(imp)
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5 = topk_overlap_stability(imp_runs, k=5)
         results[str(B)] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5,
             'accuracy_mean': float(np.mean(acc_runs)),
             'accuracy_std': float(np.std(acc_runs, ddof=1)),
             'equity_mean': float(np.mean(eq_runs)),
             'equity_std': float(np.std(eq_runs, ddof=1)),
         }
-        log(f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, b_results=results[str(B)])
 
