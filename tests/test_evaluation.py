@@ -266,6 +266,48 @@ def test_bootstrap_stability_test_equivalent():
     assert pval > 0.01  # not significant
 
 
+def test_topk_overlap_stability_perfect():
+    """Identical rankings should give Jaccard = 1.0."""
+    from dash.evaluation import topk_overlap_stability
+    v = [np.array([10, 8, 6, 1, 1]), np.array([9, 7, 5, 1, 1])]
+    assert topk_overlap_stability(v, k=3) == 1.0
+
+
+def test_topk_overlap_stability_random():
+    """Random vectors should have lower overlap than identical ones."""
+    from dash.evaluation import topk_overlap_stability
+    rng = np.random.RandomState(42)
+    v = [rng.rand(50) for _ in range(10)]
+    assert topk_overlap_stability(v, k=5) < 0.8
+
+
+def test_topk_overlap_stability_single():
+    """Single vector should return 1.0."""
+    from dash.evaluation import topk_overlap_stability
+    assert topk_overlap_stability([np.array([1, 2, 3])], k=2) == 1.0
+
+
+def test_fsi_collinearity_correlation_known():
+    """High FSI should correlate with high collinearity."""
+    from dash.evaluation import fsi_collinearity_correlation
+    fsi = np.array([0.1, 0.1, 0.8, 0.9, 0.05])
+    rho = np.array([0.0, 0.0, 0.9, 0.9, 0.0])
+    result = fsi_collinearity_correlation(fsi, rho)
+    assert result['feature_spearman'] > 0.5
+    assert result['feature_pvalue'] < 0.2
+
+
+def test_fsi_collinearity_correlation_with_groups():
+    """Group-level correlation should also work."""
+    from dash.evaluation import fsi_collinearity_correlation
+    fsi = np.array([0.1, 0.1, 0.8, 0.9, 0.05, 0.85])
+    rho = np.array([0.0, 0.0, 0.9, 0.9, 0.0, 0.9])
+    groups = np.array([0, 0, 1, 1, 2, 1])
+    result = fsi_collinearity_correlation(fsi, rho, groups=groups)
+    assert 'group_spearman' in result
+    assert 'group_pvalue' in result
+
+
 def test_performance_filter_relative():
     """Relative epsilon mode filters based on fraction of best score."""
     from dash.core.filtering import performance_filter
