@@ -13,7 +13,7 @@ def _compute_shap_for_model(model, bg_data, X_ref):
     explainer = shap.TreeExplainer(
         model, data=bg_data, feature_perturbation="interventional",
     )
-    sv = explainer.shap_values(X_ref)
+    sv = explainer.shap_values(X_ref, check_additivity=False)
     if isinstance(sv, list):
         sv = np.mean(sv, axis=0)
     return sv
