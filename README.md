@@ -43,6 +43,8 @@ Stability on real-world datasets:
 
 DASH stability is flat across correlation levels (0.972–0.977 from ρ = 0.0 to ρ = 0.95). All 11 pre-registered success criteria pass. Statistically significant at ρ ≥ 0.7 (Wilcoxon, Holm-Bonferroni corrected, Cohen's d > 1.0).
 
+*All results from [`demo_benchmark_6.ipynb`](notebooks/demo_benchmark_6.ipynb) (ArXiv canonical, 20 reps).*
+
 Full results: **[Benchmark Results](docs/BENCHMARK_RESULTS.md)** | Methodology: **[Experiment Guide](EXPERIMENT_GUIDE.md)**
 
 ---

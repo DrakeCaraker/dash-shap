@@ -2,7 +2,7 @@
 """
 DASH Experimental Validation — Complete Runner
 ===============================================
-Aligned with audited demo_benchmark_7.ipynb (PAPER_CONFIG).
+Aligned with PAPER_CONFIG (TMLR target: N_REPS=50). Canonical ArXiv results from demo_benchmark_6.ipynb (N_REPS=20).
 
 Run all experiments:
     python run_experiments.py
