@@ -115,25 +115,26 @@
 
 % ===========================================================================
 \begin{abstract}
-We isolate and empirically characterize \emph{first-mover bias}---a
-path-dependent concentration of feature importance caused by sequential
-residual fitting in gradient boosting---as a specific mechanistic cause of the
-well-known instability of SHAP-based feature rankings under
-multicollinearity. When correlated features
+We investigate a specific form of explanation instability that we term
+\emph{first-mover bias}---a path-dependent concentration of feature importance
+associated with sequential residual fitting in gradient boosting---as a
+mechanistic contributor to the well-known instability of SHAP-based feature
+rankings under multicollinearity. When correlated features
 compete for early splits, gradient boosting creates a self-reinforcing
 advantage for whichever feature is selected first: subsequent trees inherit
 modified residuals that favor the incumbent, concentrating SHAP importance on
 an arbitrary feature rather than distributing it across the correlated group.
 Scaling up a single model amplifies this effect---a Large Single Model with
-the same total tree count as our method produces the \emph{worst} explanations
-of any approach tested.
+the same total tree count as our method produces the \emph{poorest} attribution
+reproducibility of any approach tested.
 
-We demonstrate that \emph{model independence} is sufficient to resolve
-first-mover bias in the linear regime, and remains the most effective
-mitigation under nonlinear data-generating processes. Both our proposed
+We provide evidence that \emph{model independence} is sufficient to largely
+neutralize first-mover bias in the linear, high-collinearity regime we study,
+and that it remains the most effective mitigation under nonlinear
+data-generating processes. Both our proposed
 method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
-chain, confirming that the operative mechanism is independence between
+chain, supporting the view that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
 $= 0.977$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
@@ -168,10 +169,9 @@ importance ranking. This ranking drives consequential decisions across
 science, industry, and regulation---it selects features for production
 pipelines, generates hypotheses in biomedical research, and satisfies
 regulatory auditors reviewing algorithmic systems. The workflow is
-ubiquitous and is treated as reliable.
-
-It is not. When features are correlated, SHAP-based importance rankings
-become unstable. At each split, a gradient-boosted tree must choose one
+ubiquitous, but under correlated predictors its resulting feature rankings may be
+substantially less reliable than their routine use suggests. When features are correlated, SHAP-based importance rankings
+can become unstable. At each split, a gradient-boosted tree must choose one
 feature from a correlated set. Since correlated features carry nearly
 identical predictive signal, the choice is governed by marginal numerical
 differences---effectively arbitrary. The model's predictions are robust to
@@ -192,10 +192,10 @@ before modeling is susceptible.
 
 \paragraph{Why bigger models make it worse.}
 The intuitive response to unstable explanations is to train a more powerful
-model. We demonstrate that this is counterproductive. A single large
-XGBoost model with thousands of trees and the same total tree count as \dash{} ($M \times {\sim}75 \approx 15{,}000$ trees, where ${\sim}75$ is the average number of trees per population model after early stopping) produces the \emph{worst} explanations of any method
-tested---worse on stability, accuracy, and equity simultaneously. The
-mechanism is \emph{sequential residual dependency}: in gradient boosting,
+model. Our results suggest that this can be counterproductive. A single large
+XGBoost model with thousands of trees and the same total tree count as \dash{} ($M \times {\sim}75 \approx 15{,}000$ trees, where ${\sim}75$ is the average number of trees per population model after early stopping) produces the poorest attribution reproducibility among all methods
+tested. We hypothesize, and our experiments support, that
+the primary mechanism is \emph{sequential residual dependency}: in gradient boosting,
 each tree fits the residuals of all previous trees. If tree~1 selects
 feature~$A$ from a correlated pair $(A, B)$, it partially removes $A$'s
 signal from the residuals. Subsequent trees find both $A$ and $B$ less
@@ -204,14 +204,22 @@ feature that was partially captured. Over thousands of iterations, this
 creates a ``first-mover advantage'' that concentrates importance on
 whichever feature happened to be selected first---an artifact of
 optimization path dependence, not a property of the data.
+We use the term \emph{first-mover bias} to denote this specific
+path-dependent concentration effect in sequential boosting;
+our claim is not that this is the only source of SHAP instability,
+but that it is an important and previously under-emphasized contributor
+in gradient-boosted trees under correlation.
 
 \paragraph{Our contribution.}
 We propose \dash{} (Diversified Aggregation of SHAP), a five-stage
-pipeline that produces stable, accurate, and equitable feature importance
-explanations. The key insight is that explanation instability is a property
-of individual models, not of the data: training enough diverse models and
-averaging their SHAP values causes the arbitrary choices to cancel,
-revealing the true underlying importance structure. Specifically, \dash{}:
+pipeline that produces stable and reproducible feature importance
+explanations. \dash{} is not intended to outperform tuned single models on
+prediction; its objective is reproducible attribution under multicollinearity
+while maintaining competitive predictive performance. A substantial portion of explanation instability appears to arise from
+individual models' optimization paths rather than solely from the data
+distribution itself: training enough diverse models and averaging their
+SHAP values causes path-dependent arbitrary choices to cancel,
+producing a more reproducible importance ranking. Specifically, \dash{}:
 
 \begin{enumerate}
   \item Trains a population ($M = 200$) of XGBoost models with
@@ -229,18 +237,18 @@ revealing the true underlying importance structure. Specifically, \dash{}:
 
 We make four contributions:
 \begin{itemize}
-  \item \textbf{Phenomenon.} Feature selection bias in ensemble methods
-    is well known \citep{strobl2007bias, hooker2019please}; we isolate
-    and empirically characterize the specific mechanistic
-    pathway---sequential residual dependency in gradient
-    boosting---through which it concentrates SHAP-based feature
+  \item \textbf{Mechanistic framing.} Feature selection bias in ensemble methods
+    is well known \citep{strobl2007bias, hooker2019please}; we articulate
+    first-mover bias as a specific path-dependent concentration effect
+    arising from sequential residual dependency in gradient
+    boosting, and provide evidence that it concentrates SHAP-based feature
     attributions on arbitrary features under collinearity.
-  \item \textbf{Principle.} We demonstrate that model independence is
-    sufficient to resolve first-mover bias in the linear regime, and
-    remains the most effective mitigation under nonlinear
-    data-generating processes.  Both \dash{} (deliberate diversity) and
+  \item \textbf{Principle.} We provide evidence that model independence is
+    sufficient to largely neutralize first-mover bias in the linear,
+    high-collinearity regime we study, and that it remains the most
+    effective mitigation under nonlinear data-generating processes.  Both \dash{} (deliberate diversity) and
     Stochastic Retrain (seed diversity) restore stability to the same
-    level, confirming that the operative mechanism is independence
+    level, consistent with the view that the operative mechanism is independence
     rather than any particular aggregation strategy.
   \item \textbf{Diagnostics.} The Feature Stability Index (FSI) and
     Importance-Stability (IS) Plot detect first-mover bias without
@@ -251,6 +259,12 @@ We make four contributions:
     with forced feature restriction, diversity-aware model selection,
     and integrated diagnostics.
 \end{itemize}
+
+\noindent On synthetic data, our ``accuracy'' metric evaluates agreement with a
+predefined equitable decomposition within correlated groups; it should be
+interpreted as agreement with a chosen attribution target rather than as
+direct recovery of uniquely identifiable ground truth
+(Section~\ref{sec:experiments}).
 
 
 % ===========================================================================
@@ -389,10 +403,10 @@ TreeSHAP, with the gap increasing in $T$. The expectation is over the
 randomness in data sampling and split selection. We test the $T$-dependence
 indirectly in Section~\ref{sec:mechanism_result} via the Large Single
 Model comparison: the LSM uses ${\sim}15{,}000$ sequential trees and
-produces the worst explanations of any method, consistent with the
+produces the poorest reproducibility of any method, consistent with the
 prediction that more sequential iterations amplify first-mover
 concentration. A direct isolation experiment varying $T$ while holding
-other factors constant is available in the code repository and confirms
+other factors constant is available in the code repository and shows
 monotonically increasing concentration with tree count.
 
 \subsection{Desiderata}
@@ -404,7 +418,9 @@ A good feature importance method under multicollinearity should satisfy:
   \item \textbf{Accuracy}: The ranking should correlate with the true
     data-generating process when ground truth is available.
   \item \textbf{Equity}: Correlated features contributing equally to the
-    target should receive similar importance.
+    target should receive similar importance. (We use ``equity'' throughout
+    to mean balanced credit allocation within correlated feature groups,
+    distinct from its use in algorithmic fairness literature.)
   \item \textbf{Safety}: The method should not degrade explanations or
     predictions when features are uncorrelated.
 \end{enumerate}
@@ -625,7 +641,7 @@ equity properties rather than independent evidence of superiority.
 Similarly, \dash{}'s equity advantage is partially a \emph{design
 property}: forced \texttt{colsample\_bytree} restriction distributes
 feature usage across correlated groups by construction, so the equity
-results should be understood as confirming that the pipeline achieves
+results should be understood as showing that the pipeline achieves
 its design intent rather than as independent empirical findings.
 
 For the nonlinear DGP, the target includes quadratic terms, interactions,
@@ -747,7 +763,7 @@ $\tau = 0.3$ (cluster threshold), background size $B = 100$.
 \section{Results}
 \label{sec:results}
 
-\subsection{The mechanism: first-mover bias confirmed}
+\subsection{The mechanism: evidence for first-mover bias}
 \label{sec:mechanism_result}
 
 The central question is whether sequential residual dependency causes
@@ -760,7 +776,7 @@ the total number of trees (DASH vs.\ LSM), not wall-clock time or FLOPs.
 Separately, Single Best ($M$) is ``training-budget-matched'' in the sense
 that it trains the same number of models as DASH. The comparison isolates the
 \emph{sequential vs.\ independent} distinction rather than claiming
-cost parity. The only structural difference is that \dash{}'s models
+cost parity. The primary design contrast is that \dash{}'s models
 are trained independently, while LSM's trees are trained sequentially
 on progressively modified residuals.
 
@@ -769,10 +785,10 @@ across $\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with 20 repetitions per
 level. The remaining five baselines (Ensemble SHAP, Single Best $M{=}200$,
 LSM Tuned, Random Selection, Naive Top-$N$) are evaluated at
 $\rhovar = 0.9$ only (Table~\ref{tab:extended}), as their primary
-purpose is to contextualize the mechanism at high correlation. The key finding is that LSM achieves the \emph{worst}
+purpose is to contextualize the mechanism at high correlation. The key finding is that LSM achieves the poorest
 stability of any method at every correlation level, despite matching
-\dash{}'s total tree count and feature restriction. This confirms
-first-mover bias: sequential residual dependency concentrates
+\dash{}'s total tree count and feature restriction. This is consistent
+with the first-mover bias hypothesis: sequential residual dependency concentrates
 importance on arbitrary features, and the effect worsens with
 correlation severity (LSM stability degrades from $0.953$ at
 $\rhovar = 0$ to $0.925$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
@@ -784,7 +800,7 @@ immunity to the mechanism it is designed to break.
 \caption{The mechanism experiment: \dash{} vs.\ Single Best vs.\ Large
 Single Model across correlation levels (20 repetitions per $\rhovar$).
 Both \dash{} and LSM use the same low \texttt{colsample\_bytree}; the
-only difference is that \dash{}'s models are trained independently while
+critical contrast for our hypothesis is that \dash{}'s models are trained independently while
 LSM trains trees sequentially. Bold indicates best per metric per $\rhovar$ level.
 The four principal methods are shown; all nine are compared at
 $\rhovar = 0.9$ in Table~\ref{tab:extended}.}
@@ -841,21 +857,21 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
 \end{tabular}
 \end{table}
 
-Three patterns confirm the first-mover bias mechanism:
+Three patterns support the first-mover bias hypothesis:
 
 \begin{enumerate}
   \item \textbf{LSM is worst despite matching \dash{}'s design.}
     Both use low \texttt{colsample\_bytree} and the same total tree count.
     The difference is sequential vs.\ independent training. LSM's worst
-    performance proves that first-mover bias is caused by sequential
-    residual dependency, not by any other factor.
+    performance provides strong evidence that sequential
+    residual dependency is a primary driver of first-mover bias.
   \item \textbf{The effect scales with correlation.}
     LSM stability degrades from $0.953$ to $0.925$ as $\rhovar$ increases
     from $0$ to $0.95$. \dash{} stability is flat ($0.972$--$0.977$).
     First-mover bias is specifically a collinearity problem.
   \item \textbf{Equity degrades in the same pattern.}
-    LSM's within-group CV worsens from $0.170$ to $0.284$, confirming that
-    sequential dependency concentrates importance within correlated groups.
+    LSM's within-group CV worsens from $0.170$ to $0.284$, consistent with
+    sequential dependency concentrating importance within correlated groups.
     \dash{} distributes it proportionally ($0.164$--$0.176$).
 \end{enumerate}
 
@@ -888,12 +904,12 @@ ground truth for this group (not the within-group feature correlation $\rhovar$)
 \label{fig:concentration}
 \end{figure}
 
-\subsection{The principle: independence resolves it}
+\subsection{The principle: independence largely resolves it}
 \label{sec:independence}
 
-If first-mover bias is caused by sequential residual dependency, then any
+If first-mover bias is driven primarily by sequential residual dependency, then any
 method that breaks this dependency---by ensuring independence between
-explained models---should resolve the instability. We test this prediction
+explained models---should substantially reduce the instability. We test this prediction
 by comparing methods that achieve independence through different mechanisms.
 
 Table~\ref{tab:extended} compares all methods at $\rhovar = 0.9$. The
@@ -951,7 +967,7 @@ methods partition cleanly into two tiers:
 \end{itemize}
 
 The gap between tiers ($\sim$0.01--0.04) dwarfs the gap within the
-independent tier ($\sim$0.001). This confirms that the operative
+independent tier ($\sim$0.001). This supports the view that the operative
 mechanism is independence between explained models, not any particular
 aggregation strategy or hyperparameter diversification.
 
@@ -977,7 +993,7 @@ vary (isolating model-selection variance), Single Best stability is
 $0.978$ while \dash{} achieves $0.995$---indicating that \dash{}
 nearly eliminates model-selection noise. Model-selection variance
 accounts for approximately $54\%$ of Single Best's total instability but only $24\%$
-of \dash{}'s, confirming that independence-based averaging cancels the
+of \dash{}'s, consistent with independence-based averaging cancelling the
 arbitrary feature choices that dominate single-model
 explanations.\footnote{These percentages use $1 - \text{stability}$ as
 a proxy for instability. Since stability is a mean pairwise Spearman
@@ -1034,7 +1050,7 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d
 The non-significant differences between \dash{} and Stochastic Retrain
 on both accuracy ($d = +0.05$, $p = 0.926$) and equity ($d = -0.21$,
 $p = 0.622$) constitute the most important result in this paper: they
-confirm that model independence, not any particular pipeline design, is
+support the view that model independence, not any particular pipeline design, is
 the operative mechanism. Indeed, SR achieves marginally higher stability
 point estimates than \dash{} at most $\rhovar$ levels ($0.975$--$0.980$
 vs.\ $0.972$--$0.977$), though these differences are small
@@ -1074,16 +1090,16 @@ than $0.5\%$ across the entire correlation range.
 
 The equity metric shows the same scaling. LSM's within-group CV worsens
 from $0.170$ to $0.284$ ($+67\%$), while \dash{} ranges from $0.164$ to
-$0.176$ ($+7\%$). This confirms that sequential residual dependency
-concentrates importance within correlated groups, and the concentration
-scales with the degree of correlation---exactly as the first-mover bias
-mechanism predicts. When correlation is low, features within a group
+$0.176$ ($+7\%$). This is consistent with sequential residual dependency
+concentrating importance within correlated groups, with the concentration
+scaling with the degree of correlation---as the first-mover bias
+hypothesis predicts. When correlation is low, features within a group
 carry sufficiently distinct signal that the first-mover advantage is
 weak. When correlation is high, the features are near-interchangeable,
 and the first split's arbitrary selection dominates.
 
 At $\rhovar = 0$, Single Best, Stochastic Retrain, and \dash{} cluster
-tightly (stability $0.972$--$0.975$), confirming the safety desideratum:
+tightly (stability $0.972$--$0.975$), satisfying the safety desideratum:
 \dash{} does not degrade explanations when multicollinearity is absent.
 LSM already trails at $0.953 \pm 0.003$, and its gap widens monotonically
 with $\rhovar$.
@@ -1225,12 +1241,12 @@ $0.534$ stability; the training-budget-matched variant ($M{=}200$) is
 worse still at $0.317$, because Breast Cancer's extreme collinearity
 (21 pairs with $|r| > 0.9$) makes model selection itself unstable---with
 200 hyperparameter configurations, the ``best'' model varies wildly across
-repetitions. Both baselines indicate that feature rankings are essentially
-random across runs. The
+repetitions. Both baselines indicate that feature rankings are highly
+unstable across runs. The
 radius/perimeter/area triad creates extreme SHAP instability: a
 feature's importance can swing from first to fifth across runs. \dash{}
-consensus resolves this, producing clinically interpretable top
-features---\texttt{mean concave points}
+consensus substantially stabilizes this, producing stable top
+features aligned with known geometric redundancy in the feature set---\texttt{mean concave points}
 (0.228), \texttt{worst area} (0.201), \texttt{worst perimeter}
 (0.201)---that are stable across repetitions.
 
@@ -1240,7 +1256,7 @@ improves stability by $+0.132$ over Single Best and $+0.273$ over the
 Large Single Model, while achieving marginally better predictive RMSE.
 The LSM result is particularly striking: despite having the same total tree count
 as \dash{}, its sequential training produces the
-worst explanations---a direct manifestation of first-mover bias at scale.
+poorest reproducibility---consistent with first-mover bias at scale.
 
 \paragraph{California Housing.}
 On California Housing (8~features, 20,640~samples), several feature
@@ -1337,16 +1353,16 @@ needed.
 \subsection{Reframing explanation instability}
 
 This work reframes the SHAP instability problem from ``SHAP is noisy
-under multicollinearity'' to a specific mechanistic claim:
+under multicollinearity'' to a specific mechanistic hypothesis:
 \emph{sequential residual dependency in gradient boosting creates a
 first-mover bias that concentrates feature importance on arbitrary
-features within correlated groups.} The evidence is threefold:
+features within correlated groups.} Three lines of evidence support this view:
 (1)~the Large Single Model---which maximizes sequential dependency---produces
-the worst explanations at every correlation level;
+the poorest reproducibility at every correlation level;
 (2)~all methods that achieve model independence restore stability to the
 same level ($\approx 0.977$ at $\rhovar = 0.9$), regardless of their other
 design choices; and
-(3)~the effect scales with correlation severity, exactly as the mechanism
+(3)~the effect scales with correlation severity, as the hypothesis
 predicts.
 
 The implication is that the problem is not with SHAP itself---whose
@@ -1487,22 +1503,22 @@ single-model workflow can offer.
 \section{Conclusion}
 \label{sec:conclusion}
 
-We have identified first-mover bias---the path-dependent concentration of
-feature importance caused by sequential residual fitting in gradient
-boosting---as a specific mechanistic cause of SHAP instability under
-multicollinearity. Three lines of evidence establish this finding:
+We have investigated first-mover bias---the path-dependent concentration of
+feature importance associated with sequential residual fitting in gradient
+boosting---as a specific mechanistic contributor to SHAP instability under
+multicollinearity. Three lines of evidence support this finding:
 
 \begin{enumerate}
   \item The Large Single Model, which maximizes sequential dependency,
-    produces the \emph{worst} explanations of any method tested---worse
+    produces the poorest attribution reproducibility of any method tested---worse
     than the standard single-best workflow---despite matching \dash{}'s
-    total tree count and feature restriction. This confirms that
-    sequential dependency, not model capacity, drives instability.
+    total tree count and feature restriction. This provides strong evidence that
+    sequential dependency, not model capacity, is a major driver of instability.
   \item \dash{} and Stochastic Retrain achieve identical
     stability ($0.977$ at $\rhovar = 0.9$; accuracy $d = +0.05$,
     equity $d = -0.21$, both n.s.),
     despite differing in every design choice except model independence.
-    This confirms that independence between explained models is the
+    This supports the view that independence between explained models is the
     operative mechanism.
   \item The effect scales with correlation: dependent methods degrade
     monotonically as $\rhovar$ increases, while independent methods
@@ -1816,7 +1832,7 @@ $M \in \{50, 100, 200, 500\}$). We use $M = 200$ as a conservative default.
 \caption{Ablation sensitivity: stability as a function of population size $M$
 at two correlation levels ($\rhovar = 0.0$ and $\rhovar = 0.9$).
 Stability is effectively invariant to population size
-(within 0.001 across $M \in \{50, 100, 200, 500\}$), confirming that
+(within 0.001 across $M \in \{50, 100, 200, 500\}$), indicating that
 $M = 200$ is a conservative default.
 Additional ablation results for $K$, $\varepsilon$, and $\delta$ are reported
 in Table~\ref{tab:epsilon} and the inline text; full multi-panel ablation

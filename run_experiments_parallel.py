@@ -79,10 +79,14 @@ except ImportError:
 from dash.evaluation import (
     dgp_agreement, importance_accuracy, group_level_accuracy, group_level_mse,
     importance_stability, stability_bootstrap_ci, within_group_equity,
-    compare_methods, cohens_d, friedman_test, holm_bonferroni,
+    topk_overlap_stability, topk_stability_bootstrap_ci,
+    fsi_collinearity_correlation,
+    compare_methods, cohens_d, holm_bonferroni,
     feature_ablation_score, tost_equivalence, bootstrap_stability_test,
 )
+from dash.core.diagnostics import compute_diagnostics
 from dash.utils.io import save_json
+from dash.utils.checkpoint import save_checkpoint, load_checkpoint, has_checkpoint, clear_checkpoints_by_prefix, _sanitize_ckpt_name
 
 # ---------------------------------------------------------------------------
 # Canonical configuration — matches PAPER_CONFIG from audited notebook
@@ -113,6 +117,7 @@ REAL_EPSILON = 0.05
 REAL_EPSILON_MODE = 'relative'
 
 OUT = "results"
+CKPT_DIR = f"{OUT}/checkpoints"
 
 
 def make_feature_names(n_groups=10, group_size=5):
@@ -413,7 +418,7 @@ def _collect_rep(md, imp, true_imp, grps, rmse_val, model_obj):
 # EXPERIMENT: Synthetic Linear — Correlation Sweep (PARALLEL OPTIMIZED)
 ###############################################################################
 
-def experiment_linear_sweep():
+def experiment_linear_sweep(resume=False, cleanup=True):
     """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Parallel-optimized: rep-outer loop with population sharing between
@@ -450,8 +455,16 @@ def experiment_linear_sweep():
     ]
     sweep_results = {rho: {} for rho in rho_levels}
     feature_names = make_feature_names()  # m6: dynamic
+    fsi_by_rho = {}   # FSI validation: collect DASH FSI per rho (reviewer #7)
+    grps_by_rho = {}  # Groups array per rho (deterministic, saved once)
 
     for rho in rho_levels:
+        ckpt_name = f"linear_sweep_rho_{rho}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for ρ={rho}")
+            sweep_results[rho] = load_checkpoint(ckpt_name, CKPT_DIR)['rho_results']
+            continue
+
         log(f"\n--- ρ = {rho} ---")
 
         # Per-method accumulators (same structure as original)
@@ -481,6 +494,10 @@ def experiment_linear_sweep():
             rmse_val = rmse_score(yte, preds)
             method_data['DASH (MaxMin)']['t_accum'] += time.time() - t_m
             _collect_rep(method_data['DASH (MaxMin)'], imp, true_imp, grps, rmse_val, dash_pipeline)
+            # FSI validation (reviewer #7): collect per-rep FSI from DASH
+            if hasattr(dash_pipeline, 'fsi_') and dash_pipeline.fsi_ is not None:
+                fsi_by_rho.setdefault(rho, []).append(dash_pipeline.fsi_.copy())
+            grps_by_rho[rho] = grps  # deterministic per rho, save last
 
             # --- SingleBest(M=200): reuse DASH population ---
             t_m = time.time()
@@ -589,12 +606,15 @@ def experiment_linear_sweep():
         for name in sweep_methods:
             md = method_data[name]
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md['imp_runs'])
+            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(md['imp_runs'], k=5)
             n_reps = len(md['acc_runs'])
             sweep_results[rho][name] = {
                 'stability': stab,
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
                 'k_eff_mean': float(np.mean(md['keff_runs'])) if md['keff_runs'] else None,
                 'k_eff_std': float(np.std(md['keff_runs'], ddof=1)) if len(md['keff_runs']) > 1 else None,
                 'accuracy_mean': np.mean(md['acc_runs']),
@@ -616,10 +636,50 @@ def experiment_linear_sweep():
                 'rmse_runs': np.array(md['rmse_runs']),
                 'imp_runs': md['imp_runs'],
             }
-            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
                 f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
                 f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
                 f"({md['t_accum']:.1f}s)")
+
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=sweep_results[rho])
+
+    # FSI collinearity validation (reviewer #7): show FSI rises with rho
+    log("\n  FSI Collinearity Validation (DASH):")
+    log(f"  {'rho':>5} {'Mean FSI (signal)':>18} {'Mean FSI (noise)':>18} {'Ratio':>8}  {'Beta corr':>10}  {'p-value':>10}")
+    log("  " + "=" * 80)
+    fsi_validation = {}
+    for rho in rho_levels:
+        fsi_list = fsi_by_rho.get(rho, [])
+        grps_arr = grps_by_rho.get(rho)
+        if not fsi_list or grps_arr is None:
+            continue
+        mean_fsi = np.mean(fsi_list, axis=0)
+        n_groups = len(np.unique(grps_arr))
+        signal_mask = grps_arr < (n_groups - 1)  # last group is noise (beta=0)
+        mean_fsi_signal = float(np.mean(mean_fsi[signal_mask]))
+        mean_fsi_noise = float(np.mean(mean_fsi[~signal_mask]))
+        ratio = mean_fsi_signal / max(mean_fsi_noise, 1e-10)
+        # Beta-correlation: within each rho level, correlate FSI with group beta
+        # magnitude — features in high-beta groups should show higher FSI because
+        # there is more signal to compete over under collinearity.
+        beta_groups = np.array([2.0, 1.5, 1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.0])
+        group_size = len(mean_fsi) // len(beta_groups)
+        feature_beta = np.repeat(beta_groups, group_size)
+        beta_corr = fsi_collinearity_correlation(mean_fsi, feature_beta, groups=grps_arr)
+        fsi_validation[str(rho)] = {
+            'mean_fsi_signal': mean_fsi_signal,
+            'mean_fsi_noise': mean_fsi_noise,
+            'mean_fsi_all': float(np.mean(mean_fsi)),
+            'signal_noise_ratio': ratio,
+            'beta_spearman': beta_corr['feature_spearman'],
+            'beta_pvalue': beta_corr['feature_pvalue'],
+            'beta_group_spearman': beta_corr.get('group_spearman'),
+            'beta_group_pvalue': beta_corr.get('group_pvalue'),
+        }
+        log(f"  {rho:5.2f} {mean_fsi_signal:18.4f} {mean_fsi_noise:18.4f} {ratio:8.2f}"
+            f"  beta_rho={beta_corr['feature_spearman']:.3f}"
+            f"  (p={beta_corr['feature_pvalue']:.4g})")
+    sweep_results['_fsi_validation'] = fsi_validation
 
     # Bootstrap stability tests for sweep results (REVIEW_v7 M3)
     log("\n  Bootstrap stability tests (sweep):")
@@ -653,9 +713,41 @@ def experiment_linear_sweep():
                 pass
     sweep_results['_stability_tests'] = stab_test_results
 
+    # Equity significance tests: Wilcoxon on equity (lower is better for DASH)
+    log("\n  Equity significance tests (sweep):")
+    log(f"  {'rho':>5} {'Comparison':<35} {'Wilcoxon p':>12} {'Cohen d':>10}")
+    log("  " + "-" * 65)
+    eq_test_results = {}
+    for rho in rho_levels:
+        if rho not in sweep_results or dash_name not in sweep_results[rho]:
+            continue
+        dash_eq = sweep_results[rho][dash_name].get('eq_runs')
+        if dash_eq is None:
+            continue
+        eq_test_results[str(rho)] = {}
+        for bname in sweep_methods:
+            if bname == dash_name:
+                continue
+            bl_eq = sweep_results[rho].get(bname, {}).get('eq_runs')
+            if bl_eq is None:
+                continue
+            try:
+                _, pval = compare_methods(dash_eq, bl_eq)
+                d = cohens_d(dash_eq, bl_eq)
+                sig = '*' if pval < 0.05 else 'n.s.'
+                label = f'{dash_name} vs {bname}'
+                log(f"  {rho:5.2f} {label:<35} {pval:12.4g} {d:10.3f}  {sig}")
+                eq_test_results[str(rho)][bname] = {'p': float(pval), 'cohens_d': float(d)}
+            except Exception:
+                pass
+    sweep_results['_equity_tests'] = eq_test_results
+
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
+
+    if cleanup:
+        clear_checkpoints_by_prefix("linear_sweep_rho_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  Linear sweep completed in {elapsed/60:.1f} min")
@@ -667,7 +759,7 @@ def experiment_linear_sweep():
 # EXPERIMENT: Overlapping Correlation Structure
 ###############################################################################
 
-def experiment_overlapping():
+def experiment_overlapping(resume=False, cleanup=True):
     """Overlapping correlation structure at rho=0.9.
 
     M7 fix: now reports accuracy, equity, and RMSE alongside stability.
@@ -683,7 +775,18 @@ def experiment_overlapping():
                     'eq_runs': [], 'rmse_runs': []} for n in method_names}
     feature_names = make_feature_names()
 
-    for rep in range(N_REPS):
+    start_rep = 0
+    if resume:
+        for batch_end in range(N_REPS, 0, -10):
+            ckpt_name = f"overlapping_batch_{batch_end}"
+            if has_checkpoint(ckpt_name, CKPT_DIR):
+                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+                results = cached['results']
+                start_rep = cached['completed_reps']
+                log(f"  Resuming from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
         rep_seed = SEED + rep
         log(f"  Rep {rep+1}/{N_REPS}")
 
@@ -732,19 +835,26 @@ def experiment_overlapping():
         # Cluster uses same models as DASH, so use DASH predictions for RMSE
         results['DASH (Cluster)']['rmse_runs'].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
 
-    log(f"\n  {'Method':<20} {'Stability':>10} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}")
-    log("  " + "=" * 85)
+        if (rep + 1) % 10 == 0:
+            save_checkpoint(f"overlapping_batch_{rep+1}", checkpoint_dir=CKPT_DIR,
+                          results=results, completed_reps=rep+1)
+
+    log(f"\n  {'Method':<20} {'Stability':>10} {'Top-5':>8} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}")
+    log("  " + "=" * 93)
     overlap_results = {}
     for name in method_names:
         stab = importance_stability(results[name]['imp_runs'])
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(results[name]['imp_runs'], k=5)
         acc = np.mean(results[name]['acc_runs'])
         grp = np.mean(results[name]['grp_acc_runs'])
         gmse = np.mean(results[name]['gmse_runs'])
         eq = np.mean(results[name]['eq_runs'])
         rmse = np.mean(results[name]['rmse_runs'])
-        log(f"  {name:<20} {stab:>10.4f} {acc:>10.4f} {grp:>10.4f} {gmse:>10.6f} {eq:>10.4f} {rmse:>10.4f}")
+        log(f"  {name:<20} {stab:>10.4f} {topk5:>8.4f} {acc:>10.4f} {grp:>10.4f} {gmse:>10.6f} {eq:>10.4f} {rmse:>10.4f}")
         overlap_results[name] = {
             'stability': stab,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'accuracy_mean': acc, 'accuracy_std': float(np.std(results[name]['acc_runs'])),
             'group_accuracy_mean': grp,
             'group_mse_mean': gmse, 'group_mse_std': float(np.std(results[name]['gmse_runs'], ddof=1)),
@@ -755,6 +865,9 @@ def experiment_overlapping():
     save_json(overlap_results, f"{OUT}/tables/overlapping.json")
     log(f"  Saved: {OUT}/tables/overlapping.json")
 
+    if cleanup:
+        clear_checkpoints_by_prefix("overlapping_batch_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  Overlapping completed in {elapsed/60:.1f} min")
     return overlap_results
@@ -764,7 +877,7 @@ def experiment_overlapping():
 # EXPERIMENT: Nonlinear DGP Correlation Sweep
 ###############################################################################
 
-def experiment_nonlinear_sweep():
+def experiment_nonlinear_sweep(resume=False, cleanup=True):
     """Nonlinear DGP sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Evaluates stability and equity (no ground-truth accuracy for nonlinear DGP).
@@ -787,6 +900,12 @@ def experiment_nonlinear_sweep():
     feature_names = make_feature_names()
 
     for rho in nl_rho_levels:
+        ckpt_name = f"nonlinear_sweep_rho_{rho}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for NL ρ={rho}")
+            nl_sweep[rho] = load_checkpoint(ckpt_name, CKPT_DIR)['rho_results']
+            continue
+
         log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
         for name in nl_methods:
             eq_runs, imp_runs, rmse_runs, keff_runs = [], [], [], []
@@ -841,11 +960,14 @@ def experiment_nonlinear_sweep():
                     keff_runs.append(len(m.selected_indices_))
 
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
             nl_sweep[rho][name] = {
                 'stability': stab,
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
                 'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
                 'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
                 'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
@@ -854,11 +976,28 @@ def experiment_nonlinear_sweep():
                 'rmse_std': float(np.std(rmse_runs, ddof=1)),
                 'rmse_runs': np.array(rmse_runs),
             }
-            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  eq={np.mean(eq_runs):.4f}  "
+            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  eq={np.mean(eq_runs):.4f}  "
                 f"RMSE={np.mean(rmse_runs):.4f}")
+
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=nl_sweep[rho])
+
+    # Safety desideratum check: flag rho levels where DASH < SB
+    log("\n  Safety desideratum check (nonlinear DGP):")
+    log(f"  {'rho':>5} {'DASH':>10} {'SB':>10} {'Status':>12}")
+    log("  " + "-" * 42)
+    for rho in nl_rho_levels:
+        dash_s = nl_sweep[rho].get('DASH (MaxMin)', {}).get('stability')
+        sb_s = nl_sweep[rho].get('Single Best', {}).get('stability')
+        if dash_s is not None and sb_s is not None:
+            status = 'PASS' if dash_s >= sb_s else 'VIOLATION'
+            log(f"  {rho:5.2f} {dash_s:10.4f} {sb_s:10.4f} {status:>12}")
+    log("  Note: DASH advantage is expected only at rho >= 0.7 under nonlinear DGPs.")
 
     save_json(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json")
     log(f"  Saved: {OUT}/tables/nonlinear_sweep.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("nonlinear_sweep_rho_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  Nonlinear sweep completed in {elapsed/60:.1f} min")
@@ -869,7 +1008,7 @@ def experiment_nonlinear_sweep():
 # EXPERIMENT: Extended Baselines (Table 2) at rho=0.9
 ###############################################################################
 
-def experiment_table2_baselines():
+def experiment_table2_baselines(resume=False, cleanup=True):
     """Extended baselines at rho=0.9: Ensemble SHAP, Stochastic Retrain, DASH (Dedup)."""
     _ensure_dirs()
     t0 = time.time()
@@ -887,6 +1026,12 @@ def experiment_table2_baselines():
     feature_names = make_feature_names()
 
     for name in table2_methods:
+        ckpt_name = f"table2_{_sanitize_ckpt_name(name)}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for {name}")
+            table2_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)['method_results']
+            continue
+
         imp_runs, acc_runs, eq_runs = [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
@@ -937,20 +1082,27 @@ def experiment_table2_baselines():
             imp_runs.append(imp)
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         table2_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'accuracy_mean': np.mean(acc_runs), 'accuracy_std': np.std(acc_runs, ddof=1),
             'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
             'acc_runs': np.array(acc_runs), 'eq_runs': np.array(eq_runs),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=table2_results[name])
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
     log(f"  Saved: {OUT}/tables/table2_baselines.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("table2_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  Table 2 baselines completed in {elapsed/60:.1f} min")
@@ -961,7 +1113,7 @@ def experiment_table2_baselines():
 # EXPERIMENT: California Housing
 ###############################################################################
 
-def experiment_real_california():
+def experiment_real_california(resume=False, cleanup=True):
     """California Housing benchmark with scale-appropriate epsilon."""
     _ensure_dirs()
     t0 = time.time()
@@ -984,10 +1136,17 @@ def experiment_real_california():
         X_cal, y_cal, test_size=0.2, random_state=SEED,
     )
 
-    cal_methods = ['Single Best', 'Random Forest', 'DASH (MaxMin)']
+    cal_methods = ['Single Best', 'Random Forest', 'Stochastic Retrain',
+                    'Random Selection', 'DASH (MaxMin)']
     cal_results = {}
 
     for name in cal_methods:
+        ckpt_name = f"california_{_sanitize_ckpt_name(name)}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for {name}")
+            cal_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)['method_results']
+            continue
+
         imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
@@ -1020,6 +1179,28 @@ def experiment_real_california():
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
                 abl = feature_ablation_score(m.model_, Xte_r, y_cal_test, imp)
+            elif name == 'Stochastic Retrain':
+                m = StochasticRetrainBaseline(
+                    N=K, task='regression', n_jobs=-1, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_cal_test, preds)
+                proxy_model = m.models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
+            elif name == 'Random Selection':
+                m = RandomSelectionBaseline(
+                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
+                    epsilon_mode=REAL_EPSILON_MODE,
+                    n_jobs=-1, seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_cal_test, preds)
+                proxy_model = m.models_[m.selected_indices_[0]]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
             else:
                 m = DASHPipeline(
                     M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
@@ -1041,33 +1222,45 @@ def experiment_real_california():
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         cal_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
             'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
             'rmse_runs': np.array(rmse_runs),
             'ablation_runs': np.array(ablation_runs),
+            'imp_runs': imp_runs,
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=cal_results[name])
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
     _log_pairwise_significance(cal_results, 'DASH (MaxMin)', cal_methods, 'California Housing')
 
-    # IS plot from last DASH run
-    fig = m.plot_importance_stability(title='IS Plot — California Housing', annotate_top_k=8)
-    fig.savefig(f"{OUT}/figures/is_plot_california.png", dpi=150, bbox_inches='tight')
-    fig.savefig(f"{OUT}/figures/is_plot_california.pdf", bbox_inches='tight')
-    plt.close(fig)
-    log(f"  Saved: figures/is_plot_california.png/pdf")
+    # IS plot from last DASH run (only if DASH was freshly computed, not loaded from checkpoint)
+    try:
+        fig = m.plot_importance_stability(title='IS Plot — California Housing', annotate_top_k=8)
+        fig.savefig(f"{OUT}/figures/is_plot_california.png", dpi=150, bbox_inches='tight')
+        fig.savefig(f"{OUT}/figures/is_plot_california.pdf", bbox_inches='tight')
+        plt.close(fig)
+        log(f"  Saved: figures/is_plot_california.png/pdf")
+    except (NameError, AttributeError):
+        log(f"  Skipped IS plot (DASH loaded from checkpoint)")
 
     save_json(cal_results, f"{OUT}/tables/california_housing.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("california_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  California Housing completed in {elapsed/60:.1f} min")
     return cal_results
@@ -1077,7 +1270,7 @@ def experiment_real_california():
 # EXPERIMENT: Breast Cancer
 ###############################################################################
 
-def experiment_real_breast_cancer():
+def experiment_real_breast_cancer(resume=False, cleanup=True):
     """Breast Cancer benchmark (binary classification, N_REPS=20)."""
     _ensure_dirs()
     t0 = time.time()
@@ -1100,10 +1293,17 @@ def experiment_real_breast_cancer():
         X_bc, y_bc, test_size=0.2, random_state=SEED,
     )
 
-    bc_methods = ['Single Best', 'Random Forest', 'DASH (MaxMin)']
+    bc_methods = ['Single Best', 'Random Forest', 'Stochastic Retrain',
+                   'Random Selection', 'DASH (MaxMin)']
     bc_results = {}
 
     for name in bc_methods:
+        ckpt_name = f"breast_cancer_{_sanitize_ckpt_name(name)}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for {name}")
+            bc_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)['method_results']
+            continue
+
         imp_runs, ablation_runs, keff_runs = [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
@@ -1134,6 +1334,24 @@ def experiment_real_breast_cancer():
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
                 abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
+            elif name == 'Stochastic Retrain':
+                m = StochasticRetrainBaseline(
+                    N=K, task='binary', n_jobs=-1, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                proxy_model = m.models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
+            elif name == 'Random Selection':
+                m = RandomSelectionBaseline(
+                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
+                    epsilon_mode=REAL_EPSILON_MODE, task='binary',
+                    n_jobs=-1, seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                proxy_model = m.models_[m.selected_indices_[0]]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
             else:
                 m = DASHPipeline(
                     M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
@@ -1152,40 +1370,52 @@ def experiment_real_breast_cancer():
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         bc_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'ablation_mean': np.mean(ablation_runs),
             'ablation_std': np.std(ablation_runs, ddof=1),
             'ablation_runs': np.array(ablation_runs),
+            'imp_runs': imp_runs,
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=bc_results[name])
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(bc_results, 'DASH (MaxMin)', bc_methods, 'Breast Cancer')
 
-    # IS plot and disagreement map from last DASH run
-    fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
-    fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.png", dpi=150, bbox_inches='tight')
-    fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.pdf", bbox_inches='tight')
-    plt.close(fig)
+    # IS plot and disagreement map from last DASH run (only if freshly computed)
+    try:
+        fig = m.plot_importance_stability(title='IS Plot — Breast Cancer', annotate_top_k=8)
+        fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.png", dpi=150, bbox_inches='tight')
+        fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.pdf", bbox_inches='tight')
+        plt.close(fig)
 
-    var_obs = np.mean(m.variance_matrix_, axis=1)
-    fig = local_disagreement_map(
-        m.all_shap_matrices_, np.argmax(var_obs),
-        feature_names=bc_names, top_k=12,
-    )
-    fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.png", dpi=150, bbox_inches='tight')
-    fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.pdf", bbox_inches='tight')
-    plt.close(fig)
-    log(f"  Saved: is_plot_breast_cancer.png/pdf, disagreement_breast_cancer.png/pdf")
+        var_obs = np.mean(m.variance_matrix_, axis=1)
+        fig = local_disagreement_map(
+            m.all_shap_matrices_, np.argmax(var_obs),
+            feature_names=bc_names, top_k=12,
+        )
+        fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.png", dpi=150, bbox_inches='tight')
+        fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.pdf", bbox_inches='tight')
+        plt.close(fig)
+        log(f"  Saved: is_plot_breast_cancer.png/pdf, disagreement_breast_cancer.png/pdf")
+    except (NameError, AttributeError):
+        log(f"  Skipped IS plot and disagreement map (DASH loaded from checkpoint)")
 
     save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("breast_cancer_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  Breast Cancer completed in {elapsed/60:.1f} min")
     return bc_results
@@ -1195,7 +1425,7 @@ def experiment_real_breast_cancer():
 # EXPERIMENT: Superconductor UCI Benchmark
 ###############################################################################
 
-def experiment_real_superconductor():
+def experiment_real_superconductor(resume=False, cleanup=True):
     """Superconductor UCI benchmark with scale-appropriate epsilon."""
     _ensure_dirs()
     t0 = time.time()
@@ -1217,10 +1447,17 @@ def experiment_real_superconductor():
 
     SC_M = 200  # Lighter compute for real-world dataset
     SC_K = 30
-    sc_methods = ['Single Best', 'Large Single Model', 'Random Forest', 'DASH (MaxMin)']
+    sc_methods = ['Single Best', 'Large Single Model', 'Random Forest',
+                   'Stochastic Retrain', 'Random Selection', 'DASH (MaxMin)']
     sc_results = {}
 
     for name in sc_methods:
+        ckpt_name = f"superconductor_{_sanitize_ckpt_name(name)}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for {name}")
+            sc_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)['method_results']
+            continue
+
         imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
@@ -1261,6 +1498,28 @@ def experiment_real_superconductor():
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
                 abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
+            elif name == 'Stochastic Retrain':
+                m = StochasticRetrainBaseline(
+                    N=SC_K, task='regression', n_jobs=-1, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_sc_test, preds)
+                proxy_model = m.models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
+            elif name == 'Random Selection':
+                m = RandomSelectionBaseline(
+                    M=SC_M, K=SC_K, epsilon=REAL_EPSILON, delta=DELTA,
+                    epsilon_mode=REAL_EPSILON_MODE,
+                    n_jobs=-1, seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_sc_test, preds)
+                proxy_model = m.models_[m.selected_indices_[0]]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
             else:
                 m = DASHPipeline(
                     M=SC_M, K=SC_K, epsilon=REAL_EPSILON, delta=DELTA,
@@ -1282,26 +1541,35 @@ def experiment_real_superconductor():
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         sc_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
             'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
             'rmse_runs': np.array(rmse_runs),
             'ablation_runs': np.array(ablation_runs),
+            'imp_runs': imp_runs,
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=sc_results[name])
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(sc_results, 'DASH (MaxMin)', sc_methods, 'Superconductor')
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("superconductor_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  Superconductor completed in {elapsed/60:.1f} min")
     return sc_results
@@ -1311,7 +1579,7 @@ def experiment_real_superconductor():
 # EXPERIMENT: Epsilon Sensitivity
 ###############################################################################
 
-def experiment_epsilon_sensitivity():
+def experiment_epsilon_sensitivity(resume=False, cleanup=True):
     """Epsilon sensitivity sweep: epsilon ∈ {0.03, 0.05, 0.08, 0.10}.
 
     Trains population ONCE per rep, then varies epsilon on the same models
@@ -1334,7 +1602,19 @@ def experiment_epsilon_sensitivity():
         'acc_runs': [], 'eq_runs': [], 'imp_runs': [],
     } for eps in EPS_VALUES}
 
-    for rep in range(N_REPS):
+    # Try to resume from latest batch checkpoint
+    start_rep = 0
+    if resume:
+        for batch_end in range(N_REPS, 0, -10):
+            ckpt_name = f"epsilon_sens_batch_{batch_end}"
+            if has_checkpoint(ckpt_name, CKPT_DIR):
+                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+                eps_results = cached['eps_results']
+                start_rep = cached['completed_reps']
+                log(f"  Resuming from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
         rep_seed = SEED + rep
         log(f"  Rep {rep+1}/{N_REPS}")
 
@@ -1373,19 +1653,30 @@ def experiment_epsilon_sensitivity():
             eps_results[eps]['eq_runs'].append(within_group_equity(imp, grps))
             eps_results[eps]['imp_runs'].append(imp)
 
-    log(f"\n  {'ε':>6} {'Models Passing':>16} {'K_eff':>12} {'Stability':>10} {'Accuracy':>10}")
-    log("  " + "=" * 60)
+        if (rep + 1) % 10 == 0:
+            save_checkpoint(f"epsilon_sens_batch_{rep+1}", checkpoint_dir=CKPT_DIR,
+                          eps_results=eps_results, completed_reps=rep+1)
+
+    log(f"\n  {'ε':>6} {'Models Passing':>16} {'K_eff':>12} {'Stability':>10} {'Top-5':>8} {'Accuracy':>10}")
+    log("  " + "=" * 70)
     for eps in EPS_VALUES:
         stab = importance_stability(eps_results[eps]['imp_runs'])
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(eps_results[eps]['imp_runs'], k=5)
         eps_results[eps]['stability'] = stab
+        eps_results[eps]['topk5_stability'] = topk5
         log(f"  {eps:>6.2f} {np.mean(eps_results[eps]['n_passing']):>12.1f}±"
             f"{np.std(eps_results[eps]['n_passing']):<4.1f}"
             f"{np.mean(eps_results[eps]['k_eff']):>8.1f}±"
             f"{np.std(eps_results[eps]['k_eff']):<4.1f}"
             f"{stab:>10.4f}"
+            f"{topk5:>8.4f}"
             f"{np.mean(eps_results[eps]['acc_runs']):>10.4f}")
 
     save_json(eps_results, f"{OUT}/tables/epsilon_sensitivity.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("epsilon_sens_batch_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  Epsilon sensitivity completed in {elapsed/60:.1f} min")
     return eps_results
@@ -1395,7 +1686,7 @@ def experiment_epsilon_sensitivity():
 # EXPERIMENT: Ablation Studies
 ###############################################################################
 
-def experiment_ablation():
+def experiment_ablation(resume=False, cleanup=True):
     """Ablation studies: one parameter at a time, across multiple rho levels."""
     _ensure_dirs()
     t0 = time.time()
@@ -1417,6 +1708,12 @@ def experiment_ablation():
     abl_results = {rho: {} for rho in ABL_RHOS}
 
     for abl_rho in ABL_RHOS:
+        ckpt_name = f"ablation_rho_{abl_rho}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for ρ={abl_rho}")
+            abl_results[abl_rho] = load_checkpoint(ckpt_name, CKPT_DIR)['rho_results']
+            continue
+
         log(f"\n{'=' * 60}")
         log(f"Ablation at ρ = {abl_rho}")
         log(f"{'=' * 60}")
@@ -1451,13 +1748,16 @@ def experiment_ablation():
 
                 if len(imp_runs) >= 2:
                     stab = importance_stability(imp_runs)
+                    topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
                     abl_results[abl_rho][param_name][val] = {
                         'stability': stab,
+                        'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
                         'accuracy_mean': np.mean(acc_runs),
                         'accuracy_std': np.std(acc_runs, ddof=1),
                         'n_successful': len(imp_runs),
                     }
-                    log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)")
+                    log(f"    stab={stab:.4f}  topk5={topk5:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)")
                 else:
                     abl_results[abl_rho][param_name][val] = {
                         'stability': float('nan'),
@@ -1467,11 +1767,16 @@ def experiment_ablation():
                     }
                     log(f"    SKIPPED — only {len(imp_runs)}/{ABL_N_REPS} reps passed filter")
 
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=abl_results[abl_rho])
+
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
 
     # Generate publication figure
     plot_ablation_sensitivity(abl_results)
+
+    if cleanup:
+        clear_checkpoints_by_prefix("ablation_rho_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  Ablation completed in {elapsed/60:.1f} min")
@@ -1482,7 +1787,7 @@ def experiment_ablation():
 # EXPERIMENT: Variance Decomposition (F1 fix)
 ###############################################################################
 
-def experiment_variance_decomposition():
+def experiment_variance_decomposition(resume=False, cleanup=True):
     """Variance decomposition: separates data-sampling vs model-selection variance."""
     _ensure_dirs()
     t0 = time.time()
@@ -1505,7 +1810,18 @@ def experiment_variance_decomposition():
     methods = ['Single Best', 'DASH (MaxMin)']
     results = {cond: {m: [] for m in methods} for cond in conditions}
 
-    for rep in range(N_REPS):
+    start_rep = 0
+    if resume:
+        for batch_end in range(N_REPS, 0, -10):
+            ckpt_name = f"variance_decomp_batch_{batch_end}"
+            if has_checkpoint(ckpt_name, CKPT_DIR):
+                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+                results = cached['results']
+                start_rep = cached['completed_reps']
+                log(f"  Resuming from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
         log(f"  Rep {rep+1}/{N_REPS}")
 
         for cond in conditions:
@@ -1533,16 +1849,21 @@ def experiment_variance_decomposition():
             dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
             results[cond]['DASH (MaxMin)'].append(dm.global_importance_)
 
+        if (rep + 1) % 10 == 0:
+            save_checkpoint(f"variance_decomp_batch_{rep+1}", checkpoint_dir=CKPT_DIR,
+                          results=results, completed_reps=rep+1)
+
     # Compute stability for each condition × method
-    log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10}")
-    log("  " + "=" * 50)
+    log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10} {'Top-5':>8}")
+    log("  " + "=" * 58)
     summary = {}
     for cond in conditions:
         summary[cond] = {}
         for m in methods:
             stab = importance_stability(results[cond][m])
-            summary[cond][m] = {'stability': stab}
-            log(f"  {cond:<16} {m:<20} {stab:>10.4f}")
+            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(results[cond][m], k=5)
+            summary[cond][m] = {'stability': stab, 'topk5_stability': topk5}
+            log(f"  {cond:<16} {m:<20} {stab:>10.4f} {topk5:>8.4f}")
 
     # Variance decomposition ratios
     # CAVEAT: (1 - stability) is a proxy for instability, not a proper
@@ -1570,6 +1891,10 @@ def experiment_variance_decomposition():
             summary[cond][m]['decomposition'] = summary_ratios
 
     save_json(summary, f"{OUT}/tables/variance_decomposition.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("variance_decomp_batch_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  Variance decomposition completed in {elapsed/60:.1f} min")
     return summary
@@ -1759,7 +2084,7 @@ def check_success_criteria(sweep_results, epsilon_results=None,
 # EXPERIMENT: Background Size Sensitivity (REVIEW_v7 B5)
 ###############################################################################
 
-def experiment_background_sensitivity():
+def experiment_background_sensitivity(resume=False, cleanup=True):
     """Sweep background dataset size B ∈ {50, 100, 200, 500} at ρ=0.9."""
     _ensure_dirs()
     t0 = time.time()
@@ -1772,6 +2097,12 @@ def experiment_background_sensitivity():
     results = {}
 
     for B in B_VALUES:
+        ckpt_name = f"background_B_{B}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            log(f"  Resuming: loaded checkpoint for B={B}")
+            results[str(B)] = load_checkpoint(ckpt_name, CKPT_DIR)['b_results']
+            continue
+
         imp_runs, acc_runs, eq_runs = [], [], []
         for rep in range(N_REPS):
             rep_seed = SEED + rep
@@ -1793,21 +2124,28 @@ def experiment_background_sensitivity():
             imp_runs.append(imp)
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         results[str(B)] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'accuracy_mean': float(np.mean(acc_runs)),
             'accuracy_std': float(np.std(acc_runs, ddof=1)),
             'equity_mean': float(np.mean(eq_runs)),
             'equity_std': float(np.std(eq_runs, ddof=1)),
         }
-        log(f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
+        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, b_results=results[str(B)])
 
     save_json(results, f"{OUT}/tables/background_sensitivity.json")
     log(f"  Saved: {OUT}/tables/background_sensitivity.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("background_B_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  Background sensitivity completed in {elapsed/60:.1f} min")
@@ -1818,9 +2156,9 @@ def experiment_background_sensitivity():
 # EXPERIMENT: Success Criteria (m7 — registered as runnable experiment)
 ###############################################################################
 
-def experiment_success_criteria():
+def experiment_success_criteria(resume=False, cleanup=True):
     """Run linear_sweep (if needed) then evaluate pass/fail success criteria."""
-    sweep_results = experiment_linear_sweep()
+    sweep_results = experiment_linear_sweep(resume=resume, cleanup=cleanup)
     check_success_criteria(sweep_results)
     return sweep_results
 
@@ -1829,7 +2167,7 @@ def experiment_success_criteria():
 # EXPERIMENT: First-Mover Bias Visualization
 ###############################################################################
 
-def experiment_first_mover_visualization():
+def experiment_first_mover_visualization(resume=False, cleanup=True):
     """Visualize first-mover bias: importance concentration within a correlated group.
 
     Generates a grouped bar chart showing per-feature importance within
@@ -1855,7 +2193,18 @@ def experiment_first_mover_visualization():
     methods_to_run = ['Single Best', 'Large Single Model', 'DASH (MaxMin)']
     method_importances = {m: [] for m in methods_to_run}
 
-    for rep in range(n_vis_reps):
+    start_rep = 0
+    if resume:
+        for batch_end in range(n_vis_reps, 0, -10):
+            ckpt_name = f"first_mover_vis_batch_{batch_end}"
+            if has_checkpoint(ckpt_name, CKPT_DIR):
+                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+                method_importances = cached['results']
+                start_rep = cached['completed_reps']
+                log(f"  Resuming from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, n_vis_reps):
         rep_seed = SEED + rep
         Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
             generate_synthetic_linear(N=5000, rho=rho, seed=rep_seed)
@@ -1881,6 +2230,10 @@ def experiment_first_mover_visualization():
         )
         dash.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
         method_importances['DASH (MaxMin)'].append(dash.global_importance_[group_features])
+
+        if (rep + 1) % 10 == 0:
+            save_checkpoint(f"first_mover_vis_batch_{rep+1}", checkpoint_dir=CKPT_DIR,
+                          results=method_importances, completed_reps=rep+1)
 
     # Average across reps
     avg_imp = {m: np.mean(method_importances[m], axis=0) for m in methods_to_run}
@@ -1925,6 +2278,9 @@ def experiment_first_mover_visualization():
     plt.close(fig)
     log(f"  Saved: {OUT}/figures/first_mover_concentration.pdf")
 
+    if cleanup:
+        clear_checkpoints_by_prefix("first_mover_vis_batch_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  First-mover visualization completed in {elapsed/60:.1f} min")
     return avg_imp
@@ -1934,7 +2290,7 @@ def experiment_first_mover_visualization():
 # EXPERIMENT: First-Mover Bias Isolation (IMPL_PLAN B3)
 ###############################################################################
 
-def experiment_first_mover_bias():
+def experiment_first_mover_bias(resume=False, cleanup=True):
     """First-mover bias isolation: concentration grows with tree count.
 
     Trains a single XGBoost with increasing n_estimators and measures how
@@ -1960,7 +2316,19 @@ def experiment_first_mover_bias():
     single_concentrations = {n: [] for n in n_estimator_levels}
     dash_concentrations = {n: [] for n in n_estimator_levels}
 
-    for rep in range(n_bias_reps):
+    start_rep = 0
+    if resume:
+        for batch_end in range(n_bias_reps, 0, -10):
+            ckpt_name = f"first_mover_bias_batch_{batch_end}"
+            if has_checkpoint(ckpt_name, CKPT_DIR):
+                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+                single_concentrations = cached['single_concentrations']
+                dash_concentrations = cached['dash_concentrations']
+                start_rep = cached['completed_reps']
+                log(f"  Resuming from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, n_bias_reps):
         rep_seed = SEED + rep
         log(f"  Rep {rep+1}/{n_bias_reps}")
 
@@ -1977,7 +2345,7 @@ def experiment_first_mover_bias():
             )
             model.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
             explainer = shap.TreeExplainer(model)
-            sv = explainer.shap_values(Xexp[:200])
+            sv = explainer.shap_values(Xexp[:200], check_additivity=False)
             imp_single = np.mean(np.abs(sv), axis=0)
             grp_imp = imp_single[group_features]
             conc = np.max(grp_imp) / (np.sum(grp_imp) + 1e-10)
@@ -1997,12 +2365,18 @@ def experiment_first_mover_bias():
                     random_state=m_seed,
                 )
                 mdl.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
-                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200])
+                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200], check_additivity=False)
                 imp_accum += np.mean(np.abs(sv_m), axis=0)
             imp_avg = imp_accum / m_models
             grp_imp_avg = imp_avg[group_features]
             conc_avg = np.max(grp_imp_avg) / (np.sum(grp_imp_avg) + 1e-10)
             dash_concentrations[n_est].append(conc_avg)
+
+        if (rep + 1) % 10 == 0:
+            save_checkpoint(f"first_mover_bias_batch_{rep+1}", checkpoint_dir=CKPT_DIR,
+                          single_concentrations=single_concentrations,
+                          dash_concentrations=dash_concentrations,
+                          completed_reps=rep+1)
 
     # Summarize
     summary = {}
@@ -2046,6 +2420,10 @@ def experiment_first_mover_bias():
     log(f"  Saved: figures/first_mover_bias_isolation.{{png,pdf}}")
 
     save_json(summary, f"{OUT}/tables/first_mover_bias.json")
+
+    if cleanup:
+        clear_checkpoints_by_prefix("first_mover_bias_batch_", CKPT_DIR)
+
     elapsed = time.time() - t0
     log(f"  First-mover bias isolation completed in {elapsed/60:.1f} min")
     return summary
@@ -2134,6 +2512,14 @@ Examples:
         '--list', action='store_true',
         help='List available experiments and exit',
     )
+    parser.add_argument(
+        '--resume', action='store_true',
+        help='Resume from per-level checkpoints if available',
+    )
+    parser.add_argument(
+        '--no-cleanup', action='store_true',
+        help='Keep per-level checkpoints after experiment completes',
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -2155,7 +2541,7 @@ Examples:
     sweep_results = None
 
     for name in to_run:
-        result = EXPERIMENTS[name]()
+        result = EXPERIMENTS[name](resume=args.resume, cleanup=not args.no_cleanup)
         if name == 'linear_sweep':
             sweep_results = result
 
