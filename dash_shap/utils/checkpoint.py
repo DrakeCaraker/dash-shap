@@ -40,13 +40,26 @@ def save_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR, **d
     print(f'  [CHECKPOINT] Saved {name} ({size_mb:.1f} MB)')
 
 
+class _LegacyUnpickler(pickle.Unpickler):
+    """Unpickler that remaps old 'dash.*' modules to 'dash_shap.*'.
+
+    Checkpoints saved before the package rename (dash → dash_shap) embed
+    the old module paths. This remaps them transparently on load.
+    """
+
+    def find_class(self, module: str, name: str):
+        if module == 'dash' or module.startswith('dash.'):
+            module = 'dash_shap' + module[4:]
+        return super().find_class(module, name)
+
+
 def load_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR):
     """Load a named checkpoint. Returns dict or None if not found."""
     path = _checkpoint_path(name, checkpoint_dir)
     if not path.exists():
         return None
     with open(path, 'rb') as f:
-        data = pickle.load(f)
+        data = _LegacyUnpickler(f).load()
     size_mb = os.path.getsize(path) / (1024 * 1024)
     print(f'  [CHECKPOINT] Loaded {name} ({size_mb:.1f} MB)')
     return data
