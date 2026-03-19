@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-slow lint fmt typecheck coverage clean
+.PHONY: test test-fast test-slow lint fmt typecheck coverage rebase clean
 
 test:
 	pytest -v
@@ -20,6 +20,11 @@ typecheck:
 
 coverage:
 	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
+
+rebase:
+	git fetch origin main
+	git rebase origin/main
+	@echo "Rebase complete. Run 'git push --force-with-lease' to update the remote branch."
 
 clean:
 	rm -rf __pycache__ .pytest_cache .mypy_cache .ruff_cache
