@@ -46,33 +46,33 @@ from sklearn.metrics import root_mean_squared_error as rmse_score
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from dash.core.pipeline import DASHPipeline
-from dash.core.consensus import compute_consensus
-from dash.core.diagnostics import compute_diagnostics
-from dash.core.diversity import (
+from dash_shap.core.pipeline import DASHPipeline
+from dash_shap.core.consensus import compute_consensus
+from dash_shap.core.diagnostics import compute_diagnostics
+from dash_shap.core.diversity import (
     get_preliminary_importance,
     greedy_maxmin_selection,
     cluster_coverage_selection,
     deduplication_selection,
 )
-from dash.core.diagnostics import (
+from dash_shap.core.diagnostics import (
     FeatureStabilityIndex, ImportanceStabilityPlot, local_disagreement_map,
 )
-from dash.experiments.synthetic import (
+from dash_shap.experiments.synthetic import (
     generate_synthetic_linear, generate_synthetic_nonlinear,
 )
-from dash.baselines import (
+from dash_shap.baselines import (
     SingleBestBaseline, LargeSingleModelBaseline, NaiveAveragingBaseline,
     StochasticRetrainBaseline, EnsembleSHAPBaseline, RandomSelectionBaseline,
     RandomForestBaseline, PermutationImportanceBaseline,
 )
 try:
     import lightgbm  # noqa: F401
-    from dash.baselines import LightGBMSingleBestBaseline
+    from dash_shap.baselines import LightGBMSingleBestBaseline
     _HAS_LIGHTGBM = True
 except ImportError:
     _HAS_LIGHTGBM = False
-from dash.evaluation import (
+from dash_shap.evaluation import (
     dgp_agreement, importance_accuracy, group_level_accuracy, group_level_mse,
     importance_stability, stability_bootstrap_ci, within_group_equity,
     topk_overlap_stability, topk_stability_bootstrap_ci,
@@ -80,8 +80,8 @@ from dash.evaluation import (
     compare_methods, cohens_d, holm_bonferroni,
     feature_ablation_score, tost_equivalence, bootstrap_stability_test,
 )
-from dash.core.diagnostics import compute_diagnostics
-from dash.utils.io import save_json
+from dash_shap.core.diagnostics import compute_diagnostics
+from dash_shap.utils.io import save_json
 
 # ---------------------------------------------------------------------------
 # Canonical configuration — matches PAPER_CONFIG from audited notebook
@@ -1437,9 +1437,9 @@ def experiment_epsilon_sensitivity():
     log("EXPERIMENT: Epsilon Sensitivity")
     log("=" * 70)
 
-    from dash.core.population import generate_model_population
-    from dash.core.filtering import performance_filter
-    from dash.core.diversity import greedy_maxmin_selection
+    from dash_shap.core.population import generate_model_population
+    from dash_shap.core.filtering import performance_filter
+    from dash_shap.core.diversity import greedy_maxmin_selection
 
     EPS_VALUES = [0.03, 0.05, 0.08, 0.10]
     EPS_M = M
@@ -1610,8 +1610,8 @@ def experiment_variance_decomposition():
     log("EXPERIMENT: Variance Decomposition")
     log("=" * 70)
 
-    from dash.core.population import generate_model_population
-    from dash.core.filtering import performance_filter
+    from dash_shap.core.population import generate_model_population
+    from dash_shap.core.filtering import performance_filter
 
     VD_RHO = 0.9
     feature_names = make_feature_names()
