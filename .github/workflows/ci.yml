@@ -277,12 +277,10 @@ jobs:
           python -c "
           import time
           from dash_shap.core.pipeline import DASHPipeline
-          from dash_shap.experiments.synthetic import generate_linear_dgp
+          from dash_shap.experiments.synthetic import generate_synthetic_linear
 
           # Small config for smoke test
-          data = generate_linear_dgp(n_samples=500, n_features=10, rho=0.8, seed=42)
-          X_train, X_val, X_explain, X_test = data['X_train'], data['X_val'], data['X_explain'], data['X_test']
-          y_train, y_val = data['y_train'], data['y_val']
+          X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, groups, true_importance, meta = generate_synthetic_linear(N=500, P=10, group_size=5, rho=0.8, seed=42)
 
           pipe = DASHPipeline(M=10, K=5, epsilon=0.08, delta=0.05, seed=42)
 
