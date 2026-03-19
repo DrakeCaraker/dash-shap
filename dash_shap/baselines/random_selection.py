@@ -7,10 +7,10 @@ K models randomly from the filtered set instead of using greedy MaxMin.
 import numpy as np
 import time
 
-from dash.core.population import generate_model_population, DEFAULT_SEARCH_SPACE
-from dash.core.filtering import performance_filter
-from dash.core.consensus import compute_consensus
-from dash.core.diagnostics import compute_diagnostics
+from dash_shap.core.population import generate_model_population, DEFAULT_SEARCH_SPACE
+from dash_shap.core.filtering import performance_filter
+from dash_shap.core.consensus import compute_consensus
+from dash_shap.core.diagnostics import compute_diagnostics
 
 __all__ = ["RandomSelectionBaseline"]
 

@@ -1,7 +1,7 @@
 """Baseline: LightGBM Single Best — tests whether leaf-wise GBM exhibits first-mover bias."""
 import numpy as np
 
-from dash.utils.shap_helpers import compute_global_importance
+from dash_shap.utils.shap_helpers import compute_global_importance
 
 __all__ = ["LightGBMSingleBestBaseline"]
 

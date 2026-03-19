@@ -13,7 +13,7 @@ import numpy as np
 import xgboost as xgb
 import shap
 
-from dash.utils.shap_helpers import compute_global_importance
+from dash_shap.utils.shap_helpers import compute_global_importance
 
 __all__ = ["LargeSingleModelBaseline"]
 

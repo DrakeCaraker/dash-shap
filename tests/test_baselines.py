@@ -1,12 +1,12 @@
 """Tests for dash.baselines module."""
 import numpy as np
 import pytest
-from dash.experiments.synthetic import generate_synthetic_linear, generate_synthetic_nonlinear
-from dash.baselines import LargeSingleModelBaseline, RandomForestBaseline, PermutationImportanceBaseline
+from dash_shap.experiments.synthetic import generate_synthetic_linear, generate_synthetic_nonlinear
+from dash_shap.baselines import LargeSingleModelBaseline, RandomForestBaseline, PermutationImportanceBaseline
 
 try:
     import lightgbm  # noqa: F401
-    from dash.baselines import LightGBMSingleBestBaseline
+    from dash_shap.baselines import LightGBMSingleBestBaseline
     _HAS_LIGHTGBM = True
 except ImportError:
     _HAS_LIGHTGBM = False
