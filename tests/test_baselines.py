@@ -1,4 +1,4 @@
-"""Tests for dash.baselines module."""
+"""Tests for dash_shap.baselines module."""
 import numpy as np
 import pytest
 from dash_shap.experiments.synthetic import generate_synthetic_linear, generate_synthetic_nonlinear

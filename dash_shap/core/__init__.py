@@ -1,1 +1,1 @@
-# Lazy imports — use dash.core.pipeline, dash.core.consensus, etc.
+# Lazy imports — use dash_shap.core.pipeline, dash_shap.core.consensus, etc.

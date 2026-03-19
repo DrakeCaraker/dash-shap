@@ -1,4 +1,4 @@
-"""Tests for dash.evaluation metrics."""
+"""Tests for dash_shap.evaluation metrics."""
 import numpy as np
 from dash_shap.evaluation import (
     importance_accuracy,
