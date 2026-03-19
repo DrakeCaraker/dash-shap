@@ -1,4 +1,4 @@
-"""Tests for dash.experiments.synthetic data generators."""
+"""Tests for dash_shap.experiments.synthetic data generators."""
 import numpy as np
 from dash_shap.experiments.synthetic import (
     make_correlation_matrix,

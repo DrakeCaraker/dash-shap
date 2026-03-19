@@ -41,4 +41,4 @@ def __getattr__(name):
     elif name == "LightGBMSingleBestBaseline":
         from dash_shap.baselines.lightgbm_single import LightGBMSingleBestBaseline
         return LightGBMSingleBestBaseline
-    raise AttributeError(f"module 'dash.baselines' has no attribute {name}")
+    raise AttributeError(f"module 'dash_shap.baselines' has no attribute {name}")
