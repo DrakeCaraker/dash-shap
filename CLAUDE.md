@@ -5,7 +5,7 @@ DASH (Diversified Aggregation of SHAP) produces stable feature importance explan
 ## Directory Map
 
 ```
-dash/
+dash_shap/
   core/           Five-stage pipeline modules
     population.py   Stage 1: train M XGBoost models with sampled hyperparameters
     filtering.py    Stage 2: keep models within epsilon of best validation score
@@ -26,7 +26,7 @@ paper/            LaTeX source
 
 ## Key Entry Points
 
-- `dash.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
+- `dash_shap.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
 - `run_experiments.py` — CLI experiment runner (10 experiments, plotting, JSON output)
 - `run_experiments_parallel.py` — **performance-optimized fork** (identical results, ~3-5x faster via population sharing + parallel SHAP)
 - `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook
@@ -115,7 +115,7 @@ Three layers detect when a branch falls behind `main`:
 - Commit `.pkl` files or anything in `checkpoints/`
 - Track build artifacts (`dist/`, `build/`, `*.egg-info/`)
 - Push notebooks with large embedded outputs (>10MB) — clear outputs first
-- Use `dash` as a bare import in tests (shadows the package — use `from dash.core import ...`)
+- Use `dash` as a bare import in tests (shadows the Plotly Dash package — use `from dash_shap.core import ...`)
 - Train models with high `colsample_bytree` (>0.5) in DASH population — defeats the diversity mechanism
 
 ## Key Results (for quick reference)

@@ -3,16 +3,16 @@ import numpy as np
 import time
 from typing import Dict, List, Optional
 
-from dash.core.population import generate_model_population, DEFAULT_SEARCH_SPACE
-from dash.core.filtering import performance_filter
-from dash.core.diversity import (
+from dash_shap.core.population import generate_model_population, DEFAULT_SEARCH_SPACE
+from dash_shap.core.filtering import performance_filter
+from dash_shap.core.diversity import (
     get_preliminary_importance,
     greedy_maxmin_selection,
     cluster_coverage_selection,
     deduplication_selection,
 )
-from dash.core.consensus import compute_consensus
-from dash.core.diagnostics import (
+from dash_shap.core.consensus import compute_consensus
+from dash_shap.core.diagnostics import (
     compute_diagnostics,
     FeatureStabilityIndex,
     ImportanceStabilityPlot,

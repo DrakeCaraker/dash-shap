@@ -92,9 +92,14 @@ DASH currently targets **XGBoost + interventional TreeSHAP**. It averages main-e
 ## Installation
 
 ```bash
+pip install dash-shap
+```
+
+Or install from source:
+
+```bash
 git clone https://github.com/DrakeCaraker/dash-shap.git
 cd dash-shap
-pip install -r requirements.txt
 pip install -e .
 ```
 
@@ -120,7 +125,7 @@ git config core.hooksPath .githooks
 ## Quick Start
 
 ```python
-from dash.core.pipeline import DASHPipeline
+from dash_shap.core.pipeline import DASHPipeline
 
 pipeline = DASHPipeline(
     M=200,                      # Train 200 diverse models
@@ -148,7 +153,7 @@ labels = fsi.get_quadrant_labels()
 robust = [f for f, l in zip(fsi.feature_names, labels) if "Robust" in l]
 
 # Local disagreement map for the highest-variance observation
-from dash.core.diagnostics import local_disagreement_map
+from dash_shap.core.diagnostics import local_disagreement_map
 import numpy as np
 var_per_obs = np.mean(pipeline.variance_matrix_, axis=1)
 fig = local_disagreement_map(                # Bar chart with cross-model error bars
@@ -204,7 +209,7 @@ See the **[paper](https://doi.org/10.5281/zenodo.19060133)** for the full mechan
 
 ```
 dash-shap/
-├── dash/
+├── dash_shap/
 │   ├── core/           # Five-stage pipeline (population, filtering, diversity, consensus, diagnostics)
 │   ├── baselines/      # 9 comparison methods
 │   ├── experiments/    # Synthetic data generators (linear & nonlinear DGP)

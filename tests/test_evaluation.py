@@ -1,6 +1,6 @@
 """Tests for dash.evaluation metrics."""
 import numpy as np
-from dash.evaluation import (
+from dash_shap.evaluation import (
     importance_accuracy,
     importance_stability,
     within_group_equity,
@@ -162,7 +162,7 @@ def test_bootstrap_stability_ci_tight_for_identical():
 
 def test_group_level_accuracy_perfect():
     """Group-level accuracy should be 1.0 when group sums match ranking."""
-    from dash.evaluation import group_level_accuracy
+    from dash_shap.evaluation import group_level_accuracy
     groups = np.array([0, 0, 0, 1, 1, 1])
     true = np.array([0.5, 0.5, 0.5, 0.1, 0.1, 0.1])
     # Estimated has different within-group distribution but correct group sums
@@ -173,7 +173,7 @@ def test_group_level_accuracy_perfect():
 
 def test_group_level_accuracy_inverted():
     """Group-level accuracy should be negative when ranking is reversed."""
-    from dash.evaluation import group_level_accuracy
+    from dash_shap.evaluation import group_level_accuracy
     groups = np.array([0, 0, 1, 1])
     true = np.array([1.0, 1.0, 0.1, 0.1])
     estimated = np.array([0.05, 0.05, 0.9, 0.9])
@@ -183,7 +183,7 @@ def test_group_level_accuracy_inverted():
 
 def test_group_level_mse_nonzero_when_proportions_differ():
     """Group-level MSE should be > 0 when group proportions don't match."""
-    from dash.evaluation import group_level_mse
+    from dash_shap.evaluation import group_level_mse
     groups = np.array([0, 0, 0, 1, 1, 1])
     true = np.array([0.5, 0.5, 0.5, 0.1, 0.1, 0.1])
     # Group sums: est=[1.5, 0.1], true=[1.5, 0.3] — proportions differ
@@ -194,7 +194,7 @@ def test_group_level_mse_nonzero_when_proportions_differ():
 
 def test_group_level_mse_zero_when_proportions_match():
     """Group-level MSE should be ~0 when group proportions match."""
-    from dash.evaluation import group_level_mse
+    from dash_shap.evaluation import group_level_mse
     groups = np.array([0, 0, 1, 1])
     true = np.array([0.6, 0.6, 0.2, 0.2])
     # Same group proportions (3:1 ratio)
@@ -205,7 +205,7 @@ def test_group_level_mse_zero_when_proportions_match():
 
 def test_holm_bonferroni_basic():
     """Holm-Bonferroni adjusted p-values are >= raw and smallest survives."""
-    from dash.evaluation import holm_bonferroni
+    from dash_shap.evaluation import holm_bonferroni
     p_values = [0.01, 0.04, 0.03, 0.005]
     adjusted = holm_bonferroni(p_values)
     assert all(a >= p for a, p in zip(adjusted, p_values))
@@ -214,7 +214,7 @@ def test_holm_bonferroni_basic():
 
 def test_holm_bonferroni_less_conservative_than_bonferroni():
     """Holm-Bonferroni should be less conservative than Bonferroni."""
-    from dash.evaluation import holm_bonferroni
+    from dash_shap.evaluation import holm_bonferroni
     p_values = [0.01, 0.04, 0.03, 0.005]
     adjusted = holm_bonferroni(p_values)
     bonferroni = [min(p * len(p_values), 1.0) for p in p_values]
@@ -224,7 +224,7 @@ def test_holm_bonferroni_less_conservative_than_bonferroni():
 
 def test_tost_equivalence_small_diff():
     """Small differences with large delta should be equivalent."""
-    from dash.evaluation import tost_equivalence
+    from dash_shap.evaluation import tost_equivalence
     a = np.array([1.0, 1.1, 0.9, 1.05, 0.95])
     b = np.array([1.0, 1.0, 1.0, 1.0, 1.0])
     t1, p1, t2, p2, equiv = tost_equivalence(a, b, delta=0.5)
@@ -234,7 +234,7 @@ def test_tost_equivalence_small_diff():
 
 def test_tost_equivalence_large_diff():
     """Large differences with small delta should NOT be equivalent."""
-    from dash.evaluation import tost_equivalence
+    from dash_shap.evaluation import tost_equivalence
     a = np.array([1.0, 1.1, 0.9, 1.05, 0.95])
     c = np.array([5.0, 5.0, 5.0, 5.0, 5.0])
     _, _, _, _, equiv = tost_equivalence(a, c, delta=0.1)
@@ -243,7 +243,7 @@ def test_tost_equivalence_large_diff():
 
 def test_bootstrap_stability_test_significant():
     """Clearly different importance vectors should yield significant p-value."""
-    from dash.evaluation import bootstrap_stability_test
+    from dash_shap.evaluation import bootstrap_stability_test
     rng = np.random.RandomState(42)
     # Method A: stable importance (same order every time)
     imp_a = [np.array([5.0, 3.0, 1.0, 0.5, 0.1]) + rng.randn(5) * 0.01 for _ in range(20)]
@@ -256,7 +256,7 @@ def test_bootstrap_stability_test_significant():
 
 def test_bootstrap_stability_test_equivalent():
     """Nearly identical vectors should yield non-significant p-value."""
-    from dash.evaluation import bootstrap_stability_test
+    from dash_shap.evaluation import bootstrap_stability_test
     rng = np.random.RandomState(42)
     base = np.array([5.0, 3.0, 1.0, 0.5, 0.1])
     imp_a = [base + rng.randn(5) * 0.01 for _ in range(20)]
@@ -268,14 +268,14 @@ def test_bootstrap_stability_test_equivalent():
 
 def test_topk_overlap_stability_perfect():
     """Identical rankings should give Jaccard = 1.0."""
-    from dash.evaluation import topk_overlap_stability
+    from dash_shap.evaluation import topk_overlap_stability
     v = [np.array([10, 8, 6, 1, 1]), np.array([9, 7, 5, 1, 1])]
     assert topk_overlap_stability(v, k=3) == 1.0
 
 
 def test_topk_overlap_stability_random():
     """Random vectors should have lower overlap than identical ones."""
-    from dash.evaluation import topk_overlap_stability
+    from dash_shap.evaluation import topk_overlap_stability
     rng = np.random.RandomState(42)
     v = [rng.rand(50) for _ in range(10)]
     assert topk_overlap_stability(v, k=5) < 0.8
@@ -283,13 +283,13 @@ def test_topk_overlap_stability_random():
 
 def test_topk_overlap_stability_single():
     """Single vector should return 1.0."""
-    from dash.evaluation import topk_overlap_stability
+    from dash_shap.evaluation import topk_overlap_stability
     assert topk_overlap_stability([np.array([1, 2, 3])], k=2) == 1.0
 
 
 def test_fsi_collinearity_correlation_known():
     """High FSI should correlate with high collinearity."""
-    from dash.evaluation import fsi_collinearity_correlation
+    from dash_shap.evaluation import fsi_collinearity_correlation
     fsi = np.array([0.1, 0.1, 0.8, 0.9, 0.05])
     rho = np.array([0.0, 0.0, 0.9, 0.9, 0.0])
     result = fsi_collinearity_correlation(fsi, rho)
@@ -299,7 +299,7 @@ def test_fsi_collinearity_correlation_known():
 
 def test_fsi_collinearity_correlation_with_groups():
     """Group-level correlation should also work."""
-    from dash.evaluation import fsi_collinearity_correlation
+    from dash_shap.evaluation import fsi_collinearity_correlation
     fsi = np.array([0.1, 0.1, 0.8, 0.9, 0.05, 0.85])
     rho = np.array([0.0, 0.0, 0.9, 0.9, 0.0, 0.9])
     groups = np.array([0, 0, 1, 1, 2, 1])
@@ -310,7 +310,7 @@ def test_fsi_collinearity_correlation_with_groups():
 
 def test_performance_filter_relative():
     """Relative epsilon mode filters based on fraction of best score."""
-    from dash.core.filtering import performance_filter
+    from dash_shap.core.filtering import performance_filter
     # Best score is -0.5 (higher is better for negated RMSE)
     scores = {0: -0.5, 1: -0.55, 2: -1.0, 3: -0.52}
     # relative epsilon=0.1 means within 10% of |best|=0.5 → threshold=0.05
@@ -322,7 +322,7 @@ def test_performance_filter_relative():
 
 def test_performance_filter_quantile():
     """Quantile mode keeps top fraction of models."""
-    from dash.core.filtering import performance_filter
+    from dash_shap.core.filtering import performance_filter
     scores = {i: float(i) for i in range(10)}
     # Keep top 30% → 3 models (scores 7, 8, 9)
     filtered = performance_filter(scores, epsilon=0.3, mode='quantile', verbose=False)
@@ -333,7 +333,7 @@ def test_performance_filter_quantile():
 
 def test_feature_ablation_score_basic():
     """Ablating important features should increase error more than unimportant ones."""
-    from dash.evaluation import feature_ablation_score
+    from dash_shap.evaluation import feature_ablation_score
     from sklearn.ensemble import GradientBoostingRegressor
     rng = np.random.RandomState(42)
     # Feature 0 is the signal, features 1-4 are noise
@@ -353,7 +353,7 @@ def test_feature_ablation_score_basic():
 
 def test_feature_ablation_score_nonnegative():
     """Ablation score should be >= 0 (removing features shouldn't help)."""
-    from dash.evaluation import feature_ablation_score
+    from dash_shap.evaluation import feature_ablation_score
     from sklearn.ensemble import GradientBoostingRegressor
     rng = np.random.RandomState(42)
     X = rng.randn(100, 3)
