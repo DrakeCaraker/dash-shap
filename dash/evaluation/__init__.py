@@ -9,15 +9,17 @@ __all__ = [
     "group_level_accuracy",
     "group_level_mse",
     "importance_stability",
+    "topk_overlap_stability",
+    "topk_stability_bootstrap_ci",
     "stability_bootstrap_ci",
     "within_group_equity",
     "cohens_d",
     "compare_methods",
-    "friedman_test",
     "holm_bonferroni",
     "feature_ablation_score",
     "tost_equivalence",
     "bootstrap_stability_test",
+    "fsi_collinearity_correlation",
 ]
 
 
@@ -201,13 +203,6 @@ def compare_methods(a, b):
     return float(stat), float(pval)
 
 
-def friedman_test(*method_scores):
-    """Friedman chi-square test across multiple methods."""
-    from scipy.stats import friedmanchisquare
-    stat, pval = friedmanchisquare(*method_scores)
-    return float(stat), float(pval)
-
-
 def holm_bonferroni(p_values):
     """Holm-Bonferroni step-down correction.
 
@@ -343,3 +338,132 @@ def feature_ablation_score(model, X, y, importance, top_k=5, metric_fn=None):
     X_ablated[:, top_features] = 0.0
     ablated_score = metric_fn(y, model.predict(X_ablated))
     return float(ablated_score - baseline_score)
+
+
+def topk_overlap_stability(vectors, k=5):
+    """Mean pairwise Jaccard similarity of top-k feature sets across runs.
+
+    Complements full-rank Spearman stability by measuring practitioner-facing
+    top-k membership consistency.
+
+    Parameters
+    ----------
+    vectors : list of array-like
+        Importance vectors from repeated runs (absolute values used).
+    k : int
+        Number of top features to compare.
+
+    Returns
+    -------
+    float
+        Mean pairwise Jaccard similarity in [0, 1].
+    """
+    from itertools import combinations
+
+    top_sets = [set(np.argsort(np.abs(v))[-k:]) for v in vectors]
+    n = len(top_sets)
+    if n < 2:
+        return 1.0
+
+    similarities = []
+    for i, j in combinations(range(n), 2):
+        intersection = len(top_sets[i] & top_sets[j])
+        union = len(top_sets[i] | top_sets[j])
+        similarities.append(intersection / union if union > 0 else 1.0)
+
+    return float(np.mean(similarities))
+
+
+def topk_stability_bootstrap_ci(vectors, k=5, n_boot=1000, ci=0.95, seed=42):
+    """BCa bootstrap confidence interval for top-k overlap stability.
+
+    Mirrors ``stability_bootstrap_ci`` but for the Jaccard-based top-k metric.
+
+    Returns (point, se, ci_lo, ci_hi).
+    """
+    rng = np.random.RandomState(seed)
+    n = len(vectors)
+    if n < 2:
+        return 1.0, 0.0, 1.0, 1.0
+
+    point = topk_overlap_stability(vectors, k=k)
+
+    boots = np.empty(n_boot)
+    for b in range(n_boot):
+        idx = rng.choice(n, size=n, replace=True)
+        boots[b] = topk_overlap_stability([vectors[i] for i in idx], k=k)
+    se = float(np.std(boots, ddof=1))
+
+    # BCa bias-correction factor z0
+    prop_below = np.clip(np.mean(boots < point), 1e-10, 1 - 1e-10)
+    z0 = norm.ppf(prop_below)
+
+    # BCa acceleration from jackknife
+    all_idx = np.arange(n)
+    jack_stats = np.empty(n)
+    for i in range(n):
+        loo = [vectors[j] for j in range(n) if j != i]
+        jack_stats[i] = topk_overlap_stability(loo, k=k)
+    jack_mean = np.mean(jack_stats)
+    num = np.sum((jack_mean - jack_stats) ** 3)
+    den = 6.0 * (np.sum((jack_mean - jack_stats) ** 2)) ** 1.5
+    a = num / den if den != 0 else 0.0
+
+    alpha = 1 - ci
+    z_lo, z_hi = norm.ppf(alpha / 2), norm.ppf(1 - alpha / 2)
+
+    def _bca_pct(z_alpha):
+        adj = z0 + (z0 + z_alpha) / (1 - a * (z0 + z_alpha))
+        return norm.cdf(adj) * 100
+
+    ci_lo = float(np.percentile(boots, np.clip(_bca_pct(z_lo), 0, 100)))
+    ci_hi = float(np.percentile(boots, np.clip(_bca_pct(z_hi), 0, 100)))
+    return point, se, ci_lo, ci_hi
+
+
+def fsi_collinearity_correlation(fsi_values, feature_rho, groups=None):
+    """Spearman correlation between FSI values and feature-level collinearity.
+
+    Validates that high-FSI features correspond to members of highly
+    correlated groups, as expected under the first-mover bias hypothesis.
+
+    Parameters
+    ----------
+    fsi_values : array-like, shape (n_features,)
+        Feature Stability Index values from DASH diagnostics.
+    feature_rho : array-like, shape (n_features,)
+        Per-feature collinearity level. For synthetic data with group
+        structure, this is typically the within-group correlation rho
+        for each feature (0 for independent features).
+    groups : array-like, optional
+        Group labels per feature. If provided, computes group-level
+        correlation (mean FSI per group vs group rho) in addition to
+        feature-level.
+
+    Returns
+    -------
+    dict
+        'feature_spearman': Spearman rho at feature level
+        'feature_pvalue': p-value for feature-level correlation
+        'group_spearman': Spearman rho at group level (if groups provided)
+        'group_pvalue': p-value for group-level correlation (if groups provided)
+    """
+    fsi_values = np.asarray(fsi_values, dtype=float)
+    feature_rho = np.asarray(feature_rho, dtype=float)
+
+    rho, pval = spearmanr(fsi_values, feature_rho)
+    result = {
+        'feature_spearman': float(rho),
+        'feature_pvalue': float(pval),
+    }
+
+    if groups is not None:
+        groups = np.asarray(groups)
+        group_ids = np.unique(groups)
+        group_fsi = np.array([np.mean(fsi_values[groups == g]) for g in group_ids])
+        group_rho_vals = np.array([np.mean(feature_rho[groups == g]) for g in group_ids])
+        g_rho, g_pval = spearmanr(group_fsi, group_rho_vals)
+        result['group_spearman'] = float(g_rho)
+        result['group_pvalue'] = float(g_pval)
+
+    return result

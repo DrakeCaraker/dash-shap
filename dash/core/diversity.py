@@ -45,7 +45,7 @@ def get_preliminary_importance(models, indices, X_ref, method="gain", n_subsampl
                 sub_idx = rng.choice(len(X_ref), n_sub, replace=False)
                 X_sub = X_ref[sub_idx]
             explainer = shap.TreeExplainer(model)
-            sv = explainer.shap_values(X_sub)
+            sv = explainer.shap_values(X_sub, check_additivity=False)
             if isinstance(sv, list):
                 sv = np.mean([np.abs(s) for s in sv], axis=0)
             importance_vectors[idx] = np.mean(np.abs(sv), axis=0)

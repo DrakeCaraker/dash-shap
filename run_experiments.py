@@ -75,9 +75,12 @@ except ImportError:
 from dash.evaluation import (
     dgp_agreement, importance_accuracy, group_level_accuracy, group_level_mse,
     importance_stability, stability_bootstrap_ci, within_group_equity,
-    compare_methods, cohens_d, friedman_test, holm_bonferroni,
+    topk_overlap_stability, topk_stability_bootstrap_ci,
+    fsi_collinearity_correlation,
+    compare_methods, cohens_d, holm_bonferroni,
     feature_ablation_score, tost_equivalence, bootstrap_stability_test,
 )
+from dash.core.diagnostics import compute_diagnostics
 from dash.utils.io import save_json
 
 # ---------------------------------------------------------------------------
@@ -426,6 +429,8 @@ def experiment_linear_sweep():
     ]
     sweep_results = {rho: {} for rho in rho_levels}
     feature_names = make_feature_names()  # m6: dynamic
+    fsi_by_rho = {}   # FSI validation: collect DASH FSI per rho (reviewer #7)
+    grps_by_rho = {}  # Groups array per rho (deterministic, saved once)
 
     for rho in rho_levels:
         log(f"\n--- ρ = {rho} ---")
@@ -498,6 +503,10 @@ def experiment_linear_sweep():
                     rmse_val = rmse_score(yte, preds)
                     # Cache for Naive Top-N reuse
                     dash_cache[rep] = m
+                    # FSI validation (reviewer #7): collect per-rep FSI
+                    if hasattr(m, 'fsi_') and m.fsi_ is not None:
+                        fsi_by_rho.setdefault(rho, []).append(m.fsi_.copy())
+                    grps_by_rho[rho] = grps
                 elif name == 'Naive Top-N':
                     # Reuse DASH population: top-K by val score, no diversity selection
                     cached = dash_cache.get(rep)
@@ -525,6 +534,7 @@ def experiment_linear_sweep():
 
             # M8 fix: bootstrap CI for stability
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
             n_reps = len(acc_runs)
             elapsed_method = time.time() - t_method
             sweep_results[rho][name] = {
@@ -532,6 +542,8 @@ def experiment_linear_sweep():
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
                 'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
                 'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
                 'accuracy_mean': np.mean(acc_runs),
@@ -553,10 +565,48 @@ def experiment_linear_sweep():
                 'rmse_runs': np.array(rmse_runs),
                 'imp_runs': imp_runs,
             }
-            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+            log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
                 f"acc={np.mean(acc_runs):.4f}  gacc={np.mean(gacc_runs):.4f}  gmse={np.mean(gmse_runs):.6f}  "
                 f"eq={np.mean(eq_runs):.4f}  RMSE={np.mean(rmse_runs):.4f}  "
                 f"({elapsed_method:.1f}s)")
+
+    # FSI collinearity validation (reviewer #7): show FSI rises with rho
+    log("\n  FSI Collinearity Validation (DASH):")
+    log(f"  {'rho':>5} {'Mean FSI (signal)':>18} {'Mean FSI (noise)':>18} {'Ratio':>8}  {'Beta corr':>10}  {'p-value':>10}")
+    log("  " + "=" * 80)
+    fsi_validation = {}
+    for rho in rho_levels:
+        fsi_list = fsi_by_rho.get(rho, [])
+        grps_arr = grps_by_rho.get(rho)
+        if not fsi_list or grps_arr is None:
+            continue
+        mean_fsi = np.mean(fsi_list, axis=0)
+        n_groups = len(np.unique(grps_arr))
+        signal_mask = grps_arr < (n_groups - 1)  # last group is noise (beta=0)
+        mean_fsi_signal = float(np.mean(mean_fsi[signal_mask]))
+        mean_fsi_noise = float(np.mean(mean_fsi[~signal_mask]))
+        ratio = mean_fsi_signal / max(mean_fsi_noise, 1e-10)
+        # Beta-correlation: within each rho level, correlate FSI with group beta
+        # magnitude — features in high-beta groups should show higher FSI because
+        # there is more signal to compete over under collinearity.
+        beta_groups = np.array([2.0, 1.5, 1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.0])
+        group_size = len(mean_fsi) // len(beta_groups)
+        feature_beta = np.repeat(beta_groups, group_size)
+        beta_corr = fsi_collinearity_correlation(mean_fsi, feature_beta, groups=grps_arr)
+        fsi_validation[str(rho)] = {
+            'mean_fsi_signal': mean_fsi_signal,
+            'mean_fsi_noise': mean_fsi_noise,
+            'mean_fsi_all': float(np.mean(mean_fsi)),
+            'signal_noise_ratio': ratio,
+            'beta_spearman': beta_corr['feature_spearman'],
+            'beta_pvalue': beta_corr['feature_pvalue'],
+            'beta_group_spearman': beta_corr.get('group_spearman'),
+            'beta_group_pvalue': beta_corr.get('group_pvalue'),
+        }
+        log(f"  {rho:5.2f} {mean_fsi_signal:18.4f} {mean_fsi_noise:18.4f} {ratio:8.2f}"
+            f"  beta_rho={beta_corr['feature_spearman']:.3f}"
+            f"  (p={beta_corr['feature_pvalue']:.4g})")
+    sweep_results['_fsi_validation'] = fsi_validation
 
     # Bootstrap stability tests for sweep results (REVIEW_v7 M3)
     log("\n  Bootstrap stability tests (sweep):")
@@ -589,6 +639,35 @@ def experiment_linear_sweep():
             except Exception:
                 pass
     sweep_results['_stability_tests'] = stab_test_results
+
+    # Equity significance tests: Wilcoxon on equity (lower is better for DASH)
+    log("\n  Equity significance tests (sweep):")
+    log(f"  {'rho':>5} {'Comparison':<35} {'Wilcoxon p':>12} {'Cohen d':>10}")
+    log("  " + "-" * 65)
+    eq_test_results = {}
+    for rho in rho_levels:
+        if rho not in sweep_results or dash_name not in sweep_results[rho]:
+            continue
+        dash_eq = sweep_results[rho][dash_name].get('eq_runs')
+        if dash_eq is None:
+            continue
+        eq_test_results[str(rho)] = {}
+        for bname in sweep_methods:
+            if bname == dash_name:
+                continue
+            bl_eq = sweep_results[rho].get(bname, {}).get('eq_runs')
+            if bl_eq is None:
+                continue
+            try:
+                _, pval = compare_methods(dash_eq, bl_eq)
+                d = cohens_d(dash_eq, bl_eq)
+                sig = '*' if pval < 0.05 else 'n.s.'
+                label = f'{dash_name} vs {bname}'
+                log(f"  {rho:5.2f} {label:<35} {pval:12.4g} {d:10.3f}  {sig}")
+                eq_test_results[str(rho)][bname] = {'p': float(pval), 'cohens_d': float(d)}
+            except Exception:
+                pass
+    sweep_results['_equity_tests'] = eq_test_results
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
@@ -669,19 +748,22 @@ def experiment_overlapping():
         # Cluster uses same models as DASH, so use DASH predictions for RMSE
         results['DASH (Cluster)']['rmse_runs'].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
 
-    log(f"\n  {'Method':<20} {'Stability':>10} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}")
-    log("  " + "=" * 85)
+    log(f"\n  {'Method':<20} {'Stability':>10} {'Top-5':>8} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}")
+    log("  " + "=" * 93)
     overlap_results = {}
     for name in method_names:
         stab = importance_stability(results[name]['imp_runs'])
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(results[name]['imp_runs'], k=5)
         acc = np.mean(results[name]['acc_runs'])
         grp = np.mean(results[name]['grp_acc_runs'])
         gmse = np.mean(results[name]['gmse_runs'])
         eq = np.mean(results[name]['eq_runs'])
         rmse = np.mean(results[name]['rmse_runs'])
-        log(f"  {name:<20} {stab:>10.4f} {acc:>10.4f} {grp:>10.4f} {gmse:>10.6f} {eq:>10.4f} {rmse:>10.4f}")
+        log(f"  {name:<20} {stab:>10.4f} {topk5:>8.4f} {acc:>10.4f} {grp:>10.4f} {gmse:>10.6f} {eq:>10.4f} {rmse:>10.4f}")
         overlap_results[name] = {
             'stability': stab,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'accuracy_mean': acc, 'accuracy_std': float(np.std(results[name]['acc_runs'])),
             'group_accuracy_mean': grp,
             'group_mse_mean': gmse, 'group_mse_std': float(np.std(results[name]['gmse_runs'], ddof=1)),
@@ -778,11 +860,14 @@ def experiment_nonlinear_sweep():
                     keff_runs.append(len(m.selected_indices_))
 
             stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
             nl_sweep[rho][name] = {
                 'stability': stab,
                 'stability_se': stab_se,
                 'stability_ci_lo': stab_ci_lo,
                 'stability_ci_hi': stab_ci_hi,
+                'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
                 'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
                 'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
                 'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
@@ -791,8 +876,20 @@ def experiment_nonlinear_sweep():
                 'rmse_std': float(np.std(rmse_runs, ddof=1)),
                 'rmse_runs': np.array(rmse_runs),
             }
-            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  eq={np.mean(eq_runs):.4f}  "
+            log(f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  eq={np.mean(eq_runs):.4f}  "
                 f"RMSE={np.mean(rmse_runs):.4f}")
+
+    # Safety desideratum check: flag rho levels where DASH < SB
+    log("\n  Safety desideratum check (nonlinear DGP):")
+    log(f"  {'rho':>5} {'DASH':>10} {'SB':>10} {'Status':>12}")
+    log("  " + "-" * 42)
+    for rho in nl_rho_levels:
+        dash_s = nl_sweep[rho].get('DASH (MaxMin)', {}).get('stability')
+        sb_s = nl_sweep[rho].get('Single Best', {}).get('stability')
+        if dash_s is not None and sb_s is not None:
+            status = 'PASS' if dash_s >= sb_s else 'VIOLATION'
+            log(f"  {rho:5.2f} {dash_s:10.4f} {sb_s:10.4f} {status:>12}")
+    log("  Note: DASH advantage is expected only at rho >= 0.7 under nonlinear DGPs.")
 
     save_json(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json")
     log(f"  Saved: {OUT}/tables/nonlinear_sweep.json")
@@ -874,16 +971,19 @@ def experiment_table2_baselines():
             imp_runs.append(imp)
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         table2_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'accuracy_mean': np.mean(acc_runs), 'accuracy_std': np.std(acc_runs, ddof=1),
             'equity_mean': np.mean(eq_runs), 'equity_std': np.std(eq_runs, ddof=1),
             'acc_runs': np.array(acc_runs), 'eq_runs': np.array(eq_runs),
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
@@ -921,7 +1021,8 @@ def experiment_real_california():
         X_cal, y_cal, test_size=0.2, random_state=SEED,
     )
 
-    cal_methods = ['Single Best', 'Random Forest', 'DASH (MaxMin)']
+    cal_methods = ['Single Best', 'Random Forest', 'Stochastic Retrain',
+                    'Random Selection', 'DASH (MaxMin)']
     cal_results = {}
 
     for name in cal_methods:
@@ -957,6 +1058,28 @@ def experiment_real_california():
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
                 abl = feature_ablation_score(m.model_, Xte_r, y_cal_test, imp)
+            elif name == 'Stochastic Retrain':
+                m = StochasticRetrainBaseline(
+                    N=K, task='regression', n_jobs=-1, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_cal_test, preds)
+                proxy_model = m.models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
+            elif name == 'Random Selection':
+                m = RandomSelectionBaseline(
+                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
+                    epsilon_mode=REAL_EPSILON_MODE,
+                    n_jobs=-1, seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_cal_test, preds)
+                proxy_model = m.models_[m.selected_indices_[0]]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
             else:
                 m = DASHPipeline(
                     M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
@@ -978,19 +1101,23 @@ def experiment_real_california():
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         cal_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
             'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
             'rmse_runs': np.array(rmse_runs),
             'ablation_runs': np.array(ablation_runs),
+            'imp_runs': imp_runs,
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
 
@@ -1037,7 +1164,8 @@ def experiment_real_breast_cancer():
         X_bc, y_bc, test_size=0.2, random_state=SEED,
     )
 
-    bc_methods = ['Single Best', 'Random Forest', 'DASH (MaxMin)']
+    bc_methods = ['Single Best', 'Random Forest', 'Stochastic Retrain',
+                   'Random Selection', 'DASH (MaxMin)']
     bc_results = {}
 
     for name in bc_methods:
@@ -1071,6 +1199,24 @@ def experiment_real_breast_cancer():
                 m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
                 imp = m.global_importance_
                 abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
+            elif name == 'Stochastic Retrain':
+                m = StochasticRetrainBaseline(
+                    N=K, task='binary', n_jobs=-1, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                proxy_model = m.models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
+            elif name == 'Random Selection':
+                m = RandomSelectionBaseline(
+                    M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
+                    epsilon_mode=REAL_EPSILON_MODE, task='binary',
+                    n_jobs=-1, seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                proxy_model = m.models_[m.selected_indices_[0]]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
             else:
                 m = DASHPipeline(
                     M=M, K=K, epsilon=REAL_EPSILON, delta=DELTA,
@@ -1089,18 +1235,22 @@ def experiment_real_breast_cancer():
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         bc_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'ablation_mean': np.mean(ablation_runs),
             'ablation_std': np.std(ablation_runs, ddof=1),
             'ablation_runs': np.array(ablation_runs),
+            'imp_runs': imp_runs,
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
@@ -1154,7 +1304,8 @@ def experiment_real_superconductor():
 
     SC_M = 200  # Lighter compute for real-world dataset
     SC_K = 30
-    sc_methods = ['Single Best', 'Large Single Model', 'Random Forest', 'DASH (MaxMin)']
+    sc_methods = ['Single Best', 'Large Single Model', 'Random Forest',
+                   'Stochastic Retrain', 'Random Selection', 'DASH (MaxMin)']
     sc_results = {}
 
     for name in sc_methods:
@@ -1198,6 +1349,28 @@ def experiment_real_superconductor():
                 imp = m.global_importance_
                 rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
                 abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
+            elif name == 'Stochastic Retrain':
+                m = StochasticRetrainBaseline(
+                    N=SC_K, task='regression', n_jobs=-1, seed=rep_seed,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_sc_test, preds)
+                proxy_model = m.models_[0]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
+            elif name == 'Random Selection':
+                m = RandomSelectionBaseline(
+                    M=SC_M, K=SC_K, epsilon=REAL_EPSILON, delta=DELTA,
+                    epsilon_mode=REAL_EPSILON_MODE,
+                    n_jobs=-1, seed=rep_seed, verbose=False,
+                )
+                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte_r)
+                rmse_val = rmse_score(y_sc_test, preds)
+                proxy_model = m.models_[m.selected_indices_[0]]
+                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
             else:
                 m = DASHPipeline(
                     M=SC_M, K=SC_K, epsilon=REAL_EPSILON, delta=DELTA,
@@ -1219,19 +1392,23 @@ def experiment_real_superconductor():
                 keff_runs.append(len(m.selected_indices_))
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         sc_results[name] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'k_eff_mean': float(np.mean(keff_runs)) if keff_runs else None,
             'k_eff_std': float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
             'rmse_mean': np.mean(rmse_runs), 'rmse_std': np.std(rmse_runs, ddof=1),
             'ablation_mean': np.mean(ablation_runs), 'ablation_std': np.std(ablation_runs, ddof=1),
             'rmse_runs': np.array(rmse_runs),
             'ablation_runs': np.array(ablation_runs),
+            'imp_runs': imp_runs,
         }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
 
@@ -1310,16 +1487,19 @@ def experiment_epsilon_sensitivity():
             eps_results[eps]['eq_runs'].append(within_group_equity(imp, grps))
             eps_results[eps]['imp_runs'].append(imp)
 
-    log(f"\n  {'ε':>6} {'Models Passing':>16} {'K_eff':>12} {'Stability':>10} {'Accuracy':>10}")
-    log("  " + "=" * 60)
+    log(f"\n  {'ε':>6} {'Models Passing':>16} {'K_eff':>12} {'Stability':>10} {'Top-5':>8} {'Accuracy':>10}")
+    log("  " + "=" * 70)
     for eps in EPS_VALUES:
         stab = importance_stability(eps_results[eps]['imp_runs'])
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(eps_results[eps]['imp_runs'], k=5)
         eps_results[eps]['stability'] = stab
+        eps_results[eps]['topk5_stability'] = topk5
         log(f"  {eps:>6.2f} {np.mean(eps_results[eps]['n_passing']):>12.1f}±"
             f"{np.std(eps_results[eps]['n_passing']):<4.1f}"
             f"{np.mean(eps_results[eps]['k_eff']):>8.1f}±"
             f"{np.std(eps_results[eps]['k_eff']):<4.1f}"
             f"{stab:>10.4f}"
+            f"{topk5:>8.4f}"
             f"{np.mean(eps_results[eps]['acc_runs']):>10.4f}")
 
     save_json(eps_results, f"{OUT}/tables/epsilon_sensitivity.json")
@@ -1388,13 +1568,16 @@ def experiment_ablation():
 
                 if len(imp_runs) >= 2:
                     stab = importance_stability(imp_runs)
+                    topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
                     abl_results[abl_rho][param_name][val] = {
                         'stability': stab,
+                        'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
                         'accuracy_mean': np.mean(acc_runs),
                         'accuracy_std': np.std(acc_runs, ddof=1),
                         'n_successful': len(imp_runs),
                     }
-                    log(f"    stab={stab:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)")
+                    log(f"    stab={stab:.4f}  topk5={topk5:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)")
                 else:
                     abl_results[abl_rho][param_name][val] = {
                         'stability': float('nan'),
@@ -1471,15 +1654,16 @@ def experiment_variance_decomposition():
             results[cond]['DASH (MaxMin)'].append(dm.global_importance_)
 
     # Compute stability for each condition × method
-    log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10}")
-    log("  " + "=" * 50)
+    log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10} {'Top-5':>8}")
+    log("  " + "=" * 58)
     summary = {}
     for cond in conditions:
         summary[cond] = {}
         for m in methods:
             stab = importance_stability(results[cond][m])
-            summary[cond][m] = {'stability': stab}
-            log(f"  {cond:<16} {m:<20} {stab:>10.4f}")
+            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(results[cond][m], k=5)
+            summary[cond][m] = {'stability': stab, 'topk5_stability': topk5}
+            log(f"  {cond:<16} {m:<20} {stab:>10.4f} {topk5:>8.4f}")
 
     # Variance decomposition ratios
     # CAVEAT: (1 - stability) is a proxy for instability, not a proper
@@ -1730,17 +1914,20 @@ def experiment_background_sensitivity():
             imp_runs.append(imp)
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         results[str(B)] = {
             'stability': stab,
             'stability_se': stab_se,
             'stability_ci_lo': stab_ci_lo,
             'stability_ci_hi': stab_ci_hi,
+            'topk5_stability': topk5, 'topk5_se': topk5_se,
+            'topk5_ci_lo': topk5_ci_lo, 'topk5_ci_hi': topk5_ci_hi,
             'accuracy_mean': float(np.mean(acc_runs)),
             'accuracy_std': float(np.std(acc_runs, ddof=1)),
             'equity_mean': float(np.mean(eq_runs)),
             'equity_std': float(np.std(eq_runs, ddof=1)),
         }
-        log(f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  "
+        log(f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
 
     save_json(results, f"{OUT}/tables/background_sensitivity.json")
@@ -1914,7 +2101,7 @@ def experiment_first_mover_bias():
             )
             model.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
             explainer = shap.TreeExplainer(model)
-            sv = explainer.shap_values(Xexp[:200])
+            sv = explainer.shap_values(Xexp[:200], check_additivity=False)
             imp_single = np.mean(np.abs(sv), axis=0)
             grp_imp = imp_single[group_features]
             conc = np.max(grp_imp) / (np.sum(grp_imp) + 1e-10)
@@ -1934,7 +2121,7 @@ def experiment_first_mover_bias():
                     random_state=m_seed,
                 )
                 mdl.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
-                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200])
+                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200], check_additivity=False)
                 imp_accum += np.mean(np.abs(sv_m), axis=0)
             imp_avg = imp_accum / m_models
             grp_imp_avg = imp_avg[group_features]

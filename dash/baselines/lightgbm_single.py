@@ -66,7 +66,7 @@ class LightGBMSingleBestBaseline:
         explainer = shap.TreeExplainer(
             self.model_, data=bg, feature_perturbation="interventional",
         )
-        sv = explainer.shap_values(X_ref)
+        sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)
         # FSI is undefined for single-model baselines (no inter-model variation).
         self.fsi_ = np.full_like(self.global_importance_, np.nan)

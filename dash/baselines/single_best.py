@@ -30,7 +30,7 @@ class SingleBestBaseline:
         explainer = shap.TreeExplainer(
             model, data=bg, feature_perturbation="interventional",
         )
-        sv = explainer.shap_values(X_ref)
+        sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)
 
     def fit(self, X_train, y_train, X_val, y_val, X_ref=None,

@@ -266,6 +266,48 @@ def test_bootstrap_stability_test_equivalent():
     assert pval > 0.01  # not significant
 
 
+def test_topk_overlap_stability_perfect():
+    """Identical rankings should give Jaccard = 1.0."""
+    from dash.evaluation import topk_overlap_stability
+    v = [np.array([10, 8, 6, 1, 1]), np.array([9, 7, 5, 1, 1])]
+    assert topk_overlap_stability(v, k=3) == 1.0
+
+
+def test_topk_overlap_stability_random():
+    """Random vectors should have lower overlap than identical ones."""
+    from dash.evaluation import topk_overlap_stability
+    rng = np.random.RandomState(42)
+    v = [rng.rand(50) for _ in range(10)]
+    assert topk_overlap_stability(v, k=5) < 0.8
+
+
+def test_topk_overlap_stability_single():
+    """Single vector should return 1.0."""
+    from dash.evaluation import topk_overlap_stability
+    assert topk_overlap_stability([np.array([1, 2, 3])], k=2) == 1.0
+
+
+def test_fsi_collinearity_correlation_known():
+    """High FSI should correlate with high collinearity."""
+    from dash.evaluation import fsi_collinearity_correlation
+    fsi = np.array([0.1, 0.1, 0.8, 0.9, 0.05])
+    rho = np.array([0.0, 0.0, 0.9, 0.9, 0.0])
+    result = fsi_collinearity_correlation(fsi, rho)
+    assert result['feature_spearman'] > 0.5
+    assert result['feature_pvalue'] < 0.2
+
+
+def test_fsi_collinearity_correlation_with_groups():
+    """Group-level correlation should also work."""
+    from dash.evaluation import fsi_collinearity_correlation
+    fsi = np.array([0.1, 0.1, 0.8, 0.9, 0.05, 0.85])
+    rho = np.array([0.0, 0.0, 0.9, 0.9, 0.0, 0.9])
+    groups = np.array([0, 0, 1, 1, 2, 1])
+    result = fsi_collinearity_correlation(fsi, rho, groups=groups)
+    assert 'group_spearman' in result
+    assert 'group_pvalue' in result
+
+
 def test_performance_filter_relative():
     """Relative epsilon mode filters based on fraction of best score."""
     from dash.core.filtering import performance_filter
@@ -287,3 +329,37 @@ def test_performance_filter_quantile():
     assert 9 in filtered
     assert 8 in filtered
     assert 0 not in filtered
+
+
+def test_feature_ablation_score_basic():
+    """Ablating important features should increase error more than unimportant ones."""
+    from dash.evaluation import feature_ablation_score
+    from sklearn.ensemble import GradientBoostingRegressor
+    rng = np.random.RandomState(42)
+    # Feature 0 is the signal, features 1-4 are noise
+    X = rng.randn(200, 5)
+    y = 3.0 * X[:, 0] + rng.randn(200) * 0.1
+    model = GradientBoostingRegressor(n_estimators=50, random_state=42)
+    model.fit(X, y)
+    # Correct importance: feature 0 dominates
+    correct_imp = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
+    score_correct = feature_ablation_score(model, X, y, correct_imp, top_k=1)
+    # Wrong importance: ablate a noise feature
+    wrong_imp = np.array([0.0, 1.0, 0.0, 0.0, 0.0])
+    score_wrong = feature_ablation_score(model, X, y, wrong_imp, top_k=1)
+    # Ablating the true signal should degrade more
+    assert score_correct > score_wrong
+
+
+def test_feature_ablation_score_nonnegative():
+    """Ablation score should be >= 0 (removing features shouldn't help)."""
+    from dash.evaluation import feature_ablation_score
+    from sklearn.ensemble import GradientBoostingRegressor
+    rng = np.random.RandomState(42)
+    X = rng.randn(100, 3)
+    y = X[:, 0] + X[:, 1] + rng.randn(100) * 0.1
+    model = GradientBoostingRegressor(n_estimators=30, random_state=42)
+    model.fit(X, y)
+    imp = np.array([0.5, 0.5, 0.0])
+    score = feature_ablation_score(model, X, y, imp, top_k=2)
+    assert score >= 0
