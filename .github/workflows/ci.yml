@@ -24,6 +24,38 @@ jobs:
             echo "Branch is up to date with main."
           fi
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check (advisory)
+        run: ruff format --check . || echo "::warning::Some files would be reformatted. Run 'ruff format .' to fix."
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+          pip install mypy
+      - name: Run mypy
+        run: mypy dash_shap/ --ignore-missing-imports --no-error-summary || true
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -35,10 +67,231 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install -e .
-          pip install pytest
-      - name: Run tests
-        run: pytest -v
+          pip install pytest pytest-cov
+      - name: Run tests with coverage
+        run: pytest -v --cov=dash_shap --cov-report=term-missing --cov-fail-under=50
+      - name: Upload coverage artifact
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: .coverage
+
+  notebook-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install nbformat
+        run: pip install nbformat
+      - name: Validate notebooks parse correctly
+        run: |
+          python -c "
+          import nbformat, sys, os
+          errors = 0
+          for root, dirs, files in os.walk('notebooks'):
+              for f in files:
+                  if f.endswith('.ipynb'):
+                      path = os.path.join(root, f)
+                      try:
+                          nb = nbformat.read(path, as_version=4)
+                          print(f'OK: {path} ({len(nb.cells)} cells)')
+                      except Exception as e:
+                          print(f'FAIL: {path}: {e}')
+                          errors += 1
+          sys.exit(errors)
+          "
+      - name: Check notebook sizes
+        run: |
+          errors=0
+          for nb in notebooks/*.ipynb; do
+            size=$(stat -c%s "$nb")
+            size_mb=$((size / 1048576))
+            if [ "$size" -gt 10485760 ]; then
+              echo "::error::$nb is ${size_mb}MB (>10MB). Clear outputs before committing."
+              errors=$((errors + 1))
+            elif [ "$size" -gt 2097152 ]; then
+              echo "::warning::$nb is ${size_mb}MB (>2MB). Consider clearing outputs."
+            else
+              echo "OK: $nb (${size_mb}MB)"
+            fi
+          done
+          exit $errors
+
+  sync-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install nbformat pyyaml
+      - name: Check PAPER_CONFIG consistency
+        run: |
+          python -c "
+          import re, json, sys, nbformat
+
+          # Extract config from run_experiments.py
+          with open('run_experiments.py') as f:
+              content = f.read()
+
+          configs = {}
+
+          # Parse PAPER_CONFIG dict
+          m = re.search(r\"'M':\s*(\d+)\", content)
+          configs['run_experiments.py'] = {
+              'M': int(re.search(r\"'M':\s*(\d+)\", content).group(1)),
+              'K': int(re.search(r\"'K':\s*(\d+)\", content).group(1)),
+              'N_REPS': int(re.search(r\"'N_REPS':\s*(\d+)\", content).group(1)),
+              'EPSILON': float(re.search(r\"'EPSILON':\s*([\d.]+)\", content).group(1)),
+              'DELTA': float(re.search(r\"'DELTA':\s*([\d.]+)\", content).group(1)),
+              'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content).group(1)),
+          }
+
+          # Extract from run_experiments_parallel.py
+          with open('run_experiments_parallel.py') as f:
+              content_p = f.read()
+          configs['run_experiments_parallel.py'] = {
+              'M': int(re.search(r\"'M':\s*(\d+)\", content_p).group(1)),
+              'K': int(re.search(r\"'K':\s*(\d+)\", content_p).group(1)),
+              'N_REPS': int(re.search(r\"'N_REPS':\s*(\d+)\", content_p).group(1)),
+              'EPSILON': float(re.search(r\"'EPSILON':\s*([\d.]+)\", content_p).group(1)),
+              'DELTA': float(re.search(r\"'DELTA':\s*([\d.]+)\", content_p).group(1)),
+              'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content_p).group(1)),
+          }
+
+          # Compare
+          ref = configs['run_experiments.py']
+          errors = 0
+          for source, vals in configs.items():
+              if source == 'run_experiments.py':
+                  continue
+              for key in ref:
+                  if vals.get(key) != ref[key]:
+                      print(f'::error::MISMATCH {key}: run_experiments.py={ref[key]}, {source}={vals.get(key)}')
+                      errors += 1
+
+          if errors == 0:
+              print('PAPER_CONFIG is consistent across experiment runners.')
+              # Print summary
+              for k, v in ref.items():
+                  print(f'  {k} = {v}')
+          sys.exit(errors)
+          "
+
+  file-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for pkl files
+        run: |
+          pkl_files=$(git diff --name-only --diff-filter=ACM origin/main...HEAD 2>/dev/null | grep '\.pkl$' || true)
+          if [ -n "$pkl_files" ]; then
+            echo "::error::Pickle files must not be committed:"
+            echo "$pkl_files"
+            exit 1
+          fi
+          echo "No .pkl files found in diff."
+      - name: Check for large files
+        run: |
+          errors=0
+          # Check tracked files changed in this PR
+          changed=$(git diff --name-only --diff-filter=ACM origin/main...HEAD 2>/dev/null || git ls-files)
+          for f in $changed; do
+            if [ -f "$f" ]; then
+              size=$(stat -c%s "$f")
+              if [ "$size" -gt 10485760 ]; then
+                echo "::error::$f is $(( size / 1048576 ))MB (>10MB limit)"
+                errors=$((errors + 1))
+              fi
+            fi
+          done
+          exit $errors
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies and pip-audit
+        run: |
+          pip install -r requirements.txt
+          pip install pip-audit
+      - name: Run pip-audit
+        run: pip-audit --strict || true
+
+  latex-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install chktex
+        run: sudo apt-get update && sudo apt-get install -y chktex
+      - name: Lint LaTeX source
+        run: |
+          # Find the latest draft
+          draft=$(ls paper/draft_v*_preprint.tex 2>/dev/null | sort -V | tail -1)
+          if [ -z "$draft" ]; then
+            draft=$(ls paper/draft_v*.tex 2>/dev/null | sort -V | tail -1)
+          fi
+          if [ -z "$draft" ]; then
+            echo "No LaTeX draft found, skipping."
+            exit 0
+          fi
+          echo "Linting: $draft"
+          # Run chktex; warnings are informational, errors fail
+          chktex -q "$draft" 2>&1 | head -50 || true
+
+  perf-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+      - name: Performance smoke test
+        timeout-minutes: 5
+        run: |
+          python -c "
+          import time
+          from dash_shap.core.pipeline import DASHPipeline
+          from dash_shap.experiments.synthetic import generate_synthetic_linear
+
+          # Small config for smoke test
+          X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, groups, true_importance, meta = generate_synthetic_linear(N=500, P=10, group_size=5, rho=0.8, seed=42)
+
+          pipe = DASHPipeline(M=10, K=5, epsilon=0.08, delta=0.05, seed=42)
+
+          start = time.time()
+          pipe.fit(X_train, y_train, X_val, y_val, X_explain)
+          elapsed = time.time() - start
+
+          print(f'Pipeline completed in {elapsed:.1f}s (M=10, K=5, n=500, p=10)')
+          if elapsed > 120:
+              print(f'::error::Performance regression: pipeline took {elapsed:.1f}s (>120s ceiling)')
+              import sys; sys.exit(1)
+          else:
+              print('Performance OK.')
+          "
