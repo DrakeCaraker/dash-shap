@@ -329,3 +329,37 @@ def test_performance_filter_quantile():
     assert 9 in filtered
     assert 8 in filtered
     assert 0 not in filtered
+
+
+def test_feature_ablation_score_basic():
+    """Ablating important features should increase error more than unimportant ones."""
+    from dash.evaluation import feature_ablation_score
+    from sklearn.ensemble import GradientBoostingRegressor
+    rng = np.random.RandomState(42)
+    # Feature 0 is the signal, features 1-4 are noise
+    X = rng.randn(200, 5)
+    y = 3.0 * X[:, 0] + rng.randn(200) * 0.1
+    model = GradientBoostingRegressor(n_estimators=50, random_state=42)
+    model.fit(X, y)
+    # Correct importance: feature 0 dominates
+    correct_imp = np.array([1.0, 0.0, 0.0, 0.0, 0.0])
+    score_correct = feature_ablation_score(model, X, y, correct_imp, top_k=1)
+    # Wrong importance: ablate a noise feature
+    wrong_imp = np.array([0.0, 1.0, 0.0, 0.0, 0.0])
+    score_wrong = feature_ablation_score(model, X, y, wrong_imp, top_k=1)
+    # Ablating the true signal should degrade more
+    assert score_correct > score_wrong
+
+
+def test_feature_ablation_score_nonnegative():
+    """Ablation score should be >= 0 (removing features shouldn't help)."""
+    from dash.evaluation import feature_ablation_score
+    from sklearn.ensemble import GradientBoostingRegressor
+    rng = np.random.RandomState(42)
+    X = rng.randn(100, 3)
+    y = X[:, 0] + X[:, 1] + rng.randn(100) * 0.1
+    model = GradientBoostingRegressor(n_estimators=30, random_state=42)
+    model.fit(X, y)
+    imp = np.array([0.5, 0.5, 0.0])
+    score = feature_ablation_score(model, X, y, imp, top_k=2)
+    assert score >= 0
