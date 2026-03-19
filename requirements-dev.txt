@@ -1,0 +1,8 @@
+# Dev/CI dependencies — pinned for reproducibility
+pytest>=7.4,<9
+pytest-cov>=4.1,<6
+ruff>=0.8,<1
+mypy>=1.8,<2
+pre-commit>=3.6,<4
+pip-audit>=2.7,<3
+nbformat>=5.9,<6
