@@ -28,7 +28,7 @@ All experiments share a single `PAPER_CONFIG` defined in the notebook's setup ce
 |-----------|-------|---------|
 | M | 200 | Population size (models trained) |
 | K | 30 | Maximum models selected for ensemble |
-| N_REPS | 20 | Repetitions per experiment (for stability measurement) |
+| N_REPS | 50 | Repetitions per experiment (TMLR target; ArXiv used 20) |
 | EPSILON | 0.08 | Performance filter threshold (absolute mode, synthetic data) |
 | DELTA | 0.05 | Diversity floor for MaxMin selection |
 | SEED | 42 | Base random seed |
@@ -83,7 +83,7 @@ This is the experiment that makes or breaks the paper. It tests the hypothesis t
 
 The synthetic data has 50 features in 10 groups of 5, where within-group correlation is rho. The target is a linear combination of group means, with known coefficients descending from 2.0 to 0.0. Because the DGP is linear and symmetric within groups, we know the ground-truth importance: every feature in group g should get importance |beta_g|/5.
 
-We sweep rho in {0.0, 0.5, 0.7, 0.9, 0.95} and run **20 repetitions** at each level. For each repetition, we regenerate the data (same coefficients, new random draws) and run all 7 sweep methods.
+We sweep rho in {0.0, 0.5, 0.7, 0.9, 0.95} and run **N_REPS repetitions** at each level. For each repetition, we regenerate the data (same coefficients, new random draws) and run all 7 sweep methods.
 
 ### Sweep methods (8)
 
@@ -91,7 +91,7 @@ Single Best, Single Best (M=200), Large Single Model, LSM (Tuned), Stochastic Re
 
 ### Four metrics
 
-**Stability** (the headline metric): After running the full pipeline 20 times with different random seeds, how consistent are the importance rankings? Measured as the mean pairwise Spearman correlation across all pairs of runs. BCa bootstrap confidence intervals are computed for each method at each rho level.
+**Stability** (the headline metric): After running the full pipeline N_REPS times with different random seeds, how consistent are the importance rankings? Measured as the mean pairwise Spearman correlation across all pairs of runs. BCa bootstrap confidence intervals are computed for each method at each rho level.
 
 **DGP Agreement** (formerly "Accuracy"): Spearman correlation between estimated importance and known ground truth. Reported as a sanity check alongside stability and equity, not as the primary evaluation criterion. The ground truth presupposes equitable within-group credit distribution, making this partially circular with equity. **Note**: The paper uses "Accuracy" for brevity; the code uses both `dgp_agreement()` and `importance_accuracy()` (aliases).
 
@@ -152,7 +152,7 @@ where z_g is the mean of group g's features.
 
 **Important caveat (C4)**: The `true_importance` values for the nonlinear DGP are *approximate ordinal rankings*, not exact analytic SHAP values. The coefficients (1.5, 0.8, 1.2) reflect relative magnitude of DGP terms and should be interpreted as group-level rankings rather than cardinal ground truth. Under nonlinearity and collinearity, true SHAP values depend on the joint feature distribution in ways that resist closed-form computation. For this reason, the nonlinear experiment evaluates primarily *stability* and *within-group equity*, not accuracy against ground truth.
 
-5 methods x 5 rho levels x 20 reps. Includes LSM (Tuned) for fair comparison.
+5 methods x 5 rho levels x N_REPS reps. Includes LSM (Tuned) for fair comparison.
 
 ---
 
@@ -172,11 +172,11 @@ Heavy natural collinearity -- radius, perimeter, and area are mathematically rel
 
 The IS Plot reveals the correlation structure unsupervised. Features like "mean radius" and "mean perimeter" land in the Collinear Cluster quadrant; "mean concavity" lands in Robust Drivers. The Local Disagreement Map for the highest-variance patient shows which feature attributions are trustworthy.
 
-20-rep stability analysis compares Single Best vs DASH, with full bootstrap CIs. Feature ablation scores are computed per rep.
+N_REPS-rep stability analysis compares Single Best vs DASH, with full bootstrap CIs. Feature ablation scores are computed per rep.
 
 ### Superconductor UCI (81 features, regression)
 
-Large-scale validation with 21,263 samples. Uses `REAL_EPSILON=0.05` with `epsilon_mode='relative'`. 3 methods (Single Best, LSM, DASH MaxMin) x 20 reps.
+Large-scale validation with 21,263 samples. Uses `REAL_EPSILON=0.05` with `epsilon_mode='relative'`. 3 methods (Single Best, LSM, DASH MaxMin) x N_REPS reps.
 
 ### Significance tests on real-world data
 
@@ -188,7 +188,7 @@ All three real-world experiments now include Wilcoxon signed-rank tests and Cohe
 
 Tests the performance filter threshold epsilon across {0.03, 0.05, 0.08, 0.10} at rho=0.9.
 
-**Key design**: The model population is trained *once* per repetition, then re-filtered at each epsilon value. This isolates the filter threshold effect from training stochasticity. 20 reps.
+**Key design**: The model population is trained *once* per repetition, then re-filtered at each epsilon value. This isolates the filter threshold effect from training stochasticity. N_REPS reps.
 
 Reports:
 - **Models passing**: How many of M=200 models survive each filter threshold
@@ -214,7 +214,7 @@ Default baseline: M=200, K=30, epsilon=0.08, delta=0.05.
 
 **Multi-rho ablation**: The full ablation runs at rho in {0.0, 0.9, 0.95} to verify that trends hold at the safety control (rho=0), the primary evaluation point (rho=0.9), and extreme collinearity (rho=0.95).
 
-**N_REPS=20** per setting (C1 fix: standardized from the earlier ABL_N_REPS=10 to match the main sweep for comparable stability estimates).
+**N_REPS** per setting (C1 fix: standardized from the earlier ABL_N_REPS=10 to match the main sweep for comparable stability estimates).
 
 ---
 
@@ -224,9 +224,9 @@ Decomposes the sources of importance instability into data-sampling vs model-sel
 
 ### Three conditions (at rho=0.9)
 
-1. **Data-fixed**: Fix data seed, vary model seeds (20 reps). Only model-selection randomness remains -- isolates model-selection instability.
-2. **Model-fixed**: Fix model seed, vary data seeds (20 reps). Only data-sampling randomness remains -- isolates data-sampling instability.
-3. **Both-varied**: Vary both (20 reps). Total instability (reference).
+1. **Data-fixed**: Fix data seed, vary model seeds (N_REPS reps). Only model-selection randomness remains -- isolates model-selection instability.
+2. **Model-fixed**: Fix model seed, vary data seeds (N_REPS reps). Only data-sampling randomness remains -- isolates data-sampling instability.
+3. **Both-varied**: Vary both (N_REPS reps). Total instability (reference).
 
 For each condition, importance vectors are collected and stability is computed.
 
@@ -284,11 +284,23 @@ Plus Table 2 baselines at rho=0.9:
 
 ### Power note (C1)
 
-With N_REPS=20, the minimum achievable two-sided Wilcoxon p-value is ~0.00002. After Bonferroni correction (x26), the floor is ~0.0005, comfortably below alpha=0.05.
+With N_REPS=50, the minimum achievable two-sided Wilcoxon p-value is ~1.8e-15. After Bonferroni correction (x26), the floor is ~4.6e-14, well below alpha=0.05. (ArXiv used N_REPS=20, where the floor was ~0.0005 after correction.)
 
 ### Why stability is not tested
 
 Stability is computed as a single number across all repetitions (mean pairwise Spearman rho), not per-repetition. Wilcoxon requires paired per-rep values, so stability cannot be tested this way.
+
+---
+
+## Experiment 11: Background Size Sensitivity
+
+Tests robustness to the number of background samples used for interventional TreeSHAP computation. Sweeps B in {50, 100, 200, 500} at rho=0.9 with N_REPS repetitions.
+
+DASH's consensus SHAP values are computed using a random subsample of the explain set as the background distribution for TreeExplainer. This experiment verifies that the choice of background size does not materially affect stability, accuracy, or equity metrics.
+
+Expected: Stability varies by < 0.005 across background sizes. Larger backgrounds increase compute cost linearly with minimal accuracy gain.
+
+Run via `run_experiments.py --experiments background_sensitivity`. Output: `results/tables/background_sensitivity.json`.
 
 ---
 
@@ -343,7 +355,7 @@ Criteria 1-4 are the headline claims. Criterion 4 is the safety check. Criteria 
 
 | ID | Fix | Impact |
 |----|-----|--------|
-| C1 | ABL_N_REPS -> N_REPS (20) | Comparable stability estimates |
+| C1 | ABL_N_REPS -> N_REPS (50 for TMLR) | Comparable stability estimates |
 | C4 | Nonlinear true_importance marked approximate | Correct interpretation |
 | C5 | Variance decomposition caveat | Honest limitations |
 | C7 | Wilcoxon tests for real-world experiments | Statistical rigor |
