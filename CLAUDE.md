@@ -78,6 +78,14 @@ epsilon_mode = 'relative'
 ```bash
 pytest                                         # all tests
 pytest tests/test_evaluation.py                # single file
+pytest -m "not slow"                           # fast tests only
+make test                                      # all tests (via Makefile)
+make test-fast                                 # skip slow tests
+make lint                                      # ruff check
+make fmt                                       # ruff format
+make typecheck                                 # mypy
+make coverage                                  # pytest with 70% coverage floor
+make rebase                                    # rebase on origin/main
 python run_experiments.py                      # all 10 experiments (original)
 python run_experiments.py --experiments linear_sweep  # one experiment
 python run_experiments_parallel.py             # all experiments (optimized, ~3-5x faster)
@@ -108,7 +116,18 @@ Three layers detect when a branch falls behind `main`:
 
 1. **Pre-push hook** (`.githooks/pre-push`) — warns with commit count on every push (non-blocking)
 2. **Session-start hook** (`.claude/hooks/session-start.sh`) — shows drift status when a Claude session begins
-3. **CI freshness check** (`.github/workflows/ci.yml`, `freshness` job) — posts a GitHub warning annotation on stale PRs
+3. **CI freshness check** (`.github/workflows/ci.yml`, `freshness` job) — **blocks PR merge** when behind main (exit 1)
+
+To fix a stale branch: `make rebase` then `git push --force-with-lease`.
+
+### GitHub Branch Protection (Recommended)
+
+Enable these settings in GitHub > Settings > Branches > Branch protection rules for `main`:
+
+1. **Require status checks to pass before merging**: `freshness`, `lint`, `test`, `typecheck`
+2. **Require branches to be up to date before merging**: checked
+3. **Require pull request reviews before merging**: at least 1 approval
+4. **Do not allow bypassing the above settings**: checked
 
 ## Do NOT
 

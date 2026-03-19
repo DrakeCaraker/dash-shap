@@ -19,7 +19,8 @@ jobs:
           git fetch origin main
           behind=$(git rev-list --count HEAD..origin/main)
           if [ "$behind" -gt 0 ]; then
-            echo "::warning::Branch is $behind commit(s) behind main. Consider rebasing: git rebase origin/main"
+            echo "::error::Branch is $behind commit(s) behind main. Rebase before merging: git fetch origin main && git rebase origin/main && git push --force-with-lease"
+            exit 1
           else
             echo "Branch is up to date with main."
           fi
