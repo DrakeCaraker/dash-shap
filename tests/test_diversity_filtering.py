@@ -1,12 +1,12 @@
 """Unit tests for diversity selection and performance filtering modules."""
 import numpy as np
 import pytest
-from dash.core.diversity import (
+from dash_shap.core.diversity import (
     greedy_maxmin_selection,
     cluster_coverage_selection,
     deduplication_selection,
 )
-from dash.core.filtering import performance_filter
+from dash_shap.core.filtering import performance_filter
 
 
 # ---------------------------------------------------------------------------

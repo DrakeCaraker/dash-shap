@@ -5,7 +5,7 @@
 The main entry point for using DASH.
 
 ```python
-from dash.core.pipeline import DASHPipeline
+from dash_shap.core.pipeline import DASHPipeline
 
 pipeline = DASHPipeline(
     M=200,                              # Number of models in the population
@@ -72,7 +72,7 @@ print(fsi_obj.summary(top_k=10))
 ## `ImportanceStabilityPlot`
 
 ```python
-from dash.core.diagnostics import ImportanceStabilityPlot
+from dash_shap.core.diagnostics import ImportanceStabilityPlot
 
 fig = ImportanceStabilityPlot.plot(
     global_importance,              # Array of importance values
@@ -92,7 +92,7 @@ fig = ImportanceStabilityPlot.plot(
 ## `local_disagreement_map`
 
 ```python
-from dash.core.diagnostics import local_disagreement_map
+from dash_shap.core.diagnostics import local_disagreement_map
 
 fig = local_disagreement_map(
     all_shap_matrices,    # (K, N', P) array
@@ -108,7 +108,7 @@ fig = local_disagreement_map(
 ## Synthetic Data Generators
 
 ```python
-from dash.experiments.synthetic import generate_synthetic_linear, generate_synthetic_nonlinear
+from dash_shap.experiments.synthetic import generate_synthetic_linear, generate_synthetic_nonlinear
 
 # Linear DGP with controllable correlation (11-tuple return with four-way split)
 X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, \
@@ -139,7 +139,7 @@ The four-way split ensures `X_explain` (used as `X_ref` for SHAP) is separate fr
 ## Evaluation Metrics
 
 ```python
-from dash.evaluation import (
+from dash_shap.evaluation import (
     dgp_agreement,             # formerly importance_accuracy (alias retained)
     group_level_accuracy,
     group_level_mse,
@@ -179,7 +179,7 @@ mean_cv = within_group_equity(importance_vector, group_assignments,
 ## Statistical Testing
 
 ```python
-from dash.evaluation import (
+from dash_shap.evaluation import (
     cohens_d,
     compare_methods,
     friedman_test,
