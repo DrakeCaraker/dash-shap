@@ -10,11 +10,11 @@ __all__ = [
     "group_level_mse",
     "importance_stability",
     "topk_overlap_stability",
+    "topk_stability_bootstrap_ci",
     "stability_bootstrap_ci",
     "within_group_equity",
     "cohens_d",
     "compare_methods",
-    "friedman_test",
     "holm_bonferroni",
     "feature_ablation_score",
     "tost_equivalence",
@@ -203,13 +203,6 @@ def compare_methods(a, b):
     return float(stat), float(pval)
 
 
-def friedman_test(*method_scores):
-    """Friedman chi-square test across multiple methods."""
-    from scipy.stats import friedmanchisquare
-    stat, pval = friedmanchisquare(*method_scores)
-    return float(stat), float(pval)
-
-
 def holm_bonferroni(p_values):
     """Holm-Bonferroni step-down correction.
 
@@ -379,6 +372,53 @@ def topk_overlap_stability(vectors, k=5):
         similarities.append(intersection / union if union > 0 else 1.0)
 
     return float(np.mean(similarities))
+
+
+def topk_stability_bootstrap_ci(vectors, k=5, n_boot=1000, ci=0.95, seed=42):
+    """BCa bootstrap confidence interval for top-k overlap stability.
+
+    Mirrors ``stability_bootstrap_ci`` but for the Jaccard-based top-k metric.
+
+    Returns (point, se, ci_lo, ci_hi).
+    """
+    rng = np.random.RandomState(seed)
+    n = len(vectors)
+    if n < 2:
+        return 1.0, 0.0, 1.0, 1.0
+
+    point = topk_overlap_stability(vectors, k=k)
+
+    boots = np.empty(n_boot)
+    for b in range(n_boot):
+        idx = rng.choice(n, size=n, replace=True)
+        boots[b] = topk_overlap_stability([vectors[i] for i in idx], k=k)
+    se = float(np.std(boots, ddof=1))
+
+    # BCa bias-correction factor z0
+    prop_below = np.clip(np.mean(boots < point), 1e-10, 1 - 1e-10)
+    z0 = norm.ppf(prop_below)
+
+    # BCa acceleration from jackknife
+    all_idx = np.arange(n)
+    jack_stats = np.empty(n)
+    for i in range(n):
+        loo = [vectors[j] for j in range(n) if j != i]
+        jack_stats[i] = topk_overlap_stability(loo, k=k)
+    jack_mean = np.mean(jack_stats)
+    num = np.sum((jack_mean - jack_stats) ** 3)
+    den = 6.0 * (np.sum((jack_mean - jack_stats) ** 2)) ** 1.5
+    a = num / den if den != 0 else 0.0
+
+    alpha = 1 - ci
+    z_lo, z_hi = norm.ppf(alpha / 2), norm.ppf(1 - alpha / 2)
+
+    def _bca_pct(z_alpha):
+        adj = z0 + (z0 + z_alpha) / (1 - a * (z0 + z_alpha))
+        return norm.cdf(adj) * 100
+
+    ci_lo = float(np.percentile(boots, np.clip(_bca_pct(z_lo), 0, 100)))
+    ci_hi = float(np.percentile(boots, np.clip(_bca_pct(z_hi), 0, 100)))
+    return point, se, ci_lo, ci_hi
 
 
 def fsi_collinearity_correlation(fsi_values, feature_rho, groups=None):
