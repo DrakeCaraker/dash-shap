@@ -1,15 +1,15 @@
-"""Baseline: Random Forest — tests whether RF's independent trees resolve first-mover bias."""
+"""Baseline: Ensemble SHAP — single large ensemble with standard colsample."""
 import numpy as np
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+import xgboost as xgb
 import shap
 
-from dash.utils.shap_helpers import compute_global_importance
+from dash_shap.utils.shap_helpers import compute_global_importance
 
-__all__ = ["RandomForestBaseline"]
+__all__ = ["EnsembleSHAPBaseline"]
 
 
-class RandomForestBaseline:
-    def __init__(self, n_estimators=500, task="regression", seed=42):
+class EnsembleSHAPBaseline:
+    def __init__(self, n_estimators=2000, task="regression", seed=42):
         self.n_estimators = n_estimators
         self.task = task
         self.seed = seed
@@ -17,9 +17,8 @@ class RandomForestBaseline:
         self.global_importance_ = None
         self.fsi_ = None
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None,
-            background_size=100, seed=None):
-        """Fit a Random Forest and compute interventional TreeSHAP importance.
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, seed=None):
+        """Fit the baseline.
 
         Parameters
         ----------
@@ -30,35 +29,40 @@ class RandomForestBaseline:
             X_ref = X_val
 
         if self.task == "regression":
-            self.model_ = RandomForestRegressor(
+            self.model_ = xgb.XGBRegressor(
                 n_estimators=self.n_estimators,
-                max_depth=None,
-                random_state=self.seed,
-                n_jobs=-1,
+                max_depth=6, learning_rate=0.05,
+                colsample_bytree=0.8, subsample=0.8,
+                early_stopping_rounds=50, eval_metric="rmse",
+                random_state=self.seed, verbosity=0,
             )
         else:
-            self.model_ = RandomForestClassifier(
+            self.model_ = xgb.XGBClassifier(
                 n_estimators=self.n_estimators,
-                max_depth=None,
-                random_state=self.seed,
-                n_jobs=-1,
+                max_depth=6, learning_rate=0.05,
+                colsample_bytree=0.8, subsample=0.8,
+                early_stopping_rounds=50, eval_metric="auc",
+                use_label_encoder=False,
+                random_state=self.seed, verbosity=0,
             )
 
-        self.model_.fit(X_train, y_train)
+        self.model_.fit(
+            X_train, y_train, eval_set=[(X_val, y_val)], verbose=False,
+        )
 
-        n_bg = min(background_size, len(X_ref))
+        n_bg = min(100, len(X_ref))
         if seed is not None:
             rng = np.random.RandomState(seed)
             bg_idx = rng.choice(len(X_ref), size=n_bg, replace=False)
             bg = X_ref[bg_idx]
         else:
             bg = X_ref[:n_bg]
-
         explainer = shap.TreeExplainer(
             self.model_, data=bg, feature_perturbation="interventional",
         )
         sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)
         # FSI is undefined for single-model baselines (no inter-model variation).
+        # Set to NaN rather than zero to avoid misinterpretation as perfect agreement.
         self.fsi_ = np.full_like(self.global_importance_, np.nan)
         return self

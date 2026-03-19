@@ -1,6 +1,6 @@
 """Tests for dash.experiments.synthetic data generators."""
 import numpy as np
-from dash.experiments.synthetic import (
+from dash_shap.experiments.synthetic import (
     make_correlation_matrix,
     generate_synthetic_linear,
     generate_synthetic_nonlinear,

@@ -3,8 +3,8 @@ import numpy as np
 import shap
 from joblib import Parallel, delayed
 
-from dash.core.population import DEFAULT_SEARCH_SPACE, sample_configurations, train_single_model
-from dash.utils.shap_helpers import compute_global_importance
+from dash_shap.core.population import DEFAULT_SEARCH_SPACE, sample_configurations, train_single_model
+from dash_shap.utils.shap_helpers import compute_global_importance
 
 __all__ = ["SingleBestBaseline"]
 

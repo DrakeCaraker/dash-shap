@@ -2,9 +2,9 @@
 import numpy as np
 from joblib import Parallel, delayed
 
-from dash.core.population import train_single_model, DEFAULT_SEARCH_SPACE, sample_configurations
-from dash.core.consensus import compute_consensus
-from dash.core.diagnostics import compute_diagnostics
+from dash_shap.core.population import train_single_model, DEFAULT_SEARCH_SPACE, sample_configurations
+from dash_shap.core.consensus import compute_consensus
+from dash_shap.core.diagnostics import compute_diagnostics
 
 __all__ = ["StochasticRetrainBaseline"]
 
