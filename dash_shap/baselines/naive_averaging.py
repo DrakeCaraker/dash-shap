@@ -1,8 +1,8 @@
 """Baseline: Naive Top-N Averaging (no diversity selection)."""
 import numpy as np
 
-from dash.core.consensus import compute_consensus
-from dash.core.diagnostics import compute_diagnostics
+from dash_shap.core.consensus import compute_consensus
+from dash_shap.core.diagnostics import compute_diagnostics
 
 __all__ = ["NaiveAveragingBaseline"]
 

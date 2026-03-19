@@ -12,18 +12,18 @@ __all__ = [
 
 def __getattr__(name):
     if name == "DASHPipeline":
-        from dash.core.pipeline import DASHPipeline
+        from dash_shap.core.pipeline import DASHPipeline
         return DASHPipeline
     elif name == "FeatureStabilityIndex":
-        from dash.core.diagnostics import FeatureStabilityIndex
+        from dash_shap.core.diagnostics import FeatureStabilityIndex
         return FeatureStabilityIndex
     elif name == "ImportanceStabilityPlot":
-        from dash.core.diagnostics import ImportanceStabilityPlot
+        from dash_shap.core.diagnostics import ImportanceStabilityPlot
         return ImportanceStabilityPlot
     elif name == "compute_consensus":
-        from dash.core.consensus import compute_consensus
+        from dash_shap.core.consensus import compute_consensus
         return compute_consensus
     elif name == "compute_diagnostics":
-        from dash.core.diagnostics import compute_diagnostics
+        from dash_shap.core.diagnostics import compute_diagnostics
         return compute_diagnostics
-    raise AttributeError(f"module 'dash' has no attribute {name}")
+    raise AttributeError(f"module 'dash_shap' has no attribute {name}")

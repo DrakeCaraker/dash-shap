@@ -2,7 +2,7 @@
 import numpy as np
 from sklearn.inspection import permutation_importance as sklearn_perm_importance
 
-from dash.core.population import DEFAULT_SEARCH_SPACE, sample_configurations, train_single_model
+from dash_shap.core.population import DEFAULT_SEARCH_SPACE, sample_configurations, train_single_model
 
 __all__ = ["PermutationImportanceBaseline"]
 
