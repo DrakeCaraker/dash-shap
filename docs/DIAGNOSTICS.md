@@ -11,8 +11,8 @@ Under feature collinearity, gradient-boosted models arbitrarily assign credit to
 After fitting a `DASHPipeline`, diagnostics are available immediately:
 
 ```python
-from dash.core.pipeline import DASHPipeline
-from dash.core.diagnostics import local_disagreement_map
+from dash_shap.core.pipeline import DASHPipeline
+from dash_shap.core.diagnostics import local_disagreement_map
 import numpy as np
 
 pipeline = DASHPipeline(M=200, K=30, epsilon=0.08, seed=42)

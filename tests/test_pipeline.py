@@ -2,13 +2,13 @@
 import numpy as np
 import pytest
 import warnings
-from dash.core.population import sample_configurations, DEFAULT_SEARCH_SPACE
-from dash.core.filtering import performance_filter
-from dash.core.diagnostics import compute_diagnostics
-from dash.core.diversity import greedy_maxmin_selection
-from dash.core.pipeline import DASHPipeline
-from dash.experiments.synthetic import generate_synthetic_linear
-from dash.utils.shap_helpers import compute_global_importance
+from dash_shap.core.population import sample_configurations, DEFAULT_SEARCH_SPACE
+from dash_shap.core.filtering import performance_filter
+from dash_shap.core.diagnostics import compute_diagnostics
+from dash_shap.core.diversity import greedy_maxmin_selection
+from dash_shap.core.pipeline import DASHPipeline
+from dash_shap.experiments.synthetic import generate_synthetic_linear
+from dash_shap.utils.shap_helpers import compute_global_importance
 
 
 def test_sample_configurations_count():
