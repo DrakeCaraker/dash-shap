@@ -40,7 +40,7 @@ Runs the full `pytest` suite on **Python 3.9 and 3.12** with coverage measuremen
 | Detail | Value |
 |--------|-------|
 | Coverage tool | `pytest-cov` |
-| Coverage target | 50% minimum (`--cov-fail-under=50`) |
+| Coverage target | 70% minimum (`--cov-fail-under=70`) |
 | Coverage report | `term-missing` (printed in logs) |
 | Artifact | `.coverage` file uploaded for Python 3.12 |
 | Pip caching | Enabled via `actions/setup-python` cache |

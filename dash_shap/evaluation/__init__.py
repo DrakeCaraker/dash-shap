@@ -80,16 +80,16 @@ def group_level_mse(estimated, true_importance, groups):
 
 
 def importance_stability(vectors):
-    """Compute mean pairwise Spearman correlation across importance vectors."""
+    """Compute mean pairwise Spearman correlation across importance vectors.
+
+    Uses a vectorized implementation via pre-computed rank matrix and
+    np.corrcoef. For bootstrap confidence intervals, use
+    stability_bootstrap_ci() instead.
+    """
     n = len(vectors)
     if n < 2:
         return float('nan')
-    corrs = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            rho, _ = spearmanr(vectors[i], vectors[j])
-            corrs.append(rho)
-    return float(np.mean(corrs))
+    return _stability_from_rank_matrix(_rank_matrix(vectors))
 
 
 def _rank_matrix(vectors):

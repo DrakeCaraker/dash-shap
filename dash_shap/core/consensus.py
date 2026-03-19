@@ -58,7 +58,12 @@ def compute_consensus(
         if verbose:
             iterator = tqdm(list(iterator), desc="Computing SHAP")
         for k, idx in iterator:
-            all_shap[k] = _compute_shap_for_model(models[idx], bg_data, X_ref)
+            sv = _compute_shap_for_model(models[idx], bg_data, X_ref)
+            if sv.shape != (N_prime, P):
+                raise ValueError(
+                    f"Model {idx}: expected SHAP shape {(N_prime, P)}, got {sv.shape}"
+                )
+            all_shap[k] = sv
     else:
         if verbose:
             print(f"Computing SHAP for {K} models with n_jobs={n_jobs}...")
@@ -67,6 +72,10 @@ def compute_consensus(
             for idx in selected_indices
         )
         for k, sv in enumerate(results):
+            if sv.shape != (N_prime, P):
+                raise ValueError(
+                    f"Model at position {k}: expected SHAP shape {(N_prime, P)}, got {sv.shape}"
+                )
             all_shap[k] = sv
 
     consensus = np.mean(all_shap, axis=0)

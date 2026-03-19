@@ -15,7 +15,26 @@ __all__ = [
 
 
 def get_preliminary_importance(models, indices, X_ref, method="gain", n_subsample=500, seed=None):
-    """Compute preliminary feature importance vectors for each model."""
+    """Compute preliminary feature importance vectors for each model.
+
+    Parameters
+    ----------
+    models : list
+        Trained model objects.
+    indices : list of int
+        Indices into ``models`` to compute importance for.
+    X_ref : array-like
+        Reference data for SHAP subsampling.
+    method : str
+        Importance method: "gain" (fast, no SHAP) or "shap_subsample" (slower).
+    n_subsample : int
+        Number of rows to subsample when method="shap_subsample".
+    seed : int or None
+        Random seed for subsampling. Only used when method="shap_subsample".
+        If None, defaults to RandomState(0) — deterministic but fixed, not
+        caller-controlled. Pass an explicit seed for reproducible diversity
+        selection across pipeline runs.
+    """
     P = X_ref.shape[1]
     importance_vectors = {}
 
