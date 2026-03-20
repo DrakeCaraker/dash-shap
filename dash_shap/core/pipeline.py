@@ -39,6 +39,80 @@ class DASHPipeline:
         seed=42,
         verbose=True,
     ):
+        """Create a DASH pipeline for stable feature importance under collinearity.
+
+        DASH trains a population of M independent XGBoost models (each forced
+        to use different features via low colsample_bytree), filters out weak
+        performers, selects K maximally-diverse models, and averages their SHAP
+        matrices to produce a stable consensus attribution.
+
+        Parameters
+        ----------
+        M : int, default=200
+            Population size — number of XGBoost models to train with randomly
+            sampled hyperparameters. Larger M gives more diversity but slower
+            training. M=50 is sufficient for exploratory work; M=200 for paper.
+        K : int, default=30
+            Number of diverse models to select for consensus. Must be < M after
+            filtering. K=10 works for most datasets; K=30 for publication results.
+        epsilon : float, default=0.08
+            Performance filter threshold. Models whose validation score falls
+            more than ``epsilon`` below the best model are discarded.
+            Meaning depends on ``epsilon_mode``:
+            - "absolute": raw score units (e.g., 0.08 RMSE above best)
+            - "relative": fraction of best score (e.g., 8% worse than best)
+            - "quantile": keep top (1-epsilon) fraction of models
+        epsilon_mode : {"absolute", "relative", "quantile"}, default="absolute"
+            How ``epsilon`` is interpreted (see above). Use "relative" for
+            real-world datasets where absolute score scale is unknown.
+        selection_method : {"maxmin", "cluster", "dedup"}, default="maxmin"
+            Diversity selection algorithm:
+            - "maxmin": greedy MaxMin — maximizes minimum pairwise cosine
+              distance. Default; best for most use cases.
+            - "cluster": cluster-coverage selection — selects models that
+              cover different feature-correlation clusters. Requires X_train.
+            - "dedup": deduplication only — removes near-duplicate models
+              (Spearman > delta) without active diversity maximization.
+        delta : float, default=0.05
+            Minimum cosine distance between selected models (maxmin) or
+            Spearman correlation threshold for deduplication (dedup).
+            Larger delta -> more diverse but fewer models selected.
+        tau : float, default=0.3
+            Cluster distance threshold for selection_method="cluster".
+            Ignored for other selection methods.
+        task : {"regression", "binary", "multiclass"}, default="regression"
+            Prediction task type. Controls XGBoost objective and eval metric.
+        search_space : dict or None, default=None
+            Hyperparameter search space for population generation. If None,
+            uses DEFAULT_SEARCH_SPACE (colsample_bytree in [0.1, 0.5]).
+            Keys must match XGBoost parameter names.
+        preliminary_importance_method : {"gain", "shap_subsample"}, default="gain"
+            Fast importance estimate used for diversity selection (Stage 3).
+            "gain" is fast and exact; "shap_subsample" is slower but SHAP-based.
+        background_size : int, default=100
+            Number of rows to use as SHAP background (TreeExplainer background).
+            Reduce to 50 for faster computation; increase for smoother attributions.
+        n_jobs : int, default=-1
+            Number of parallel jobs for population training and SHAP computation.
+            -1 uses all available CPU cores. Set to 1 to disable parallelism.
+        seed : int, default=42
+            Master random seed. Controls population generation, background
+            sampling, and all stochastic stages.
+        verbose : bool, default=True
+            If True, print progress for each of the 5 pipeline stages.
+
+        Examples
+        --------
+        >>> from dash_shap import DASHPipeline
+        >>> from dash_shap.experiments.synthetic import generate_synthetic_linear
+        >>> (X_train, y_train, X_val, y_val, X_explain,
+        ...  _, X_test, _, groups, _, _) = generate_synthetic_linear(
+        ...     N=2000, P=20, rho=0.9, seed=42)
+        >>> pipe = DASHPipeline(M=50, K=10, epsilon=0.08, seed=42, verbose=False)
+        >>> pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
+        >>> pipe.global_importance_.shape
+        (20,)
+        """
         self.M = M
         self.K = K
         self.epsilon = epsilon
@@ -68,6 +142,68 @@ class DASHPipeline:
         self.timing_ = {}
 
     def fit(self, X_train, y_train, X_val, y_val, X_ref=None, feature_names=None):
+        """Fit all five DASH stages on the provided data.
+
+        DASH requires a four-way data split. Use ``X_ref`` (also called
+        ``X_explain``) as a held-out set for SHAP background computation,
+        kept separate from both ``X_val`` (used for model selection) and
+        ``X_test`` (reserved for final evaluation). This avoids data leakage
+        and ensures SHAP values are not influenced by the validation objective.
+
+        Parameters
+        ----------
+        X_train : array-like of shape (n_train, n_features)
+            Training features for XGBoost model fitting.
+        y_train : array-like of shape (n_train,)
+            Training targets.
+        X_val : array-like of shape (n_val, n_features)
+            Validation features for early stopping and model scoring.
+        y_val : array-like of shape (n_val,)
+            Validation targets.
+        X_ref : array-like of shape (n_ref, n_features) or None
+            Reference set used as SHAP background (X_explain in the paper).
+            Should be a held-out split — NOT X_test or X_train.
+            If None, defaults to X_val with a UserWarning.
+        feature_names : list of str or None
+            Optional feature names for plots and diagnostics. If None,
+            features are named f0, f1, ..., f{P-1}.
+
+        Returns
+        -------
+        self : DASHPipeline
+            Fitted pipeline. All attributes below are set after calling fit().
+
+        Attributes Set After Fitting
+        ----------------------------
+        models_ : dict {int: XGBModel}
+            All M trained models, keyed by population index.
+        val_scores_ : dict {int: float}
+            Validation scores (R^2 for regression) for all M models.
+        filtered_indices_ : list of int
+            Indices of models that passed the epsilon performance filter.
+        selected_indices_ : list of int
+            Indices of the K diverse models selected for consensus.
+        consensus_matrix_ : ndarray of shape (n_ref, n_features)
+            Element-wise mean SHAP matrix across the K selected models.
+        all_shap_matrices_ : ndarray of shape (K, n_ref, n_features)
+            Individual SHAP matrices for each of the K selected models.
+        global_importance_ : ndarray of shape (n_features,)
+            Mean absolute SHAP value per feature (consensus summary).
+        fsi_ : ndarray of shape (n_features,)
+            Feature Stability Index — ratio of inter-model SHAP std to mean.
+            High FSI indicates unstable attribution due to collinearity.
+        variance_matrix_ : ndarray of shape (n_ref, n_features)
+            Per-observation, per-feature SHAP variance across selected models.
+        timing_ : dict
+            Wall-clock seconds per pipeline stage.
+        feature_names_ : list of str
+            Feature names (provided or auto-generated).
+
+        Notes
+        -----
+        If ``len(filtered_indices_) < 2``, fit() raises ValueError. Increase
+        ``epsilon`` or switch to ``epsilon_mode="quantile"`` if this occurs.
+        """
         if X_ref is None:
             import warnings
             warnings.warn(
@@ -103,9 +239,18 @@ class DASHPipeline:
             verbose=self.verbose,
         )
         self.timing_["stage2_filtering"] = time.time() - t0
-        if len(self.filtered_indices_) < 2:
+        n_filtered = len(self.filtered_indices_)
+        if n_filtered < self.K:
+            import warnings
+            warnings.warn(
+                f"Only {n_filtered} models passed the performance filter (K={self.K}). "
+                f"Consider increasing epsilon (current: {self.epsilon}) or switching to "
+                f"epsilon_mode='quantile' to guarantee at least K candidates.",
+                UserWarning,
+            )
+        if n_filtered < 2:
             raise ValueError(
-                f"Only {len(self.filtered_indices_)} models passed filter. "
+                f"Only {n_filtered} models passed filter. "
                 f"Increase epsilon."
             )
 
