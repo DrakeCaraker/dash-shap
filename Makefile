@@ -16,7 +16,7 @@ fmt:
 	ruff format .
 
 typecheck:
-	mypy dash_shap/ --ignore-missing-imports
+	mypy dash_shap/ --ignore-missing-imports --no-error-summary
 
 coverage:
 	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
