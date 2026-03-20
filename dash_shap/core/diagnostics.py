@@ -1,7 +1,7 @@
 """Stage 5: Stability Diagnostics — FSI, IS Plot, disagreement maps."""
+
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Optional, List, Tuple
 
 __all__ = [
     "compute_diagnostics",
@@ -47,11 +47,7 @@ class FeatureStabilityIndex:
             importance_threshold = np.median(self.global_importance)
         if fsi_threshold is None:
             high_imp_mask = self.global_importance >= importance_threshold
-            fsi_threshold = (
-                np.median(self.fsi[high_imp_mask])
-                if high_imp_mask.any()
-                else np.median(self.fsi)
-            )
+            fsi_threshold = np.median(self.fsi[high_imp_mask]) if high_imp_mask.any() else np.median(self.fsi)
 
         labels = np.empty(self.P, dtype=object)
         for j in range(self.P):
@@ -76,11 +72,7 @@ class FeatureStabilityIndex:
             "-" * 40,
         ]
         for j in order[:top_k]:
-            lines.append(
-                f"{self.feature_names[j]:<20} "
-                f"{self.global_importance[j]:>12.4f} "
-                f"{self.fsi[j]:>8.3f}"
-            )
+            lines.append(f"{self.feature_names[j]:<20} {self.global_importance[j]:>12.4f} {self.fsi[j]:>8.3f}")
         return "\n".join(lines)
 
 
@@ -104,11 +96,7 @@ class ImportanceStabilityPlot:
             importance_threshold = np.median(global_importance)
         if fsi_threshold is None:
             high_mask = global_importance >= importance_threshold
-            fsi_threshold = (
-                np.median(fsi[high_mask])
-                if high_mask.any()
-                else np.median(fsi)
-            )
+            fsi_threshold = np.median(fsi[high_mask]) if high_mask.any() else np.median(fsi)
 
         if ax is None:
             fig, ax = plt.subplots(figsize=figsize)
@@ -121,16 +109,24 @@ class ImportanceStabilityPlot:
             for i, g in enumerate(unique_groups):
                 mask = groups == g
                 ax.scatter(
-                    global_importance[mask], fsi[mask],
-                    c=[cmap(i)], label=f"Group {g}",
-                    s=60, alpha=0.7, edgecolors="k", linewidths=0.5,
+                    global_importance[mask],
+                    fsi[mask],
+                    c=[cmap(i)],
+                    label=f"Group {g}",
+                    s=60,
+                    alpha=0.7,
+                    edgecolors="k",
+                    linewidths=0.5,
                 )
         else:
             fsi_obj = FeatureStabilityIndex(
-                fsi, global_importance, feature_names,
+                fsi,
+                global_importance,
+                feature_names,
             )
             labels = fsi_obj.get_quadrant_labels(
-                importance_threshold, fsi_threshold,
+                importance_threshold,
+                fsi_threshold,
             )
             colors_map = {
                 "I: Robust Drivers": "#2ecc71",
@@ -142,9 +138,14 @@ class ImportanceStabilityPlot:
                 mask = labels == label
                 if mask.any():
                     ax.scatter(
-                        global_importance[mask], fsi[mask],
-                        c=color, label=label,
-                        s=60, alpha=0.7, edgecolors="k", linewidths=0.5,
+                        global_importance[mask],
+                        fsi[mask],
+                        c=color,
+                        label=label,
+                        s=60,
+                        alpha=0.7,
+                        edgecolors="k",
+                        linewidths=0.5,
                     )
 
         ax.axvline(importance_threshold, color="gray", linestyle="--", alpha=0.5)
@@ -155,8 +156,10 @@ class ImportanceStabilityPlot:
             ax.annotate(
                 feature_names[j],
                 (global_importance[j], fsi[j]),
-                fontsize=8, alpha=0.8,
-                xytext=(5, 5), textcoords="offset points",
+                fontsize=8,
+                alpha=0.8,
+                xytext=(5, 5),
+                textcoords="offset points",
             )
 
         ax.set_xlabel("Consensus Importance $\\bar{I}_j$", fontsize=12)
@@ -189,8 +192,14 @@ def local_disagreement_map(
     colors = ["#e74c3c" if v > 0 else "#3498db" for v in consensus_i[order]]
 
     ax.barh(
-        y_pos, consensus_i[order], xerr=std_i[order],
-        color=colors, alpha=0.7, edgecolor="k", linewidth=0.5, capsize=3,
+        y_pos,
+        consensus_i[order],
+        xerr=std_i[order],
+        color=colors,
+        alpha=0.7,
+        edgecolor="k",
+        linewidth=0.5,
+        capsize=3,
     )
     ax.set_yticks(y_pos)
     ax.set_yticklabels([feature_names[j] for j in order], fontsize=9)

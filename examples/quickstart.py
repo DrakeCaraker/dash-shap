@@ -7,7 +7,9 @@ Demonstrates: data generation, pipeline fitting, global importance,
 IS plot, FSI interpretation, and comparison with a single-best baseline.
 Runtime: < 2 minutes (M=20, K=8 for speed).
 """
+
 import os
+
 os.environ.setdefault("MPLBACKEND", "Agg")  # headless environments
 
 import numpy as np
@@ -17,9 +19,8 @@ from dash_shap.baselines import SingleBestBaseline
 
 # 1. Generate synthetic data (P=20 features in 4 correlated groups of 5)
 print("Generating synthetic dataset (N=2000, P=20, rho=0.9)...")
-(X_train, y_train, X_val, y_val, X_explain, _,
- X_test, y_test, groups, true_importance, meta) = generate_synthetic_linear(
-    N=2000, P=20, group_size=5, rho=0.9, seed=42
+(X_train, y_train, X_val, y_val, X_explain, _, X_test, y_test, groups, true_importance, meta) = (
+    generate_synthetic_linear(N=2000, P=20, group_size=5, rho=0.9, seed=42)
 )
 
 # 2. Fit DASH (use M=20, K=8 for a quick demo; paper uses M=200, K=30)
@@ -31,7 +32,7 @@ pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 print("\n--- Global Feature Importance (top 5) ---")
 ranking = pipe.get_importance_ranking()
 for rank, feat_idx in enumerate(ranking[:5]):
-    print(f"  {rank+1}. f{feat_idx}: {pipe.global_importance_[feat_idx]:.4f}")
+    print(f"  {rank + 1}. f{feat_idx}: {pipe.global_importance_[feat_idx]:.4f}")
 
 # 4. Feature Stability Index
 fsi = pipe.get_fsi()

@@ -1,4 +1,5 @@
 """Baseline: Stochastic Retrain Averaging."""
+
 import numpy as np
 from joblib import Parallel, delayed
 
@@ -24,12 +25,19 @@ class StochasticRetrainBaseline:
 
         if best_config is None:
             configs = sample_configurations(
-                DEFAULT_SEARCH_SPACE, 100, seed=self.seed,
+                DEFAULT_SEARCH_SPACE,
+                100,
+                seed=self.seed,
             )
             results = Parallel(n_jobs=self.n_jobs)(
                 delayed(train_single_model)(
-                    config, X_train, y_train, X_val, y_val,
-                    task=self.task, seed=self.seed + i,
+                    config,
+                    X_train,
+                    y_train,
+                    X_val,
+                    y_val,
+                    task=self.task,
+                    seed=self.seed + i,
                 )
                 for i, config in enumerate(configs)
             )
@@ -38,20 +46,27 @@ class StochasticRetrainBaseline:
 
         def _train(i):
             model, score = train_single_model(
-                best_config, X_train, y_train, X_val, y_val,
-                task=self.task, seed=self.seed + 1000 + i,
+                best_config,
+                X_train,
+                y_train,
+                X_val,
+                y_val,
+                task=self.task,
+                seed=self.seed + 1000 + i,
             )
             return i, model, score
 
-        results = Parallel(n_jobs=self.n_jobs)(
-            delayed(_train)(i) for i in range(self.N)
-        )
+        results = Parallel(n_jobs=self.n_jobs)(delayed(_train)(i) for i in range(self.N))
         models = {i: model for i, model, _ in results}
         self.models_ = models
         self.selected_indices_ = list(models.keys())
 
         consensus, all_shap = compute_consensus(
-            models, list(models.keys()), X_ref, seed=self.seed, verbose=False,
+            models,
+            list(models.keys()),
+            X_ref,
+            seed=self.seed,
+            verbose=False,
             n_jobs=self.n_jobs,
         )
         _, _, self.fsi_, self.global_importance_ = compute_diagnostics(all_shap)

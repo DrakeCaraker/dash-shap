@@ -1,4 +1,5 @@
 """Baseline: Single Best Model."""
+
 import numpy as np
 import shap
 from joblib import Parallel, delayed
@@ -28,13 +29,14 @@ class SingleBestBaseline:
         else:
             bg = X_ref[:n_bg]
         explainer = shap.TreeExplainer(
-            model, data=bg, feature_perturbation="interventional",
+            model,
+            data=bg,
+            feature_perturbation="interventional",
         )
         sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None,
-            background_size=100, seed=None):
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, background_size=100, seed=None):
         """Fit the baseline.
 
         Parameters
@@ -48,23 +50,35 @@ class SingleBestBaseline:
             X_ref = X_val
 
         configs = sample_configurations(
-            DEFAULT_SEARCH_SPACE, self.n_trials, seed=self.seed,
+            DEFAULT_SEARCH_SPACE,
+            self.n_trials,
+            seed=self.seed,
         )
 
         if self.n_jobs == 1:
             best_score, best_model = -np.inf, None
             for i, config in enumerate(configs):
                 model, score = train_single_model(
-                    config, X_train, y_train, X_val, y_val,
-                    task=self.task, seed=self.seed + i,
+                    config,
+                    X_train,
+                    y_train,
+                    X_val,
+                    y_val,
+                    task=self.task,
+                    seed=self.seed + i,
                 )
                 if score > best_score:
                     best_score, best_model = score, model
         else:
             results = Parallel(n_jobs=self.n_jobs)(
                 delayed(train_single_model)(
-                    config, X_train, y_train, X_val, y_val,
-                    task=self.task, seed=self.seed + i,
+                    config,
+                    X_train,
+                    y_train,
+                    X_val,
+                    y_val,
+                    task=self.task,
+                    seed=self.seed + i,
                 )
                 for i, config in enumerate(configs)
             )
@@ -74,8 +88,7 @@ class SingleBestBaseline:
         self._compute_shap(best_model, X_ref, background_size, seed)
         return self
 
-    def fit_from_population(self, models, val_scores, X_ref,
-                            background_size=100, seed=None):
+    def fit_from_population(self, models, val_scores, X_ref, background_size=100, seed=None):
         """Pick the best model from a pre-trained population.
 
         Reuses an existing model population (e.g., from DASHPipeline)

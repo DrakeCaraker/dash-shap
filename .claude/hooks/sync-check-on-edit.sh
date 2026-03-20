@@ -3,24 +3,32 @@ REPO=/Users/drake.caraker/ds_projects/dash-shap
 f=$(jq -r '.tool_input.file_path // ""')
 basename "$f" | grep -qE '^run_experiments.*\.py$' || exit 0
 echo "Checking PAPER_CONFIG sync..."
-python3 -c "
-import re, sys
-files = ['$REPO/run_experiments.py', '$REPO/run_experiments_parallel.py']
+python3 << 'PYEOF'
+import re, sys, os
+REPO = os.environ.get('REPO', '/Users/drake.caraker/ds_projects/dash-shap')
+
+def parse_config(text):
+    return {
+        'M': int(re.search(r'"M":\s*(\d+)', text).group(1)),
+        'K': int(re.search(r'"K":\s*(\d+)', text).group(1)),
+        'N_REPS': int(re.search(r'"N_REPS":\s*(\d+)', text).group(1)),
+        'EPSILON': float(re.search(r'"EPSILON":\s*([\d.]+)', text).group(1)),
+        'DELTA': float(re.search(r'"DELTA":\s*([\d.]+)', text).group(1)),
+        'SEED': int(re.search(r'SEED\s*=\s*(\d+)', text).group(1)),
+    }
+
+files = [
+    os.path.join(REPO, 'run_experiments.py'),
+    os.path.join(REPO, 'run_experiments_parallel.py'),
+]
 configs = {}
 for path in files:
     try:
-        content = open(path).read()
-        configs[path] = {
-            'M': int(re.search(r\"'M':\\s*(\\d+)\", content).group(1)),
-            'K': int(re.search(r\"'K':\\s*(\\d+)\", content).group(1)),
-            'N_REPS': int(re.search(r\"'N_REPS':\\s*(\\d+)\", content).group(1)),
-            'EPSILON': float(re.search(r\"'EPSILON':\\s*([\\d.]+)\", content).group(1)),
-            'DELTA': float(re.search(r\"'DELTA':\\s*([\\d.]+)\", content).group(1)),
-            'SEED': int(re.search(r'SEED\\s*=\\s*(\\d+)', content).group(1)),
-        }
+        configs[path] = parse_config(open(path).read())
     except Exception as e:
         print(f'Could not parse {path}: {e}')
         sys.exit(1)
+
 ref_path, ref = list(configs.items())[0]
 errors = 0
 for path, vals in list(configs.items())[1:]:
@@ -31,4 +39,4 @@ for path, vals in list(configs.items())[1:]:
 if errors == 0:
     print('PAPER_CONFIG consistent.')
 sys.exit(errors)
-" 2>&1 || true
+PYEOF

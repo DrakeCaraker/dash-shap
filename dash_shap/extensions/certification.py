@@ -3,9 +3,10 @@
 Feature j is certified top-k if its maximum rank across all K models is < k.
 Monotone: certified top-3 implies certified top-4.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
@@ -32,15 +33,14 @@ class CertificationResult:
     feature_names : list[str]
     """
 
-    certified: dict           # {k: [feature_names]}
-    max_ranks: np.ndarray     # (P,) — worst-case rank per feature
+    certified: dict  # {k: [feature_names]}
+    max_ranks: np.ndarray  # (P,) — worst-case rank per feature
     k_values: list
     feature_names: list
 
     def summary(self) -> str:
         lines = [
-            f"CertificationResult: P={len(self.feature_names)}, "
-            f"K-values tested={self.k_values}",
+            f"CertificationResult: P={len(self.feature_names)}, K-values tested={self.k_values}",
             "",
         ]
         for k in self.k_values:
@@ -112,9 +112,7 @@ def robust_certification(
 
     certified = {}
     for k in k_values:
-        certified[k] = [
-            result.feature_names[j] for j in range(P) if max_ranks[j] <= k
-        ]
+        certified[k] = [result.feature_names[j] for j in range(P) if max_ranks[j] <= k]
 
     return CertificationResult(
         certified=certified,
