@@ -2619,7 +2619,6 @@ def experiment_extensions_sanity_check(resume=False, cleanup=True):
     g0_by_imp = sorted(g0, key=lambda i: -result.global_importance[i])
     f_a, f_b = g0_by_imp[0], g0_by_imp[1]
     pi_ab = po.confidence_matrix[f_a, f_b]
-    pi_ba = po.confidence_matrix[f_b, f_a]
     log(f"    Within group-0: π({feat_names[f_a]}>{feat_names[f_b]}) = {pi_ab:.3f}")
     if not (0.25 <= pi_ab <= 0.75):
         failures.append(

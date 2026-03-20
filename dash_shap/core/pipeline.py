@@ -375,7 +375,7 @@ class DASHPipeline:
         filt_scores = {i: self.val_scores_[i] for i in self.filtered_indices_}
         self.selected_indices_ = greedy_maxmin_selection(
             {i: prelim_importance[i] for i in self.filtered_indices_},
-            K=self.K, scores=filt_scores, verbose=self.verbose,
+            filt_scores, K=self.K, delta=self.delta, verbose=self.verbose,
         )
 
         # Stage 4: Consensus (just average the selected attribution matrices)
