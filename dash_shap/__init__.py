@@ -7,6 +7,9 @@ __all__ = [
     "ImportanceStabilityPlot",
     "compute_consensus",
     "compute_diagnostics",
+    # Convenience exports
+    "generate_synthetic_linear",
+    "generate_synthetic_nonlinear",
 ]
 
 
@@ -26,4 +29,10 @@ def __getattr__(name):
     elif name == "compute_diagnostics":
         from dash_shap.core.diagnostics import compute_diagnostics
         return compute_diagnostics
+    elif name == "generate_synthetic_linear":
+        from dash_shap.experiments.synthetic import generate_synthetic_linear
+        return generate_synthetic_linear
+    elif name == "generate_synthetic_nonlinear":
+        from dash_shap.experiments.synthetic import generate_synthetic_nonlinear
+        return generate_synthetic_nonlinear
     raise AttributeError(f"module 'dash_shap' has no attribute {name}")

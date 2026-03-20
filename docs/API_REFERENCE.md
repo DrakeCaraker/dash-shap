@@ -1,5 +1,58 @@
 # API Reference
 
+## Quick Reference
+
+### Minimal Working Example
+
+```python
+from dash_shap import DASHPipeline, generate_synthetic_linear
+
+(X_train, y_train, X_val, y_val, X_explain,
+ _, X_test, _, groups, _, _) = generate_synthetic_linear(
+    N=2000, P=20, rho=0.9, seed=42)
+
+pipe = DASHPipeline(M=50, K=10, epsilon=0.08, seed=42)
+pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
+
+print(pipe.global_importance_)          # (20,) array
+fig = pipe.plot_importance_stability()  # matplotlib Figure
+fsi = pipe.get_fsi()                    # FeatureStabilityIndex object
+print(fsi.summary())                    # formatted table
+```
+
+### Common Workflow
+
+```python
+# Pattern A: Fit on your own data
+pipe = DASHPipeline(M=100, K=20, epsilon=0.05, epsilon_mode="relative")
+pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain,
+         feature_names=["age", "income", ...])
+
+# Pattern B: Compare against Single Best
+from dash_shap.baselines import SingleBestBaseline
+sb = SingleBestBaseline(n_trials=50, seed=42)
+sb.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
+
+# (run multiple reps to compute stability across runs)
+from dash_shap.evaluation import importance_stability
+
+# Pattern C: Inspect per-observation disagreement
+from dash_shap.core.diagnostics import local_disagreement_map
+fig = local_disagreement_map(pipe.all_shap_matrices_, observation_idx=0,
+                             feature_names=pipe.feature_names_)
+```
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `ValueError: Only N models passed filter` | epsilon too tight | Increase `epsilon` or use `epsilon_mode="quantile"` |
+| `UserWarning: Only N models passed filter (K=K)` | epsilon slightly tight | Same as above |
+| Fit takes > 20 min | M too large or n_jobs=1 | Set `n_jobs=-1`; reduce M for exploration |
+| `import dash_shap` shadows Plotly Dash | Name collision in tests | Use `from dash_shap.core import ...` in test files |
+
+---
+
 ## `DASHPipeline`
 
 The main entry point for using DASH.
