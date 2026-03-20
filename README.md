@@ -213,6 +213,11 @@ DASH is a five-stage pipeline:
 4. **Consensus** — Interventional TreeSHAP on each selected model, then element-wise mean
 5. **Diagnostics** — Feature Stability Index (FSI) and Importance-Stability plots for auditing explanations without ground truth
 
+After fitting, `pipe.result_` is a `DASHResult` — a lightweight container for the
+K×N'×P SHAP tensor. The **extensions framework** (`dash_shap.extensions`) adds
+confidence intervals, partial orders, robust certification, and more on top of any
+`DASHResult`. See **[Extensions Framework](docs/EXTENSIONS.md)**.
+
 The key insight: model independence — not model size or count — is what cancels the arbitrary noise. Stochastic Retrain (same hyperparameters, different seeds) achieves equivalent stability, confirming that independence is the operative principle. DASH adds diversity selection and diagnostics on top.
 
 See the **[paper](https://doi.org/10.5281/zenodo.19060133)** for the full mechanism analysis and the Large Single Model experiment that proves bigger models make the problem worse.
@@ -225,16 +230,20 @@ See the **[paper](https://doi.org/10.5281/zenodo.19060133)** for the full mechan
 dash-shap/
 ├── dash_shap/
 │   ├── core/           # Five-stage pipeline (population, filtering, diversity, consensus, diagnostics)
+│   ├── extensions/     # Analysis beyond consensus mean (CI, partial orders, certification, ...)
 │   ├── baselines/      # 9 comparison methods
 │   ├── experiments/    # Synthetic data generators (linear & nonlinear DGP)
 │   ├── evaluation/     # Metrics: stability, DGP agreement, equity, statistical tests
 │   └── utils/          # I/O and SHAP helpers
 ├── notebooks/          # Interactive benchmarks (demo_benchmark_6 is canonical)
-├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md
-├── tests/              # pytest suite (~47 tests)
+├── examples/           # Standalone usage examples (quickstart.py, extensions_quickstart.py)
+├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md, EXTENSIONS.md
+├── tests/              # pytest suite
 ├── paper/              # LaTeX source
 ├── run_experiments.py  # CLI experiment runner
 ├── EXPERIMENT_GUIDE.md # Full methodology and method descriptions
+├── FAQ.md              # Common questions and answers
+├── CONTRIBUTING.md     # How to contribute and add extensions
 └── ROADMAP.md          # Five-paper research program
 ```
 

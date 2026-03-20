@@ -60,6 +60,54 @@ docs/             API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md
 paper/            LaTeX source
 ```
 
+## How to Add an Extension
+
+Extensions live in `dash_shap/extensions/`. Each extension is one function + one
+result dataclass. Follow these four steps:
+
+1. **Create `dash_shap/extensions/{name}.py`** — one function and one result dataclass:
+   ```python
+   # dash_shap/extensions/my_extension.py
+   from dataclasses import dataclass
+   import numpy as np
+   from typing import TYPE_CHECKING
+   if TYPE_CHECKING:
+       from dash_shap.core.result import DASHResult
+
+   @dataclass
+   class MyResult:
+       values: np.ndarray
+       feature_names: list
+       def summary(self) -> str: ...
+       def plot(self): ...
+
+   def my_extension(result: "DASHResult", **kwargs) -> MyResult:
+       """One-line description."""
+       ...
+   ```
+
+2. **Add `.summary() -> str` and `.plot() -> Figure`** to the result dataclass — these
+   are the required interface for all extension result types.
+
+3. **Register in `dash_shap/extensions/__init__.py`** via lazy `__getattr__`:
+   Add an entry to `_EXTENSION_MAP`:
+   ```python
+   "my_extension": ("dash_shap.extensions.my_extension", "my_extension"),
+   ```
+   And add `"my_extension"` to `__all__`.
+
+4. **Add `tests/test_extensions/test_{name}.py`** with at least one property test:
+   ```python
+   def test_basic(dash_result):
+       result = my_extension(dash_result)
+       assert result.values.shape == (dash_result.P,)
+   ```
+
+The `dash_result` fixture in `tests/conftest.py` provides a 4-quadrant `DASHResult`
+covering all IS-plot quadrants with K=12 (satisfies K≥10 for bootstrap extensions).
+
+See `dash_shap/extensions/certification.py` for a minimal (~70 line) example.
+
 ## How to Add a New Baseline
 
 1. Copy an existing baseline from `dash_shap/baselines/` (e.g., `single_best.py`) as a starting point
