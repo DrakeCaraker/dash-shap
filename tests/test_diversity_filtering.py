@@ -1,6 +1,6 @@
 """Unit tests for diversity selection and performance filtering modules."""
+
 import numpy as np
-import pytest
 from dash_shap.core.diversity import (
     greedy_maxmin_selection,
     cluster_coverage_selection,
@@ -12,6 +12,7 @@ from dash_shap.core.filtering import performance_filter
 # ---------------------------------------------------------------------------
 # greedy_maxmin_selection
 # ---------------------------------------------------------------------------
+
 
 class TestGreedyMaxMinSelection:
     """Tests for greedy_maxmin_selection."""
@@ -67,6 +68,7 @@ class TestGreedyMaxMinSelection:
 # cluster_coverage_selection
 # ---------------------------------------------------------------------------
 
+
 class TestClusterCoverageSelection:
     """Tests for cluster_coverage_selection."""
 
@@ -77,7 +79,12 @@ class TestClusterCoverageSelection:
         vecs = {i: rng.rand(P) for i in range(5)}
         scores = {i: 0.9 - 0.01 * i for i in range(5)}
         selected = cluster_coverage_selection(
-            vecs, scores, X_train, tau=0.5, K=3, verbose=False,
+            vecs,
+            scores,
+            X_train,
+            tau=0.5,
+            K=3,
+            verbose=False,
         )
         assert isinstance(selected, list)
         assert len(selected) <= 3
@@ -90,7 +97,12 @@ class TestClusterCoverageSelection:
         vecs = {i: rng.rand(P) for i in range(10)}
         scores = {i: 0.9 - 0.01 * i for i in range(10)}
         selected = cluster_coverage_selection(
-            vecs, scores, X_train, tau=0.3, K=4, verbose=False,
+            vecs,
+            scores,
+            X_train,
+            tau=0.3,
+            K=4,
+            verbose=False,
         )
         assert len(selected) <= 4
 
@@ -98,6 +110,7 @@ class TestClusterCoverageSelection:
 # ---------------------------------------------------------------------------
 # deduplication_selection
 # ---------------------------------------------------------------------------
+
 
 class TestDeduplicationSelection:
     """Tests for deduplication_selection."""
@@ -142,12 +155,13 @@ class TestDeduplicationSelection:
 # performance_filter modes
 # ---------------------------------------------------------------------------
 
+
 class TestPerformanceFilterModes:
     """Tests for relative and quantile filter modes."""
 
     def test_absolute_mode(self):
         scores = {0: 0.90, 1: 0.88, 2: 0.80, 3: 0.85}
-        filtered = performance_filter(scores, epsilon=0.03, mode='absolute', verbose=False)
+        filtered = performance_filter(scores, epsilon=0.03, mode="absolute", verbose=False)
         assert 0 in filtered
         assert 1 in filtered
         assert 2 not in filtered
@@ -156,7 +170,7 @@ class TestPerformanceFilterModes:
     def test_relative_mode(self):
         scores = {0: 1.00, 1: 0.95, 2: 0.80}
         # relative: threshold = |1.0| * 0.1 = 0.1
-        filtered = performance_filter(scores, epsilon=0.1, mode='relative', verbose=False)
+        filtered = performance_filter(scores, epsilon=0.1, mode="relative", verbose=False)
         assert 0 in filtered
         assert 1 in filtered
         assert 2 not in filtered  # 0.20 > 0.10
@@ -165,8 +179,8 @@ class TestPerformanceFilterModes:
         scores_small = {0: 0.10, 1: 0.095, 2: 0.05}
         scores_large = {0: 100.0, 1: 95.0, 2: 50.0}
         eps = 0.1
-        filtered_small = performance_filter(scores_small, epsilon=eps, mode='relative', verbose=False)
-        filtered_large = performance_filter(scores_large, epsilon=eps, mode='relative', verbose=False)
+        filtered_small = performance_filter(scores_small, epsilon=eps, mode="relative", verbose=False)
+        filtered_large = performance_filter(scores_large, epsilon=eps, mode="relative", verbose=False)
         # Both should filter out index 2 (50% away from best)
         assert 2 not in filtered_small
         assert 2 not in filtered_large
@@ -174,7 +188,7 @@ class TestPerformanceFilterModes:
     def test_quantile_mode(self):
         scores = {i: 0.5 + 0.05 * i for i in range(10)}
         # epsilon=0.3 → keep top 30% = 3 models (indices 7, 8, 9)
-        filtered = performance_filter(scores, epsilon=0.3, mode='quantile', verbose=False)
+        filtered = performance_filter(scores, epsilon=0.3, mode="quantile", verbose=False)
         assert 9 in filtered
         assert 8 in filtered
         assert len(filtered) >= 2  # at least 2 (min cutoff)
@@ -182,15 +196,18 @@ class TestPerformanceFilterModes:
     def test_quantile_mode_keeps_at_least_two(self):
         scores = {0: 0.9, 1: 0.8}
         # Even with very small epsilon, quantile keeps at least 2
-        filtered = performance_filter(scores, epsilon=0.01, mode='quantile', verbose=False)
+        filtered = performance_filter(scores, epsilon=0.01, mode="quantile", verbose=False)
         assert len(filtered) >= 2
 
     def test_lower_is_better(self):
         # RMSE-like scores where lower is better
         scores = {0: 0.10, 1: 0.12, 2: 0.50}
         filtered = performance_filter(
-            scores, epsilon=0.05, higher_is_better=False,
-            mode='absolute', verbose=False,
+            scores,
+            epsilon=0.05,
+            higher_is_better=False,
+            mode="absolute",
+            verbose=False,
         )
         assert 0 in filtered
         assert 1 in filtered

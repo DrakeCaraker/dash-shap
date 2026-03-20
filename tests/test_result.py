@@ -1,4 +1,5 @@
 """Tests for DASHResult: construction, computed fields, serialization, integration."""
+
 import importlib.util
 import pathlib
 import tempfile
@@ -15,6 +16,7 @@ _xgboost_available = importlib.util.find_spec("xgboost") is not None
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_result(K=5, n_ref=20, P=4, seed=0):
     rng = np.random.default_rng(seed)
     matrices = rng.standard_normal((K, n_ref, P))
@@ -27,6 +29,7 @@ def _make_result(K=5, n_ref=20, P=4, seed=0):
 # ---------------------------------------------------------------------------
 # Construction & validation
 # ---------------------------------------------------------------------------
+
 
 class TestConstruction:
     def test_basic_construction(self):
@@ -71,6 +74,7 @@ class TestConstruction:
 # Computed fields
 # ---------------------------------------------------------------------------
 
+
 class TestComputedFields:
     def test_consensus_shape(self):
         result = _make_result(K=5, n_ref=20, P=4)
@@ -100,6 +104,7 @@ class TestComputedFields:
     def test_fsi_formula_matches_diagnostics(self):
         """DASHResult.fsi must match compute_diagnostics() exactly."""
         from dash_shap.core.diagnostics import compute_diagnostics
+
         result = _make_result(K=8, n_ref=30, P=6)
         _, _, fsi_ref, _ = compute_diagnostics(result.all_shap_matrices)
         np.testing.assert_allclose(result.fsi, fsi_ref)
@@ -112,6 +117,7 @@ class TestComputedFields:
 # ---------------------------------------------------------------------------
 # Serialization round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestSerialization:
     def test_basic_round_trip(self):
@@ -152,6 +158,7 @@ class TestSerialization:
     def test_version_error_on_future_version(self):
         """Load raises VersionError if format_version > current."""
         import json
+
         result = _make_result()
         with tempfile.TemporaryDirectory() as tmpdir:
             path = pathlib.Path(tmpdir) / "future"
@@ -166,6 +173,7 @@ class TestSerialization:
 
     def test_sidecar_contains_format_version(self):
         import json
+
         result = _make_result()
         with tempfile.TemporaryDirectory() as tmpdir:
             path = pathlib.Path(tmpdir) / "check"
@@ -204,6 +212,7 @@ class TestFitFromAttributions:
 # Pipeline integration (B12)
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineIntegration:
     """pipe.result_ must match pipe.fsi_ and pipe.global_importance_ exactly."""
 
@@ -214,6 +223,4 @@ class TestPipelineIntegration:
         assert pipe.result_ is not None
         np.testing.assert_allclose(pipe.result_.fsi, pipe.fsi_)
         np.testing.assert_allclose(pipe.result_.global_importance, pipe.global_importance_)
-        np.testing.assert_array_equal(
-            pipe.result_.all_shap_matrices, pipe.all_shap_matrices_
-        )
+        np.testing.assert_array_equal(pipe.result_.all_shap_matrices, pipe.all_shap_matrices_)

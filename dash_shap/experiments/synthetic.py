@@ -1,6 +1,6 @@
 """Synthetic Data Generation — Linear and Nonlinear DGPs."""
+
 import numpy as np
-from typing import Tuple, Dict
 from sklearn.model_selection import train_test_split
 
 __all__ = [
@@ -98,25 +98,40 @@ def generate_synthetic_linear(
 
     # Four-way split: train / val / explain / test
     X_tv, X_test, y_tv, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=seed,
+        X,
+        y,
+        test_size=test_size,
+        random_state=seed,
     )
     remaining = 1 - test_size
     val_frac = val_size / remaining
     X_te2, X_val, y_te2, y_val = train_test_split(
-        X_tv, y_tv, test_size=val_frac, random_state=seed,
+        X_tv,
+        y_tv,
+        test_size=val_frac,
+        random_state=seed,
     )
     explain_frac = explain_size / (remaining - val_size)
     X_train, X_explain, y_train, y_explain = train_test_split(
-        X_te2, y_te2, test_size=explain_frac, random_state=seed,
+        X_te2,
+        y_te2,
+        test_size=explain_frac,
+        random_state=seed,
     )
 
     meta = {
-        "dgp": "linear", "N": N, "P": P, "group_size": group_size,
-        "n_groups": n_groups, "rho": rho, "sigma_noise": sigma_noise,
-        "beta_groups": beta_groups, "seed": seed, "structure": structure,
+        "dgp": "linear",
+        "N": N,
+        "P": P,
+        "group_size": group_size,
+        "n_groups": n_groups,
+        "rho": rho,
+        "sigma_noise": sigma_noise,
+        "beta_groups": beta_groups,
+        "seed": seed,
+        "structure": structure,
     }
-    return (X_train, y_train, X_val, y_val, X_explain, y_explain,
-            X_test, y_test, groups, true_importance, meta)
+    return (X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, groups, true_importance, meta)
 
 
 def generate_synthetic_nonlinear(
@@ -177,22 +192,36 @@ def generate_synthetic_nonlinear(
 
     # Four-way split: train / val / explain / test
     X_tv, X_test, y_tv, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=seed,
+        X,
+        y,
+        test_size=test_size,
+        random_state=seed,
     )
     remaining = 1 - test_size
     val_frac = val_size / remaining
     X_te2, X_val, y_te2, y_val = train_test_split(
-        X_tv, y_tv, test_size=val_frac, random_state=seed,
+        X_tv,
+        y_tv,
+        test_size=val_frac,
+        random_state=seed,
     )
     explain_frac = explain_size / (remaining - val_size)
     X_train, X_explain, y_train, y_explain = train_test_split(
-        X_te2, y_te2, test_size=explain_frac, random_state=seed,
+        X_te2,
+        y_te2,
+        test_size=explain_frac,
+        random_state=seed,
     )
 
     meta = {
-        "dgp": "nonlinear", "N": N, "P": P, "group_size": group_size,
-        "n_groups": n_groups, "rho": rho, "sigma_noise": sigma_noise,
-        "seed": seed, "structure": structure,
+        "dgp": "nonlinear",
+        "N": N,
+        "P": P,
+        "group_size": group_size,
+        "n_groups": n_groups,
+        "rho": rho,
+        "sigma_noise": sigma_noise,
+        "seed": seed,
+        "structure": structure,
     }
-    return (X_train, y_train, X_val, y_val, X_explain, y_explain,
-            X_test, y_test, groups, true_importance, meta)
+    return (X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, groups, true_importance, meta)

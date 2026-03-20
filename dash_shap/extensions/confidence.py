@@ -1,4 +1,5 @@
 """Extension 1: Confidence Intervals for feature importance, FSI, and rankings."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,11 +40,9 @@ def _bca_ci(bootstrap_samples: np.ndarray, observed: float, alpha: float) -> tup
 
     # Acceleration (jackknife) — use a subsample for speed
     n_jk = min(n_boot, 200)
-    jk = np.array([
-        np.mean(np.delete(bootstrap_samples[:n_jk], i)) for i in range(n_jk)
-    ])
+    jk = np.array([np.mean(np.delete(bootstrap_samples[:n_jk], i)) for i in range(n_jk)])
     jk_mean = np.mean(jk)
-    num = np.sum((jk_mean - jk) ** 3)
+    num: float = float(np.sum((jk_mean - jk) ** 3))
     denom = 6.0 * (np.sum((jk_mean - jk) ** 2) ** 1.5)
     accel = float(num / denom) if abs(denom) > 1e-12 else 0.0
 
@@ -91,17 +90,16 @@ class ConfidenceResult:
     n_boot : int — number of bootstrap replicates used
     """
 
-    importance_ci: np.ndarray   # (P, 3)
-    fsi_ci: np.ndarray          # (P, 3)
-    ranking_ci: np.ndarray      # (P, 3) — float, not int
+    importance_ci: np.ndarray  # (P, 3)
+    fsi_ci: np.ndarray  # (P, 3)
+    ranking_ci: np.ndarray  # (P, 3) — float, not int
     feature_names: list
     alpha: float
     n_boot: int
 
     def summary(self) -> str:
         lines = [
-            f"ConfidenceResult: P={len(self.feature_names)}, alpha={self.alpha}, "
-            f"n_boot={self.n_boot}",
+            f"ConfidenceResult: P={len(self.feature_names)}, alpha={self.alpha}, n_boot={self.n_boot}",
             "",
             f"{'Feature':<20} {'Importance CI':>22} {'FSI CI':>22} {'Rank CI':>22}",
             "-" * 90,
@@ -131,8 +129,7 @@ class ConfidenceResult:
             y = np.arange(P)
             centers = ci_mat[:, 1]
             xerr = np.array([centers - ci_mat[:, 0], ci_mat[:, 2] - centers])
-            ax.barh(y, centers, xerr=xerr, align="center", height=0.6,
-                    color="steelblue", alpha=0.7, capsize=4)
+            ax.barh(y, centers, xerr=xerr, align="center", height=0.6, color="steelblue", alpha=0.7, capsize=4)
             ax.set_yticks(y)
             ax.set_yticklabels(self.feature_names)
             ax.set_title(title)
@@ -177,16 +174,16 @@ def confidence_intervals(
 
     if K < 10:
         import warnings
+
         warnings.warn(
-            f"K={K} < 10: BCa confidence intervals may have poor coverage. "
-            "Consider K >= 10 for reliable results.",
+            f"K={K} < 10: BCa confidence intervals may have poor coverage. Consider K >= 10 for reliable results.",
             UserWarning,
             stacklevel=2,
         )
 
     def _importance_stat(shap_sample):
-        consensus = np.mean(shap_sample, axis=0)       # (n_ref, P)
-        return np.mean(np.abs(consensus), axis=0)      # (P,)
+        consensus = np.mean(shap_sample, axis=0)  # (n_ref, P)
+        return np.mean(np.abs(consensus), axis=0)  # (P,)
 
     def _fsi_stat(shap_sample):
         consensus = np.mean(shap_sample, axis=0)
@@ -197,7 +194,7 @@ def confidence_intervals(
 
     def _ranking_stat(shap_sample):
         # Use per-model importance then average ranks
-        imp = np.mean(np.abs(shap_sample), axis=1)   # (K_boot, P)
+        imp = np.mean(np.abs(shap_sample), axis=1)  # (K_boot, P)
         order = np.argsort(-imp, axis=1)
         P = imp.shape[1]
         ranks = np.empty_like(order, dtype=float)
@@ -215,10 +212,10 @@ def confidence_intervals(
     ranking_ci = np.zeros((P, 3))
 
     for p in range(P):
-        importance_ci[p] = _bca_ci(boot_importance[:, p], result.global_importance[p], alpha)
-        fsi_ci[p] = _bca_ci(boot_fsi[:, p], result.fsi[p], alpha)
+        importance_ci[p] = _bca_ci(boot_importance[:, p], float(result.global_importance[p]), alpha)
+        fsi_ci[p] = _bca_ci(boot_fsi[:, p], float(result.fsi[p]), alpha)
         # Point estimate for ranking: mean rank across K models
-        mean_rank_p = np.mean(per_model_rankings(result)[:, p].astype(float))
+        mean_rank_p = float(np.mean(per_model_rankings(result)[:, p].astype(float)))
         ranking_ci[p] = _bca_ci(boot_ranking[:, p], mean_rank_p, alpha)
 
     return ConfidenceResult(

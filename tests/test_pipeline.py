@@ -1,6 +1,6 @@
 """Smoke tests for DASHPipeline and core modules."""
+
 import numpy as np
-import pytest
 import warnings
 from dash_shap.core.population import sample_configurations, DEFAULT_SEARCH_SPACE
 from dash_shap.core.filtering import performance_filter
@@ -61,14 +61,20 @@ def test_compute_global_importance_list():
 # Integration tests
 # ---------------------------------------------------------------------------
 
+
 def test_dash_pipeline_end_to_end():
     """Full pipeline produces expected shapes and non-degenerate output."""
     data = generate_synthetic_linear(N=500, P=20, group_size=5, rho=0.9, seed=42)
     X_train, y_train, X_val, y_val, X_explain = data[0], data[1], data[2], data[3], data[4]
 
     pipe = DASHPipeline(
-        M=10, K=5, epsilon=0.15, delta=0.01,
-        seed=42, verbose=False, n_jobs=1,
+        M=10,
+        K=5,
+        epsilon=0.15,
+        delta=0.01,
+        seed=42,
+        verbose=False,
+        n_jobs=1,
     )
     pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 
@@ -94,7 +100,8 @@ def test_dash_reproducibility():
     pipe2.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 
     np.testing.assert_array_almost_equal(
-        pipe1.global_importance_, pipe2.global_importance_,
+        pipe1.global_importance_,
+        pipe2.global_importance_,
     )
 
 
@@ -115,8 +122,11 @@ def test_maxmin_selects_diverse_vectors():
     performance_scores = {0: 0.95, 1: 0.94, 2: 0.93, 3: 0.92, 4: 0.91}
 
     selected = greedy_maxmin_selection(
-        importance_vectors, performance_scores,
-        K=3, delta=0.0, verbose=False,
+        importance_vectors,
+        performance_scores,
+        K=3,
+        delta=0.0,
+        verbose=False,
     )
     # Should pick model 0 (best score), then prefer 3 and 4 (orthogonal)
     assert 0 in selected

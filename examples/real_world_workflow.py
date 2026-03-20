@@ -8,6 +8,7 @@ Run: python examples/real_world_workflow.py
 
 Requires: scikit-learn, xgboost, shap
 """
+
 import numpy as np
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -35,15 +36,9 @@ def main():
     data = load_breast_cancer()
     X, y = data.data.astype(float), data.target.astype(float)
 
-    X_trainval, X_test, y_trainval, y_test = train_test_split(
-        X, y, test_size=0.15, random_state=42
-    )
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_trainval, y_trainval, test_size=0.20, random_state=42
-    )
-    X_train, X_explain, y_train, _ = train_test_split(
-        X_train, y_train, test_size=0.25, random_state=42
-    )
+    X_trainval, X_test, y_trainval, y_test = train_test_split(X, y, test_size=0.15, random_state=42)
+    X_train, X_val, y_train, y_val = train_test_split(X_trainval, y_trainval, test_size=0.20, random_state=42)
+    X_train, X_explain, y_train, _ = train_test_split(X_train, y_train, test_size=0.25, random_state=42)
 
     print(f"Train: {X_train.shape}, Val: {X_val.shape}")
     print(f"Explain: {X_explain.shape}, Test: {X_test.shape}")
@@ -54,11 +49,19 @@ def main():
     # ------------------------------------------------------------------ #
     print("[1] Fitting DASHPipeline (M=50, K=15) ...")
     pipe = DASHPipeline(
-        M=50, K=15, epsilon=0.05, epsilon_mode="relative",
-        seed=42, verbose=False,
+        M=50,
+        K=15,
+        epsilon=0.05,
+        epsilon_mode="relative",
+        seed=42,
+        verbose=False,
     )
     pipe.fit(
-        X_train, y_train, X_val, y_val, X_ref=X_explain,
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        X_ref=X_explain,
         feature_names=list(data.feature_names),
     )
     result = pipe.result_

@@ -1,4 +1,5 @@
 """Tests for Extension 1: Confidence Intervals."""
+
 import numpy as np
 import pytest
 

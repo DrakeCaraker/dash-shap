@@ -1,4 +1,5 @@
 """Evaluation metrics for feature importance methods."""
+
 import numpy as np
 from scipy.stats import spearmanr, wilcoxon, norm
 from typing import List, Tuple
@@ -88,13 +89,14 @@ def importance_stability(vectors):
     """
     n = len(vectors)
     if n < 2:
-        return float('nan')
+        return float("nan")
     return _stability_from_rank_matrix(_rank_matrix(vectors))
 
 
 def _rank_matrix(vectors):
     """Rank-transform all vectors into an (n, P) matrix."""
     from scipy.stats import rankdata
+
     return np.array([rankdata(v) for v in vectors])
 
 
@@ -106,7 +108,7 @@ def _stability_from_rank_matrix(rank_matrix):
     """
     n = rank_matrix.shape[0]
     if n < 2:
-        return float('nan')
+        return float("nan")
     corr = np.corrcoef(rank_matrix)
     mask = np.triu(np.ones((n, n), dtype=bool), k=1)
     return float(np.mean(corr[mask]))
@@ -124,7 +126,7 @@ def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
     rng = np.random.RandomState(seed)
     n = len(vectors)
     if n < 2:
-        return float('nan'), 0.0, float('nan'), float('nan')
+        return float("nan"), 0.0, float("nan"), float("nan")
 
     # Pre-compute rank matrix once for all bootstrap/jackknife iterations
     rank_matrix = _rank_matrix(vectors)
@@ -147,7 +149,7 @@ def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
     all_idx = np.arange(n)
     jack_stats = np.empty(n)
     for i in range(n):
-        loo_idx = np.concatenate([all_idx[:i], all_idx[i + 1:]])
+        loo_idx = np.concatenate([all_idx[:i], all_idx[i + 1 :]])
         jack_stats[i] = _stability_from_rank_matrix(rank_matrix[loo_idx])
     jack_mean = np.mean(jack_stats)
     num = np.sum((jack_mean - jack_stats) ** 3)
@@ -181,17 +183,14 @@ def within_group_equity(importance_vector, groups, include_zero_groups=False):
         if np.abs(gi.mean()) > 1e-10:
             cvs.append(gi.std() / np.abs(gi.mean()))
         elif include_zero_groups:
-            cvs.append(0.0 if gi.std() < 1e-10 else float('inf'))
+            cvs.append(0.0 if gi.std() < 1e-10 else float("inf"))
     return float(np.mean(cvs)) if cvs else 0.0
 
 
 def cohens_d(g1, g2):
     """Compute Cohen's d effect size between two groups."""
     n1, n2 = len(g1), len(g2)
-    pooled = np.sqrt(
-        ((n1 - 1) * np.var(g1, ddof=1) + (n2 - 1) * np.var(g2, ddof=1))
-        / (n1 + n2 - 2)
-    )
+    pooled = np.sqrt(((n1 - 1) * np.var(g1, ddof=1) + (n2 - 1) * np.var(g2, ddof=1)) / (n1 + n2 - 2))
     return float((np.mean(g1) - np.mean(g2)) / pooled) if pooled > 1e-10 else 0.0
 
 
@@ -249,6 +248,7 @@ def tost_equivalence(a, b, delta=0.5):
         True if both one-sided tests reject at alpha=0.05.
     """
     from scipy.stats import ttest_rel
+
     a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
 
     # Test 1: H0: mean(a-b) >= delta  vs  H1: mean(a-b) < delta
@@ -299,8 +299,7 @@ def bootstrap_stability_test(imp_runs_a, imp_runs_b, n_bootstrap=10000, seed=42)
     boot_diffs = np.empty(n_bootstrap)
     for b in range(n_bootstrap):
         idx = rng.choice(n, size=n, replace=True)
-        boot_diffs[b] = (_stability_from_rank_matrix(rank_a[idx])
-                         - _stability_from_rank_matrix(rank_b[idx]))
+        boot_diffs[b] = _stability_from_rank_matrix(rank_a[idx]) - _stability_from_rank_matrix(rank_b[idx])
 
     # Two-sided p-value: fraction of bootstrap diffs at least as extreme as 0
     # under the null (centered at observed_diff)
@@ -331,6 +330,7 @@ def feature_ablation_score(model, X, y, importance, top_k=5, metric_fn=None):
     """
     if metric_fn is None:
         from sklearn.metrics import root_mean_squared_error
+
         metric_fn = root_mean_squared_error
     baseline_score = metric_fn(y, model.predict(X))
     top_features = np.argsort(importance)[-top_k:][::-1]
@@ -453,8 +453,8 @@ def fsi_collinearity_correlation(fsi_values, feature_rho, groups=None):
 
     rho, pval = spearmanr(fsi_values, feature_rho)
     result = {
-        'feature_spearman': float(rho),
-        'feature_pvalue': float(pval),
+        "feature_spearman": float(rho),
+        "feature_pvalue": float(pval),
     }
 
     if groups is not None:
@@ -463,7 +463,7 @@ def fsi_collinearity_correlation(fsi_values, feature_rho, groups=None):
         group_fsi = np.array([np.mean(fsi_values[groups == g]) for g in group_ids])
         group_rho_vals = np.array([np.mean(feature_rho[groups == g]) for g in group_ids])
         g_rho, g_pval = spearmanr(group_fsi, group_rho_vals)
-        result['group_spearman'] = float(g_rho)
-        result['group_pvalue'] = float(g_pval)
+        result["group_spearman"] = float(g_rho)
+        result["group_pvalue"] = float(g_pval)
 
     return result

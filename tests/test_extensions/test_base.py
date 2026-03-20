@@ -1,6 +1,6 @@
 """Tests for dash_shap.extensions._base utilities."""
+
 import numpy as np
-import pytest
 
 from dash_shap.core.result import DASHResult
 from dash_shap.extensions._base import (

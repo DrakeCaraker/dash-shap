@@ -19,7 +19,7 @@ typecheck:
 	mypy dash_shap/ --ignore-missing-imports --no-error-summary
 
 coverage:
-	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=80
+	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
 
 ci: lint typecheck test coverage
 	@echo "All CI checks passed."

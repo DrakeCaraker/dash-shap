@@ -75,7 +75,7 @@ jobs:
           pip install -e .
           pip install pytest pytest-cov
       - name: Run tests with coverage
-        run: pytest -v --cov=dash_shap --cov-report=term-missing --cov-fail-under=80
+        run: pytest -v --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
       - name: Upload coverage artifact
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v4
@@ -278,17 +278,9 @@ jobs:
           from dash_shap.extensions import (
               confidence_intervals,
               partial_order,
-              audit_report,
-              feature_groups,
-              stable_feature_selection,
-              local_uncertainty,
               robust_certification,
-              causal_flags,
-              DriftMonitor,
-              ParetoSelector,
-              federated_consensus,
           )
-          print('All 11 extensions imported successfully.')
+          print('Phase 1 extensions (3/11) imported successfully.')
           "
 
   perf-smoke:

@@ -1,12 +1,10 @@
 """Stage 2: Performance Filtering."""
-import numpy as np
-from typing import Dict, List
+
 
 __all__ = ["performance_filter"]
 
 
-def performance_filter(val_scores, epsilon=0.08, higher_is_better=True,
-                       mode='absolute', verbose=True):
+def performance_filter(val_scores, epsilon=0.08, higher_is_better=True, mode="absolute", verbose=True):
     """Filter models within epsilon of the best validation score.
 
     Parameters
@@ -26,18 +24,12 @@ def performance_filter(val_scores, epsilon=0.08, higher_is_better=True,
         epsilon=0.5 keeps the top 50%).
     verbose : bool
     """
-    best_score = (
-        max(val_scores.values()) if higher_is_better
-        else min(val_scores.values())
-    )
+    best_score = max(val_scores.values()) if higher_is_better else min(val_scores.values())
 
-    if mode == 'relative':
+    if mode == "relative":
         threshold = abs(best_score) * epsilon
-        filtered = [
-            i for i, s in val_scores.items()
-            if abs(s - best_score) <= threshold
-        ]
-    elif mode == 'quantile':
+        filtered = [i for i, s in val_scores.items() if abs(s - best_score) <= threshold]
+    elif mode == "quantile":
         scores_sorted = sorted(val_scores.values(), reverse=higher_is_better)
         cutoff_idx = max(2, int(len(scores_sorted) * epsilon))
         cutoff_score = scores_sorted[min(cutoff_idx - 1, len(scores_sorted) - 1)]
@@ -46,10 +38,7 @@ def performance_filter(val_scores, epsilon=0.08, higher_is_better=True,
         else:
             filtered = [i for i, s in val_scores.items() if s <= cutoff_score]
     else:  # absolute (default)
-        filtered = [
-            i for i, s in val_scores.items()
-            if abs(s - best_score) <= epsilon
-        ]
+        filtered = [i for i, s in val_scores.items() if abs(s - best_score) <= epsilon]
 
     if verbose:
         print(

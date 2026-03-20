@@ -1,4 +1,5 @@
 """Baseline: Naive Top-N Averaging (no diversity selection)."""
+
 import numpy as np
 
 from dash_shap.core.consensus import compute_consensus
@@ -19,13 +20,19 @@ class NaiveAveragingBaseline:
 
     def fit_from_population(self, models, val_scores, X_ref):
         sorted_idx = sorted(
-            val_scores.keys(), key=lambda i: val_scores[i], reverse=True,
+            val_scores.keys(),
+            key=lambda i: val_scores[i],
+            reverse=True,
         )
-        top_n = sorted_idx[:self.N]
+        top_n = sorted_idx[: self.N]
         self.models_ = models
         self.selected_indices_ = top_n
         consensus, all_shap = compute_consensus(
-            models, top_n, X_ref, verbose=False, n_jobs=self.n_jobs,
+            models,
+            top_n,
+            X_ref,
+            verbose=False,
+            n_jobs=self.n_jobs,
         )
         _, _, self.fsi_, self.global_importance_ = compute_diagnostics(all_shap)
         return self
