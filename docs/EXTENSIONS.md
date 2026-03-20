@@ -19,7 +19,7 @@ All extensions accept a `DASHResult` as input — never the pipeline object itse
 class DASHResult:
     all_shap_matrices: np.ndarray   # (K, n_ref, P) — the core tensor
     feature_names: list[str]
-    val_scores: np.ndarray | None = None  # (K,) optional
+    val_scores: np.ndarray | None = None  # (K,) optional; accepts list | np.ndarray | None — __post_init__ converts list to ndarray
 
     # Computed in __post_init__, not passed to __init__
     consensus: np.ndarray = field(init=False, repr=False)
@@ -38,7 +38,7 @@ class DASHResult:
   variance      = var(shap, axis=0, ddof=1)             # (n_ref, P)
   global_importance = mean(|consensus|, axis=0)          # (P,)
   mean_std      = mean(sqrt(variance), axis=0)           # (P,)
-  fsi           = mean_std / (global_importance + eps)    # (P,)
+  fsi           = mean_std / (global_importance + eps)    # (P,)  eps = 1e-8, matching diagnostics.py
   ```
 - **Properties**: `K`, `n_ref`, `P`, `memory_bytes` (sum of all stored arrays' `nbytes`).
 
@@ -48,8 +48,8 @@ class DASHResult:
 |---|---|
 | `DASHResult(matrices, names, scores)` | Direct construction; validation in `__post_init__` |
 | `DASHResult.from_shap_matrices(matrices, feature_names=None, val_scores=None)` | Classmethod; validates 3D shape, K≥2, name count |
-| `result.save(path)` | Two-file serialization: `.npz` (arrays) + `.json` sidecar (metadata). No pickle, no new deps. |
-| `DASHResult.load(path)` | Reconstruct from `.npz` + `.json` |
+| `result.save(path)` | Two-file serialization: `.npz` (arrays) + `.json` sidecar (metadata, including `"format_version": 1`). No pickle, no new deps. |
+| `DASHResult.load(path)` | Reconstruct from `.npz` + `.json`. Raises `VersionError` if `format_version` in sidecar exceeds current; migration functions added incrementally. |
 
 ### Pipeline Integration
 
@@ -106,6 +106,10 @@ own module.
 
 ## 3. Extensions — 11 Modules in `dash_shap/extensions/`
 
+> Extensions are numbered 1–11. Extension 11 (Neural) was absorbed into
+> `DASHPipeline.fit_from_attributions()` in Phase 0; Causal is renumbered 11.
+> There is no Extension 12.
+
 All follow the pattern: `result_obj = extension_fn(dash_result, **kwargs)`.
 Every result type has `.summary() -> str` and `.plot() -> Figure`.
 
@@ -118,11 +122,12 @@ confidence_intervals(result, alpha=0.05, n_boot=1000, seed=42) -> ConfidenceResu
 **`ConfidenceResult`** fields:
 - `importance_ci`: `(P, 3)` — lower, point, upper
 - `fsi_ci`: `(P, 3)`
-- `ranking_ci`: `(P, 3)`
+- `ranking_ci`: `(P, 3)` — ranks treated as continuous scores via the bootstrap (Spearman's rank treated as a smooth quantity for CI construction); values are floats, not integers
 
 **Implementation notes**:
 - Memory-safe: resamples K indices, computes stats incrementally (no second tensor copy).
 - Reuses BCa logic from `evaluation.stability_bootstrap_ci()` (line 115).
+- **Requires K ≥ 10** for reliable BCa coverage. With K < 10, use `method='fraction'` in Partial Orders instead of bootstrap-based CI.
 
 ### Extension 2: Partial Orders (`partial_order.py`) — Paper 2 Core
 
@@ -136,8 +141,8 @@ partial_order(result, alpha=0.05, method="fraction") -> PartialOrderResult
 - `n_determined`, `n_undetermined`: int
 
 **Methods**:
-- `method="fraction"`: raw fraction of K models (fast).
-- `method="bootstrap"`: bootstrap test on π.
+- `method="fraction"`: raw fraction of K models (fast). Preferred when K < 10.
+- `method="bootstrap"`: bootstrap test on π. **Requires K ≥ 10** for reliable coverage; with K < 10 bootstrap confidence intervals have poor coverage.
 
 **Design**:
 - Standalone — does NOT depend on CI extension.
@@ -171,8 +176,10 @@ feature_groups(result, threshold=0.8, X_ref=None,
 
 **Substitutability metric**: for each pair (i, j),
 `sub[i,j] = mean over observations of corr_across_K_models(shap[:,n,i], shap[:,n,j])`.
-Negative values = substitutable. Cluster on `-sub` via
-`scipy.cluster.hierarchy`.
+High positive values = substitutable (the K models agree that features i and j move
+together — they are interchangeable). Negative values indicate the features move in
+opposite directions (NOT substitutable). Cluster on `1 - sub` as distance via
+`scipy.cluster.hierarchy` (sub ≈ 1 → distance ≈ 0 → same cluster).
 
 **Methods**:
 - `method="shap_substitutability"`: uses the K×N'×P tensor directly.
@@ -201,17 +208,24 @@ class DriftMonitor:
     def plot_timeline(self) -> Figure: ...
 ```
 
+`threshold` is applied to **cosine distance** between `baseline.global_importance` and
+`current.global_importance`. **`DriftAlert`** fields:
+- `drifted: bool` — True if cosine distance exceeds threshold
+- `distance: float` — cosine distance between baseline and current global importance
+- `changed_features: list[str]` — features whose importance rank changed by ≥ 2 positions
+
 Depends on `DASHResult` serialization for persisting baselines.
 
 ### Extension 7: Pareto Model Selection (`model_selection.py`) — Class
 
 ```python
 class ParetoSelector:
-    def evaluate(self, config, result, X_test, y_test) -> None: ...
+    def evaluate(self, config: dict, result: DASHResult, X_test, y_test) -> None: ...
     def frontier(self) -> ParetoFrontier: ...
 ```
 
-Docstring warns about test-set reuse / selection bias.
+`config` is a `dict` with keys `{'epsilon', 'K', 'M'}` — the `DASHPipeline` hyperparameters
+that produced `result`. Docstring warns about test-set reuse / selection bias.
 Aligns with Paper 5 (months 12-18).
 
 ### Extension 8: Local Uncertainty (`local.py`)
@@ -254,7 +268,10 @@ federated_consensus(results: list[DASHResult], weights=None) -> FederatedResult
 inheritance). The K axis in the `combined` result means "sites" not "models" —
 inheritance would give wrong semantics for bootstrap-based extensions.
 
-### Extension 12: Causal Flags (`causal.py`)
+### Extension 11: Causal Flags (`causal.py`)
+
+> **Note**: Extension 11 (Neural) was absorbed into `DASHPipeline.fit_from_attributions()`
+> in Phase 0 (see Section 1). Causal is renumbered from 12 to 11.
 
 ```python
 causal_flags(result, X_ref, groups=None, alpha=0.05) -> CausalResult
@@ -263,14 +280,18 @@ causal_flags(result, X_ref, groups=None, alpha=0.05) -> CausalResult
 Combines FSI + correlation structure to produce per-feature flags:
 **"robust"** / **"collinear"** / **"fragile"**.
 
+The three flags correspond to IS-plot quadrants (see `DIAGNOSTICS.md`):
+
+| Flag | IS-Plot Quadrant | Interpretation |
+|------|-----------------|----------------|
+| `robust` | QI — high imp, low FSI | Safe to use in decisions |
+| `collinear` | QII — high imp, high FSI | Important but attribution is split with a partner feature |
+| `fragile` | QIV — low imp, high FSI | Unstable; exclude from downstream use |
+| *(unlabeled)* | QIII — low imp, low FSI | Unimportant but stable; safe to ignore |
+
 - Works standalone (computes correlation from `X_ref`).
 - Richer with pre-computed `GroupResult`.
 - Requires `X_ref` explicitly passed (never stored in `DASHResult`).
-
-### Neural Extension (Ext 11): Absorbed
-
-Absorbed into `DASHPipeline.fit_from_attributions()`. No separate module — see
-Section 1.
 
 ---
 
@@ -285,7 +306,7 @@ DASHResult (foundation)
        ├── local_uncertainty (8) ← standalone
        ├── certification (9)     ← standalone
        ├── selection (5)         ← standalone
-       ├── causal_flags (12)     ← takes optional GroupResult
+       ├── causal_flags (11)     ← takes optional GroupResult
        ├── audit_report (3)      ← takes optional any results
        ├── DriftMonitor (6)      ← needs DASHResult.save/load
        ├── federated (10)        ← needs DASHResult.save/load
@@ -350,9 +371,47 @@ def dash_result():
 | Federated (10) | Single-site result ≈ original |
 | Drift (6) | Identical result → no alert |
 
+### Required Integration Tests (B12 — previously missing)
+
+| Test | Location | What it verifies |
+|------|----------|-----------------|
+| `fit_from_attributions()` integration | `tests/test_result.py` | Pre-computed (M, n_ref, P) matrices produce a valid `DASHResult` via the new pipeline method |
+| Pipeline integration | `tests/test_result.py` | After `pipe.fit()`, `pipe.result_` exists and its `consensus`, `fsi` match `pipe.consensus_matrix_`, `pipe.fsi_` |
+| Large-array serialization round-trip | `tests/test_result.py` | `DASHResult(K=30, n_ref=200, P=81)` saves and loads without shape corruption or dtype change |
+
 ---
 
-## 7. Backward Compatibility
+## 7. Public API Surface
+
+Extensions are imported from the flat `dash_shap.extensions` namespace via lazy
+`__getattr__` in `dash_shap/extensions/__init__.py` (following the existing pattern
+in `dash_shap/__init__.py`):
+
+```python
+# Flat import from subpackage (recommended)
+from dash_shap.extensions import (
+    confidence_intervals,
+    partial_order,
+    audit_report,
+    feature_groups,
+    stable_feature_selection,
+    local_uncertainty,
+    robust_certification,
+    causal_flags,
+    DriftMonitor,
+    ParetoSelector,
+    federated_consensus,
+)
+```
+
+Sub-module imports also work for advanced use:
+```python
+from dash_shap.extensions.confidence import confidence_intervals, ConfidenceResult
+```
+
+---
+
+## 8. Backward Compatibility
 
 | Concern | Guarantee |
 |---------|-----------|
@@ -361,3 +420,4 @@ def dash_result():
 | `fit_from_attributions()` | Additive — new method, does not touch `fit()` |
 | `dash_shap/extensions/` | New subpackage — **zero changes** to `core/`, `baselines/`, `evaluation/` |
 | Import direction | `extensions → core`, `extensions → evaluation` (clean, downward only) |
+| Serialization format | `.json` sidecar always includes `"format_version": 1`; `DASHResult.load()` raises `VersionError` if version exceeds current — files produced by newer code are never silently misread |
