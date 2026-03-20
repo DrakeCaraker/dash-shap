@@ -74,7 +74,8 @@ def main():
     # ------------------------------------------------------------------ #
     # 5. Serialize result for reuse
     # ------------------------------------------------------------------ #
-    import tempfile, pathlib
+    import pathlib
+    import tempfile
     print("\n[6] Serialization round-trip ...")
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "demo_result"

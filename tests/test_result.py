@@ -1,4 +1,5 @@
 """Tests for DASHResult: construction, computed fields, serialization, integration."""
+import importlib.util
 import pathlib
 import tempfile
 
@@ -6,6 +7,8 @@ import numpy as np
 import pytest
 
 from dash_shap.core.result import DASHResult, VersionError
+
+_xgboost_available = importlib.util.find_spec("xgboost") is not None
 
 
 # ---------------------------------------------------------------------------
@@ -175,9 +178,6 @@ class TestSerialization:
 # ---------------------------------------------------------------------------
 # fit_from_attributions() integration (B12)
 # ---------------------------------------------------------------------------
-
-import importlib.util
-_xgboost_available = importlib.util.find_spec("xgboost") is not None
 
 
 class TestFitFromAttributions:
