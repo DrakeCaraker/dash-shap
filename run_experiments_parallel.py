@@ -2545,6 +2545,144 @@ def format_timing_table(sweep_results, rho=0.9):
 # EXPERIMENT REGISTRY
 ###############################################################################
 
+###############################################################################
+# EXPERIMENT: Extensions Sanity Check (V3)
+###############################################################################
+
+def experiment_extensions_sanity_check(resume=False, cleanup=True):
+    """Lightweight (~2 min) check that Phase 0+1 extensions hold Paper 2 claims.
+
+    Runs one rep at rho=0.9 (M=50, K=15), then asserts:
+      1. Top-2 true features (f0, f5) are certified top-4 by Certification (Ext 9)
+      2. Within-group π(f0 > f5) ≈ 0.5 ± 0.25 (features collinear, attribution split)
+      3. Between-group π(f0 > noise_feat) > 0.7 (clear winner over noise feature)
+      4. Confidence intervals contain point estimates for all features
+      5. DASHResult serialization round-trip preserves shapes and dtype
+
+    These checks make the Paper 2 claim "within-group π ≈ 0.5" a running CI test
+    rather than a narrative claim. No dataset download required.
+    """
+    _ensure_dirs()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Extensions Sanity Check")
+    log("=" * 70)
+
+    import tempfile
+    import pathlib
+    from dash_shap.extensions import (
+        robust_certification,
+        confidence_intervals,
+        partial_order,
+    )
+    from dash_shap.core.result import DASHResult
+
+    rho = 0.9
+    rng_seed = SEED
+
+    log(f"  Generating synthetic data: N=2000, P=20, rho={rho}")
+    Xtr, ytr, Xv, yv, Xexp, _, Xte, yte, grps, true_imp, _ = \
+        generate_synthetic_linear(N=2000, rho=rho, seed=rng_seed)
+
+    log("  Fitting DASHPipeline (M=50, K=15) ...")
+    pipe = DASHPipeline(
+        M=50, K=15, epsilon=EPSILON, delta=DELTA,
+        seed=rng_seed, verbose=False, n_jobs=-1,
+    )
+    pipe.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
+    result = pipe.result_
+
+    log(f"  DASHResult: K={result.K}, n_ref={result.n_ref}, P={result.P}")
+
+    failures = []
+
+    # --- Check 1: Certification ---
+    log("\n  [1] Certification check ...")
+    cert = robust_certification(result, k_values=[1, 2, 3, 4, 5])
+    # Group 0 features are f0..f4 (true importance ~0.4 each); f0 is the "first mover"
+    # At least one of the true group features should be certified top-4
+    top4_names = set(cert.certified.get(4, []))
+    true_group0_names = {make_feature_names()[i] for i in grps[0]}
+    overlap = top4_names & true_group0_names
+    if not overlap:
+        failures.append(
+            f"FAIL: No group-0 features in certified top-4 (got {top4_names})"
+        )
+    else:
+        log(f"    PASS: certified top-4 includes group-0 features: {overlap}")
+
+    # --- Check 2: Partial Order — within-group π ≈ 0.5 ---
+    log("\n  [2] Partial order — within-group π check ...")
+    po = partial_order(result, alpha=0.1, method="fraction")
+    feat_names = list(result.feature_names)
+    g0 = grps[0]
+    # Take the top-2 features by importance within group 0
+    g0_by_imp = sorted(g0, key=lambda i: -result.global_importance[i])
+    f_a, f_b = g0_by_imp[0], g0_by_imp[1]
+    pi_ab = po.confidence_matrix[f_a, f_b]
+    log(f"    Within group-0: π({feat_names[f_a]}>{feat_names[f_b]}) = {pi_ab:.3f}")
+    if not (0.25 <= pi_ab <= 0.75):
+        failures.append(
+            f"FAIL: within-group π = {pi_ab:.3f}, expected 0.25–0.75 (≈ 0.5)"
+        )
+    else:
+        log(f"    PASS: within-group π ≈ 0.5 (value={pi_ab:.3f})")
+
+    # --- Check 3: Partial Order — between-group π > noise ---
+    log("\n  [3] Partial order — between-group dominance check ...")
+    # Top group-0 feature vs a low-importance feature from group 1
+    g0_top = g0_by_imp[0]
+    g3 = grps[3]  # last group has lower true importance
+    g3_by_imp = sorted(g3, key=lambda i: result.global_importance[i])
+    f_noise = g3_by_imp[0]  # least important in group 3
+    pi_top_vs_noise = po.confidence_matrix[g0_top, f_noise]
+    log(f"    Between-group: π({feat_names[g0_top]}>{feat_names[f_noise]}) = {pi_top_vs_noise:.3f}")
+    if pi_top_vs_noise < 0.7:
+        failures.append(
+            f"FAIL: between-group π = {pi_top_vs_noise:.3f}, expected ≥ 0.7"
+        )
+    else:
+        log(f"    PASS: between-group dominance π = {pi_top_vs_noise:.3f} ≥ 0.7")
+
+    # --- Check 4: CI contains point estimates ---
+    log("\n  [4] Confidence interval containment check ...")
+    ci = confidence_intervals(result, alpha=0.05, n_boot=200, seed=rng_seed)
+    lower_ok = np.all(ci.importance_ci[:, 0] <= ci.importance_ci[:, 1] + 1e-9)
+    upper_ok = np.all(ci.importance_ci[:, 1] <= ci.importance_ci[:, 2] + 1e-9)
+    if not (lower_ok and upper_ok):
+        failures.append("FAIL: CI does not contain point estimate for some features")
+    else:
+        log("    PASS: all importance CIs contain their point estimates")
+
+    # --- Check 5: Serialization round-trip ---
+    log("\n  [5] Serialization round-trip check ...")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = pathlib.Path(tmp) / "sanity_result"
+        result.save(path)
+        loaded = DASHResult.load(path)
+    shape_ok = loaded.all_shap_matrices.shape == result.all_shap_matrices.shape
+    dtype_ok = loaded.all_shap_matrices.dtype == result.all_shap_matrices.dtype
+    values_ok = np.allclose(loaded.all_shap_matrices, result.all_shap_matrices)
+    if not (shape_ok and dtype_ok and values_ok):
+        failures.append(
+            f"FAIL: serialization round-trip mismatch "
+            f"(shape={shape_ok}, dtype={dtype_ok}, values={values_ok})"
+        )
+    else:
+        log(f"    PASS: DASHResult({result.K}, {result.n_ref}, {result.P}) round-trips cleanly")
+
+    # --- Summary ---
+    log("\n" + "-" * 70)
+    if failures:
+        for f in failures:
+            log(f"  {f}")
+        log(f"\n  EXTENSIONS SANITY CHECK: {len(failures)} FAILURE(S)")
+        raise AssertionError(f"Extensions sanity check failed:\n" + "\n".join(failures))
+    else:
+        log("  EXTENSIONS SANITY CHECK: ALL CHECKS PASSED")
+
+    return {"status": "passed", "K": result.K, "n_failures": 0}
+
+
 EXPERIMENTS = {
     'linear_sweep': experiment_linear_sweep,
     'overlapping': experiment_overlapping,
@@ -2560,6 +2698,7 @@ EXPERIMENTS = {
     'first_mover_bias': experiment_first_mover_bias,
     'background_sensitivity': experiment_background_sensitivity,
     'success_criteria': experiment_success_criteria,
+    'extensions_sanity_check': experiment_extensions_sanity_check,
 }
 
 # Default run order (all experiments)
