@@ -82,7 +82,7 @@ ignore = [
 quote-style = "double"
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 80
 
 [tool.mypy]
 python_version = "3.9"
