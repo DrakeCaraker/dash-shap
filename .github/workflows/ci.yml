@@ -149,27 +149,22 @@ jobs:
 
           configs = {}
 
-          # Parse PAPER_CONFIG dict
-          configs['run_experiments.py'] = {
-              'M': int(re.search(r'["\x27]M["\x27]:\s*(\d+)', content).group(1)),
-              'K': int(re.search(r'["\x27]K["\x27]:\s*(\d+)', content).group(1)),
-              'N_REPS': int(re.search(r'["\x27]N_REPS["\x27]:\s*(\d+)', content).group(1)),
-              'EPSILON': float(re.search(r'["\x27]EPSILON["\x27]:\s*([\d.]+)', content).group(1)),
-              'DELTA': float(re.search(r'["\x27]DELTA["\x27]:\s*([\d.]+)', content).group(1)),
-              'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content).group(1)),
-          }
+          def parse_config(text):
+              return {
+                  'M': int(re.search(r'\"M\":\s*(\d+)', text).group(1)),
+                  'K': int(re.search(r'\"K\":\s*(\d+)', text).group(1)),
+                  'N_REPS': int(re.search(r'\"N_REPS\":\s*(\d+)', text).group(1)),
+                  'EPSILON': float(re.search(r'\"EPSILON\":\s*([\d.]+)', text).group(1)),
+                  'DELTA': float(re.search(r'\"DELTA\":\s*([\d.]+)', text).group(1)),
+                  'SEED': int(re.search(r'SEED\s*=\s*(\d+)', text).group(1)),
+              }
+
+          configs['run_experiments.py'] = parse_config(content)
 
           # Extract from run_experiments_parallel.py
           with open('run_experiments_parallel.py') as f:
               content_p = f.read()
-          configs['run_experiments_parallel.py'] = {
-              'M': int(re.search(r'["\x27]M["\x27]:\s*(\d+)', content_p).group(1)),
-              'K': int(re.search(r'["\x27]K["\x27]:\s*(\d+)', content_p).group(1)),
-              'N_REPS': int(re.search(r'["\x27]N_REPS["\x27]:\s*(\d+)', content_p).group(1)),
-              'EPSILON': float(re.search(r'["\x27]EPSILON["\x27]:\s*([\d.]+)', content_p).group(1)),
-              'DELTA': float(re.search(r'["\x27]DELTA["\x27]:\s*([\d.]+)', content_p).group(1)),
-              'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content_p).group(1)),
-          }
+          configs['run_experiments_parallel.py'] = parse_config(content_p)
 
           # Compare
           ref = configs['run_experiments.py']
