@@ -9,6 +9,7 @@ learning_rate (matching the search budget given to other baselines) so the
 comparison is fair.  When ``tune=False`` (legacy default), it uses fixed
 hyperparameters as an illustrative worst-case anti-pattern.
 """
+
 import numpy as np
 import xgboost as xgb
 import shap
@@ -105,7 +106,10 @@ class LargeSingleModelBaseline:
             self.model_ = self._build_model(total_trees, 6, 0.1)
 
         self.model_.fit(
-            X_train, y_train, eval_set=[(X_val, y_val)], verbose=False,
+            X_train,
+            y_train,
+            eval_set=[(X_val, y_val)],
+            verbose=False,
         )
 
         n_bg = min(100, len(X_ref))
@@ -116,7 +120,9 @@ class LargeSingleModelBaseline:
         else:
             bg = X_ref[:n_bg]
         explainer = shap.TreeExplainer(
-            self.model_, data=bg, feature_perturbation="interventional",
+            self.model_,
+            data=bg,
+            feature_perturbation="interventional",
         )
         sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)

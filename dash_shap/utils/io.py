@@ -1,10 +1,12 @@
 """I/O utilities for saving experiment results."""
+
 import json
 import numpy as np
 
 
 def save_json(data, path):
     """Save results dict to JSON, converting numpy types to native Python."""
+
     def convert(obj):
         if isinstance(obj, np.floating):
             return float(obj)
@@ -18,5 +20,5 @@ def save_json(data, path):
             return [convert(v) for v in obj]
         return obj
 
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         json.dump(convert(data), f, indent=2)

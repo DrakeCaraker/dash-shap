@@ -43,6 +43,7 @@ def __getattr__(name):
     if name in _EXTENSION_MAP:
         module_path, attr = _EXTENSION_MAP[name]
         import importlib
+
         mod = importlib.import_module(module_path)
         return getattr(mod, attr)
     raise AttributeError(f"module 'dash_shap.extensions' has no attribute {name!r}")

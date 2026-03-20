@@ -1,10 +1,10 @@
 """Stage 3: Diversity-Aware Model Selection."""
+
 import numpy as np
 import shap
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 from scipy.stats import spearmanr
-from typing import Dict, List
 
 __all__ = [
     "get_preliminary_importance",
@@ -83,10 +83,7 @@ def greedy_maxmin_selection(
     # Pre-compute normalized vectors and pairwise cosine similarity matrix
     indices = list(importance_vectors.keys())
     idx_to_pos = {idx: pos for pos, idx in enumerate(indices)}
-    normed_matrix = np.array([
-        importance_vectors[i] / (np.linalg.norm(importance_vectors[i]) + 1e-10)
-        for i in indices
-    ])
+    normed_matrix = np.array([importance_vectors[i] / (np.linalg.norm(importance_vectors[i]) + 1e-10) for i in indices])
     sim_matrix = normed_matrix @ normed_matrix.T
 
     best_idx = max(performance_scores, key=performance_scores.get)
@@ -98,27 +95,21 @@ def greedy_maxmin_selection(
         selected_positions = [idx_to_pos[s] for s in selected]
         for c in candidates:
             c_pos = idx_to_pos[c]
-            min_dist = min(
-                1.0 - sim_matrix[c_pos, s_pos] for s_pos in selected_positions
-            )
+            min_dist = min(1.0 - sim_matrix[c_pos, s_pos] for s_pos in selected_positions)
             if min_dist > best_min_dist:
                 best_min_dist = min_dist
                 best_candidate = c
         if best_min_dist < delta:
             if verbose:
                 print(
-                    f"  Diversity threshold reached at K={len(selected)} "
-                    f"(min_dist={best_min_dist:.4f} < delta={delta})"
+                    f"  Diversity threshold reached at K={len(selected)} (min_dist={best_min_dist:.4f} < delta={delta})"
                 )
             break
         selected.append(best_candidate)
         candidates.discard(best_candidate)
 
     if verbose:
-        print(
-            f"MaxMin selection: {len(selected)} models selected "
-            f"from {len(importance_vectors)} candidates"
-        )
+        print(f"MaxMin selection: {len(selected)} models selected from {len(importance_vectors)} candidates")
     return selected
 
 
@@ -141,10 +132,7 @@ def cluster_coverage_selection(
     clusters = fcluster(Z, t=tau, criterion="distance")
 
     if verbose:
-        print(
-            f"  Feature clustering: {len(set(clusters))} clusters "
-            f"from {P} features (tau={tau})"
-        )
+        print(f"  Feature clustering: {len(set(clusters))} clusters from {P} features (tau={tau})")
 
     def get_reps(imp):
         reps = {}
@@ -163,9 +151,7 @@ def cluster_coverage_selection(
         for c in candidates:
             n_new = len(set(model_reps[c].items()) - covered)
             if n_new > best_new or (
-                n_new == best_new
-                and performance_scores[c]
-                > performance_scores.get(best_c, -np.inf)
+                n_new == best_new and performance_scores[c] > performance_scores.get(best_c, -np.inf)
             ):
                 best_new = n_new
                 best_c = c
@@ -219,8 +205,5 @@ def deduplication_selection(
 
     selected = [idx for idx in indices if idx not in removed]
     if verbose:
-        print(
-            f"Deduplication: {len(selected)}/{len(indices)} models retained "
-            f"(rho threshold={rho_threshold})"
-        )
+        print(f"Deduplication: {len(selected)}/{len(indices)} models retained (rho threshold={rho_threshold})")
     return selected

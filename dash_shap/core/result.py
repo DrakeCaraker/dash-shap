@@ -2,6 +2,7 @@
 
 All extensions accept a DASHResult; never the pipeline object itself.
 """
+
 from __future__ import annotations
 
 import json
@@ -60,9 +61,7 @@ class DASHResult:
         if K < 2:
             raise ValueError(f"K must be >= 2, got K={K}")
         if len(self.feature_names) != P:
-            raise ValueError(
-                f"feature_names length {len(self.feature_names)} != P={P}"
-            )
+            raise ValueError(f"feature_names length {len(self.feature_names)} != P={P}")
 
         # Convert list val_scores to ndarray
         if self.val_scores is not None:
@@ -73,11 +72,11 @@ class DASHResult:
 
         # Compute derived arrays (epsilon = 1e-8, matching diagnostics.py)
         eps = 1e-8
-        consensus = np.mean(m, axis=0)                    # (n_ref, P)
-        variance = np.var(m, axis=0, ddof=1)              # (n_ref, P)
+        consensus = np.mean(m, axis=0)  # (n_ref, P)
+        variance = np.var(m, axis=0, ddof=1)  # (n_ref, P)
         global_importance = np.mean(np.abs(consensus), axis=0)  # (P,)
-        mean_std = np.mean(np.sqrt(variance), axis=0)     # (P,)
-        fsi = mean_std / (global_importance + eps)        # (P,)
+        mean_std = np.mean(np.sqrt(variance), axis=0)  # (P,)
+        fsi = mean_std / (global_importance + eps)  # (P,)
 
         object.__setattr__(self, "consensus", consensus)
         object.__setattr__(self, "variance", variance)
@@ -158,7 +157,7 @@ class DASHResult:
         arrays = {"all_shap_matrices": self.all_shap_matrices}
         if self.val_scores is not None:
             arrays["val_scores"] = self.val_scores
-        np.savez_compressed(str(path) + ".npz", **arrays)
+        np.savez_compressed(str(path) + ".npz", **arrays)  # type: ignore[arg-type]
 
         meta = {
             "format_version": _FORMAT_VERSION,

@@ -3,6 +3,7 @@
 Answers: "Is feature i confidently more important than feature j?"
 The confidence_matrix values directly answer "within-group π ≈ 0.5?"
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,7 +38,7 @@ class PartialOrderResult:
     alpha : float
     """
 
-    adjacency: np.ndarray         # (P, P) bool
+    adjacency: np.ndarray  # (P, P) bool
     confidence_matrix: np.ndarray  # (P, P) float — π(i>j)
     n_determined: int
     n_undetermined: int
@@ -57,10 +58,7 @@ class PartialOrderResult:
             "  " + "  ".join(f"{n:>10}" for n in self.feature_names),
         ]
         for i, name in enumerate(self.feature_names):
-            row = "  ".join(
-                f"{'---':>10}" if i == j else f"{self.confidence_matrix[i, j]:>10.3f}"
-                for j in range(P)
-            )
+            row = "  ".join(f"{'---':>10}" if i == j else f"{self.confidence_matrix[i, j]:>10.3f}" for j in range(P))
             lines.append(f"{name:>10}  {row}")
         return "\n".join(lines)
 
@@ -124,18 +122,18 @@ def partial_order(
 
     if method == "bootstrap" and K < 10:
         import warnings
+
         warnings.warn(
-            f"K={K} < 10: bootstrap partial order may have poor coverage. "
-            "Prefer method='fraction' when K < 10.",
+            f"K={K} < 10: bootstrap partial order may have poor coverage. Prefer method='fraction' when K < 10.",
             UserWarning,
             stacklevel=2,
         )
 
-    ranks = per_model_rankings(result).astype(float)  # (K, P)
+    ranks: np.ndarray = per_model_rankings(result).astype(float)  # (K, P)
 
     # confidence_matrix[i, j] = fraction of K models ranking i above j
     # (i.e., rank_i < rank_j)
-    confidence_matrix = np.zeros((P, P), dtype=float)
+    confidence_matrix: np.ndarray = np.zeros((P, P), dtype=float)
     for i in range(P):
         for j in range(P):
             if i != j:

@@ -1,7 +1,7 @@
 """Stage 4: Consensus SHAP Aggregation."""
+
 import numpy as np
 import shap
-from typing import Dict, List, Tuple
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
@@ -11,7 +11,9 @@ __all__ = ["compute_consensus"]
 def _compute_shap_for_model(model, bg_data, X_ref):
     """Compute interventional TreeSHAP values for a single model."""
     explainer = shap.TreeExplainer(
-        model, data=bg_data, feature_perturbation="interventional",
+        model,
+        data=bg_data,
+        feature_perturbation="interventional",
     )
     sv = explainer.shap_values(X_ref, check_additivity=False)
     if isinstance(sv, list):
@@ -60,22 +62,17 @@ def compute_consensus(
         for k, idx in iterator:
             sv = _compute_shap_for_model(models[idx], bg_data, X_ref)
             if sv.shape != (N_prime, P):
-                raise ValueError(
-                    f"Model {idx}: expected SHAP shape {(N_prime, P)}, got {sv.shape}"
-                )
+                raise ValueError(f"Model {idx}: expected SHAP shape {(N_prime, P)}, got {sv.shape}")
             all_shap[k] = sv
     else:
         if verbose:
             print(f"Computing SHAP for {K} models with n_jobs={n_jobs}...")
         results = Parallel(n_jobs=n_jobs)(
-            delayed(_compute_shap_for_model)(models[idx], bg_data, X_ref)
-            for idx in selected_indices
+            delayed(_compute_shap_for_model)(models[idx], bg_data, X_ref) for idx in selected_indices
         )
         for k, sv in enumerate(results):
             if sv.shape != (N_prime, P):
-                raise ValueError(
-                    f"Model at position {k}: expected SHAP shape {(N_prime, P)}, got {sv.shape}"
-                )
+                raise ValueError(f"Model at position {k}: expected SHAP shape {(N_prime, P)}, got {sv.shape}")
             all_shap[k] = sv
 
     consensus = np.mean(all_shap, axis=0)
@@ -83,9 +80,6 @@ def compute_consensus(
     if verbose:
         global_imp = np.mean(np.abs(consensus), axis=0)
         top_5 = np.argsort(global_imp)[-5:][::-1]
-        print(
-            f"Consensus computed from {K} models. "
-            f"Top 5 features: {top_5.tolist()}"
-        )
+        print(f"Consensus computed from {K} models. Top 5 features: {top_5.tolist()}")
 
     return consensus, all_shap

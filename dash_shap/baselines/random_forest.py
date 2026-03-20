@@ -1,4 +1,5 @@
 """Baseline: Random Forest — tests whether RF's independent trees resolve first-mover bias."""
+
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 import shap
@@ -17,8 +18,7 @@ class RandomForestBaseline:
         self.global_importance_ = None
         self.fsi_ = None
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None,
-            background_size=100, seed=None):
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, background_size=100, seed=None):
         """Fit a Random Forest and compute interventional TreeSHAP importance.
 
         Parameters
@@ -55,7 +55,9 @@ class RandomForestBaseline:
             bg = X_ref[:n_bg]
 
         explainer = shap.TreeExplainer(
-            self.model_, data=bg, feature_perturbation="interventional",
+            self.model_,
+            data=bg,
+            feature_perturbation="interventional",
         )
         sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)

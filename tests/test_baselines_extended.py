@@ -1,5 +1,6 @@
 """Tests for previously untested baselines: SingleBest, EnsembleSHAP,
 RandomSelection, NaiveAveraging, StochasticRetrain."""
+
 import numpy as np
 import pytest
 from dash_shap.baselines import (

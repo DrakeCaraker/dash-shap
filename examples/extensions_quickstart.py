@@ -5,6 +5,7 @@ Mirrors examples/quickstart.py but shows the extensions framework:
 
 Run: python examples/extensions_quickstart.py
 """
+
 import numpy as np
 
 from dash_shap import DASHPipeline
@@ -25,9 +26,8 @@ def main():
     # 1. Generate data and fit pipeline
     # ------------------------------------------------------------------ #
     print("\n[1] Generating synthetic data (N=1000, P=8, rho=0.9) ...")
-    (X_train, y_train, X_val, y_val, X_explain, _,
-     X_test, y_test, groups, true_importance, meta) = generate_synthetic_linear(
-        N=1000, P=8, group_size=4, rho=0.9, seed=42
+    (X_train, y_train, X_val, y_val, X_explain, _, X_test, y_test, groups, true_importance, meta) = (
+        generate_synthetic_linear(N=1000, P=8, group_size=4, rho=0.9, seed=42)
     )
 
     print("[2] Fitting DASHPipeline (M=20, K=10) ...")
@@ -76,6 +76,7 @@ def main():
     # ------------------------------------------------------------------ #
     import pathlib
     import tempfile
+
     print("\n[6] Serialization round-trip ...")
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "demo_result"

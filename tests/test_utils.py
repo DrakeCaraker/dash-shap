@@ -1,14 +1,17 @@
 """Tests for dash_shap.utils (checkpoint and I/O)."""
+
 import io
 import json
-import os
-import tempfile
 import numpy as np
-import pytest
 from dash_shap.utils.checkpoint import (
-    save_checkpoint, load_checkpoint, has_checkpoint,
-    clear_checkpoint, clear_checkpoints_by_prefix,
-    _checkpoint_path, _sanitize_ckpt_name, _LegacyUnpickler,
+    save_checkpoint,
+    load_checkpoint,
+    has_checkpoint,
+    clear_checkpoint,
+    clear_checkpoints_by_prefix,
+    _checkpoint_path,
+    _sanitize_ckpt_name,
+    _LegacyUnpickler,
 )
 from dash_shap.utils.io import save_json
 from dash_shap.core.pipeline import DASHPipeline
@@ -17,14 +20,14 @@ from dash_shap.core.pipeline import DASHPipeline
 class TestLegacyUnpickler:
     def test_legacy_module_remapped(self):
         """find_class remaps 'dash.core.pipeline' → 'dash_shap.core.pipeline'."""
-        unpickler = _LegacyUnpickler(io.BytesIO(b''))
-        cls = unpickler.find_class('dash.core.pipeline', 'DASHPipeline')
+        unpickler = _LegacyUnpickler(io.BytesIO(b""))
+        cls = unpickler.find_class("dash.core.pipeline", "DASHPipeline")
         assert cls is DASHPipeline
 
     def test_current_module_passthrough(self):
         """find_class passes through 'dash_shap.*' modules unchanged."""
-        unpickler = _LegacyUnpickler(io.BytesIO(b''))
-        cls = unpickler.find_class('dash_shap.core.pipeline', 'DASHPipeline')
+        unpickler = _LegacyUnpickler(io.BytesIO(b""))
+        cls = unpickler.find_class("dash_shap.core.pipeline", "DASHPipeline")
         assert cls is DASHPipeline
 
 

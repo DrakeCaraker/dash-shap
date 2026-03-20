@@ -37,8 +37,8 @@ jobs:
         run: pip install ruff
       - name: Ruff lint
         run: ruff check .
-      - name: Ruff format check (advisory)
-        run: ruff format --check . || echo "::warning::Some files would be reformatted. Run 'ruff format .' to fix."
+      - name: Ruff format check
+        run: ruff format --check .
 
   typecheck:
     runs-on: ubuntu-latest
@@ -55,7 +55,7 @@ jobs:
           pip install -e .
           pip install mypy
       - name: Run mypy
-        run: mypy dash_shap/ --ignore-missing-imports --no-error-summary || true
+        run: mypy dash_shap/ --ignore-missing-imports --no-error-summary
 
   test:
     runs-on: ubuntu-latest
@@ -149,28 +149,22 @@ jobs:
 
           configs = {}
 
-          # Parse PAPER_CONFIG dict
-          m = re.search(r\"'M':\s*(\d+)\", content)
-          configs['run_experiments.py'] = {
-              'M': int(re.search(r\"'M':\s*(\d+)\", content).group(1)),
-              'K': int(re.search(r\"'K':\s*(\d+)\", content).group(1)),
-              'N_REPS': int(re.search(r\"'N_REPS':\s*(\d+)\", content).group(1)),
-              'EPSILON': float(re.search(r\"'EPSILON':\s*([\d.]+)\", content).group(1)),
-              'DELTA': float(re.search(r\"'DELTA':\s*([\d.]+)\", content).group(1)),
-              'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content).group(1)),
-          }
+          def parse_config(text):
+              return {
+                  'M': int(re.search(r'\"M\":\s*(\d+)', text).group(1)),
+                  'K': int(re.search(r'\"K\":\s*(\d+)', text).group(1)),
+                  'N_REPS': int(re.search(r'\"N_REPS\":\s*(\d+)', text).group(1)),
+                  'EPSILON': float(re.search(r'\"EPSILON\":\s*([\d.]+)', text).group(1)),
+                  'DELTA': float(re.search(r'\"DELTA\":\s*([\d.]+)', text).group(1)),
+                  'SEED': int(re.search(r'SEED\s*=\s*(\d+)', text).group(1)),
+              }
+
+          configs['run_experiments.py'] = parse_config(content)
 
           # Extract from run_experiments_parallel.py
           with open('run_experiments_parallel.py') as f:
               content_p = f.read()
-          configs['run_experiments_parallel.py'] = {
-              'M': int(re.search(r\"'M':\s*(\d+)\", content_p).group(1)),
-              'K': int(re.search(r\"'K':\s*(\d+)\", content_p).group(1)),
-              'N_REPS': int(re.search(r\"'N_REPS':\s*(\d+)\", content_p).group(1)),
-              'EPSILON': float(re.search(r\"'EPSILON':\s*([\d.]+)\", content_p).group(1)),
-              'DELTA': float(re.search(r\"'DELTA':\s*([\d.]+)\", content_p).group(1)),
-              'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content_p).group(1)),
-          }
+          configs['run_experiments_parallel.py'] = parse_config(content_p)
 
           # Compare
           ref = configs['run_experiments.py']
@@ -258,6 +252,30 @@ jobs:
           echo "Linting: $draft"
           # Run chktex; warnings are informational, errors fail
           chktex -q "$draft" 2>&1 | head -50 || true
+
+  extensions-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+      - name: Extensions import smoke test
+        run: |
+          python -c "
+          from dash_shap.extensions import (
+              confidence_intervals,
+              partial_order,
+              robust_certification,
+          )
+          print('Phase 1 extensions (3/11) imported successfully.')
+          "
 
   perf-smoke:
     runs-on: ubuntu-latest

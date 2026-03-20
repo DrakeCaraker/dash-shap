@@ -3,6 +3,7 @@
 Provides save/load/has/clear checkpoint operations using pickle serialization.
 Checkpoints are stored in a configurable directory (default: checkpoints/ at repo root).
 """
+
 import os
 import pickle
 from pathlib import Path
@@ -12,7 +13,7 @@ DEFAULT_CHECKPOINT_DIR = "checkpoints"
 
 def _sanitize_ckpt_name(s: str) -> str:
     """Sanitize a string for use in checkpoint filenames."""
-    return s.replace(' ', '_').replace('(', '').replace(')', '').replace(',', '').lower()
+    return s.replace(" ", "_").replace("(", "").replace(")", "").replace(",", "").lower()
 
 
 def _checkpoint_path(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR) -> Path:
@@ -34,10 +35,10 @@ def save_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR, **d
     """
     os.makedirs(checkpoint_dir, exist_ok=True)
     path = _checkpoint_path(name, checkpoint_dir)
-    with open(path, 'wb') as f:
+    with open(path, "wb") as f:
         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
     size_mb = os.path.getsize(path) / (1024 * 1024)
-    print(f'  [CHECKPOINT] Saved {name} ({size_mb:.1f} MB)')
+    print(f"  [CHECKPOINT] Saved {name} ({size_mb:.1f} MB)")
 
 
 class _LegacyUnpickler(pickle.Unpickler):
@@ -48,8 +49,8 @@ class _LegacyUnpickler(pickle.Unpickler):
     """
 
     def find_class(self, module: str, name: str):
-        if module == 'dash' or module.startswith('dash.'):
-            module = 'dash_shap' + module[4:]
+        if module == "dash" or module.startswith("dash."):
+            module = "dash_shap" + module[4:]
         return super().find_class(module, name)
 
 
@@ -58,10 +59,10 @@ def load_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR):
     path = _checkpoint_path(name, checkpoint_dir)
     if not path.exists():
         return None
-    with open(path, 'rb') as f:
+    with open(path, "rb") as f:
         data = _LegacyUnpickler(f).load()
     size_mb = os.path.getsize(path) / (1024 * 1024)
-    print(f'  [CHECKPOINT] Loaded {name} ({size_mb:.1f} MB)')
+    print(f"  [CHECKPOINT] Loaded {name} ({size_mb:.1f} MB)")
     return data
 
 
@@ -75,7 +76,7 @@ def clear_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR):
     path = _checkpoint_path(name, checkpoint_dir)
     if path.exists():
         path.unlink()
-        print(f'  [CHECKPOINT] Cleared {name}')
+        print(f"  [CHECKPOINT] Cleared {name}")
 
 
 def clear_checkpoints_by_prefix(prefix: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR):
@@ -88,4 +89,4 @@ def clear_checkpoints_by_prefix(prefix: str, checkpoint_dir: str = DEFAULT_CHECK
         return
     for path in ckpt_dir.glob(f"ckpt_{prefix}*.pkl"):
         path.unlink()
-    print(f'  [CHECKPOINT] Cleared all {prefix}* checkpoints')
+    print(f"  [CHECKPOINT] Cleared all {prefix}* checkpoints")

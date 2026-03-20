@@ -1,8 +1,8 @@
 """Stage 1: Diversified Model Population Generation."""
+
 import numpy as np
 import xgboost as xgb
 from itertools import product
-from typing import Dict, List, Optional, Tuple
 
 from joblib import Parallel, delayed
 from sklearn.metrics import roc_auc_score, root_mean_squared_error
@@ -43,9 +43,7 @@ def sample_configurations(search_space, M, seed=42, strategy="random"):
     for _ in range(M):
         config = {k: rng.choice(v) for k, v in search_space.items()}
         config = {
-            k: (float(v) if isinstance(v, np.floating)
-                 else int(v) if isinstance(v, np.integer)
-                 else v)
+            k: (float(v) if isinstance(v, np.floating) else int(v) if isinstance(v, np.integer) else v)
             for k, v in config.items()
         }
         configs.append(config)
@@ -107,7 +105,10 @@ def train_single_model(
         model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
         preds = model.predict_proba(X_val)
         val_score = roc_auc_score(
-            y_val, preds, multi_class="ovr", average="macro",
+            y_val,
+            preds,
+            multi_class="ovr",
+            average="macro",
         )
 
     else:
@@ -136,14 +137,23 @@ def generate_model_population(
         search_space = DEFAULT_SEARCH_SPACE
 
     configs = sample_configurations(
-        search_space, M, seed=seed, strategy=sampling_strategy,
+        search_space,
+        M,
+        seed=seed,
+        strategy=sampling_strategy,
     )
 
     def _train(i, config):
         model, score = train_single_model(
-            config, X_train, y_train, X_val, y_val,
-            task=task, n_estimators=n_estimators,
-            early_stopping_rounds=early_stopping_rounds, seed=seed + i,
+            config,
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            task=task,
+            n_estimators=n_estimators,
+            early_stopping_rounds=early_stopping_rounds,
+            seed=seed + i,
         )
         return i, model, score
 
@@ -151,10 +161,7 @@ def generate_model_population(
         print(f"Training {M} models with {n_jobs} parallel jobs...")
 
     results = Parallel(n_jobs=n_jobs)(
-        delayed(_train)(i, config)
-        for i, config in enumerate(
-            tqdm(configs, disable=not verbose, desc="Training")
-        )
+        delayed(_train)(i, config) for i, config in enumerate(tqdm(configs, disable=not verbose, desc="Training"))
     )
 
     models, val_scores = {}, {}
@@ -164,9 +171,6 @@ def generate_model_population(
 
     if verbose:
         scores = list(val_scores.values())
-        print(
-            f"Population trained. Best: {max(scores):.4f}, "
-            f"Worst: {min(scores):.4f}, Mean: {np.mean(scores):.4f}"
-        )
+        print(f"Population trained. Best: {max(scores):.4f}, Worst: {min(scores):.4f}, Mean: {np.mean(scores):.4f}")
 
     return models, val_scores, configs
