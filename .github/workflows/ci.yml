@@ -150,13 +150,12 @@ jobs:
           configs = {}
 
           # Parse PAPER_CONFIG dict
-          m = re.search(r\"'M':\s*(\d+)\", content)
           configs['run_experiments.py'] = {
-              'M': int(re.search(r\"'M':\s*(\d+)\", content).group(1)),
-              'K': int(re.search(r\"'K':\s*(\d+)\", content).group(1)),
-              'N_REPS': int(re.search(r\"'N_REPS':\s*(\d+)\", content).group(1)),
-              'EPSILON': float(re.search(r\"'EPSILON':\s*([\d.]+)\", content).group(1)),
-              'DELTA': float(re.search(r\"'DELTA':\s*([\d.]+)\", content).group(1)),
+              'M': int(re.search(r'["\x27]M["\x27]:\s*(\d+)', content).group(1)),
+              'K': int(re.search(r'["\x27]K["\x27]:\s*(\d+)', content).group(1)),
+              'N_REPS': int(re.search(r'["\x27]N_REPS["\x27]:\s*(\d+)', content).group(1)),
+              'EPSILON': float(re.search(r'["\x27]EPSILON["\x27]:\s*([\d.]+)', content).group(1)),
+              'DELTA': float(re.search(r'["\x27]DELTA["\x27]:\s*([\d.]+)', content).group(1)),
               'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content).group(1)),
           }
 
@@ -164,11 +163,11 @@ jobs:
           with open('run_experiments_parallel.py') as f:
               content_p = f.read()
           configs['run_experiments_parallel.py'] = {
-              'M': int(re.search(r\"'M':\s*(\d+)\", content_p).group(1)),
-              'K': int(re.search(r\"'K':\s*(\d+)\", content_p).group(1)),
-              'N_REPS': int(re.search(r\"'N_REPS':\s*(\d+)\", content_p).group(1)),
-              'EPSILON': float(re.search(r\"'EPSILON':\s*([\d.]+)\", content_p).group(1)),
-              'DELTA': float(re.search(r\"'DELTA':\s*([\d.]+)\", content_p).group(1)),
+              'M': int(re.search(r'["\x27]M["\x27]:\s*(\d+)', content_p).group(1)),
+              'K': int(re.search(r'["\x27]K["\x27]:\s*(\d+)', content_p).group(1)),
+              'N_REPS': int(re.search(r'["\x27]N_REPS["\x27]:\s*(\d+)', content_p).group(1)),
+              'EPSILON': float(re.search(r'["\x27]EPSILON["\x27]:\s*([\d.]+)', content_p).group(1)),
+              'DELTA': float(re.search(r'["\x27]DELTA["\x27]:\s*([\d.]+)', content_p).group(1)),
               'SEED': int(re.search(r'SEED\s*=\s*(\d+)', content_p).group(1)),
           }
 

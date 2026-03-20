@@ -1888,7 +1888,6 @@ def experiment_variance_decomposition():
     log("EXPERIMENT: Variance Decomposition")
     log("=" * 70)
 
-
     VD_RHO = 0.9
     feature_names = make_feature_names()
 

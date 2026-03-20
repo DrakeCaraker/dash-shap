@@ -157,7 +157,7 @@ class DASHResult:
         arrays = {"all_shap_matrices": self.all_shap_matrices}
         if self.val_scores is not None:
             arrays["val_scores"] = self.val_scores
-        np.savez_compressed(str(path) + ".npz", **arrays)  # type: ignore[call-overload]
+        np.savez_compressed(str(path) + ".npz", **arrays)  # type: ignore[arg-type]
 
         meta = {
             "format_version": _FORMAT_VERSION,

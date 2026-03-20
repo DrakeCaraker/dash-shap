@@ -1,6 +1,5 @@
 """Stage 2: Performance Filtering."""
 
-
 __all__ = ["performance_filter"]
 
 
