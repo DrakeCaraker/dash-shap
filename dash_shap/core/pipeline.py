@@ -139,6 +139,7 @@ class DASHPipeline:
         self.fsi_ = None
         self.global_importance_ = None
         self.variance_matrix_ = None
+        self.result_ = None  # DASHResult — set after Stage 5; additive
         self.timing_ = {}
 
     def fit(self, X_train, y_train, X_val, y_val, X_ref=None, feature_names=None):
@@ -307,6 +308,14 @@ class DASHPipeline:
         )
         self.timing_["stage5_diagnostics"] = time.time() - t0
 
+        # Build DASHResult (additive — all existing attributes unchanged)
+        from dash_shap.core.result import DASHResult
+        self.result_ = DASHResult.from_shap_matrices(
+            self.all_shap_matrices_,
+            feature_names=self.feature_names_,
+            val_scores=[self.val_scores_[i] for i in self.selected_indices_],
+        )
+
         if self.verbose:
             total = sum(self.timing_.values())
             print(
@@ -314,6 +323,78 @@ class DASHPipeline:
                 f"(Training: {self.timing_['stage1_training']:.1f}s, "
                 f"SHAP: {self.timing_['stage4_shap']:.1f}s)"
             )
+        return self
+
+    def fit_from_attributions(self, attribution_matrices, val_scores, feature_names=None):
+        """Run stages 2–5 on pre-computed (M, n_ref, P) attribution matrices.
+
+        Works with neural nets, linear models, LIME, external SHAP, or any source
+        of feature attributions. Follows the ``fit_from_population()`` pattern used
+        by the baselines. Absorbs what would have been Extension 11 (Neural) —
+        no separate module needed.
+
+        Parameters
+        ----------
+        attribution_matrices : ndarray of shape (M, n_ref, P)
+            One attribution matrix per candidate model.
+        val_scores : dict {int: float} or array-like of shape (M,)
+            Validation score for each of the M candidate models.
+        feature_names : list[str] or None
+            Auto-generated if None.
+
+        Returns
+        -------
+        self
+        """
+        attribution_matrices = np.asarray(attribution_matrices, dtype=float)
+        if attribution_matrices.ndim != 3:
+            raise ValueError(
+                f"attribution_matrices must be 3D (M, n_ref, P), got {attribution_matrices.ndim}D"
+            )
+        M_in, n_ref, P = attribution_matrices.shape
+
+        # Normalise val_scores to dict {int: float}
+        if not isinstance(val_scores, dict):
+            scores_arr = np.asarray(val_scores, dtype=float)
+            val_scores = {i: float(scores_arr[i]) for i in range(len(scores_arr))}
+
+        self.feature_names_ = feature_names or [f"f{i}" for i in range(P)]
+        self.models_ = None  # no underlying estimators
+        self.val_scores_ = val_scores
+        self.configs_ = {}
+
+        # Stage 2: Performance Filtering
+        self.filtered_indices_ = performance_filter(
+            self.val_scores_, epsilon=self.epsilon,
+            higher_is_better=True, mode=self.epsilon_mode,
+            verbose=self.verbose,
+        )
+
+        # Stage 3: Diversity Selection
+        prelim_importance = np.mean(np.abs(attribution_matrices), axis=1)  # (M, P)
+        filt_scores = {i: self.val_scores_[i] for i in self.filtered_indices_}
+        self.selected_indices_ = greedy_maxmin_selection(
+            {i: prelim_importance[i] for i in self.filtered_indices_},
+            K=self.K, scores=filt_scores, verbose=self.verbose,
+        )
+
+        # Stage 4: Consensus (just average the selected attribution matrices)
+        selected = attribution_matrices[list(self.selected_indices_)]  # (K, n_ref, P)
+        self.all_shap_matrices_ = selected
+        self.consensus_matrix_ = np.mean(selected, axis=0)  # (n_ref, P)
+
+        # Stage 5: Diagnostics
+        _, self.variance_matrix_, self.fsi_, self.global_importance_ = (
+            compute_diagnostics(self.all_shap_matrices_)
+        )
+
+        # Build DASHResult
+        from dash_shap.core.result import DASHResult
+        self.result_ = DASHResult.from_shap_matrices(
+            self.all_shap_matrices_,
+            feature_names=self.feature_names_,
+            val_scores=[self.val_scores_[i] for i in self.selected_indices_],
+        )
         return self
 
     @property
