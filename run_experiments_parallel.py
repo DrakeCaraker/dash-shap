@@ -33,6 +33,7 @@ Available experiments:
 """
 
 import argparse
+import os as _os
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -117,7 +118,7 @@ REAL_EPSILON = 0.05
 REAL_EPSILON_MODE = 'relative'
 
 OUT = "results"
-CKPT_DIR = f"{OUT}/checkpoints"
+CKPT_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), OUT, "checkpoints")
 
 
 def make_feature_names(n_groups=10, group_size=5):
@@ -1033,7 +1034,21 @@ def experiment_table2_baselines(resume=False, cleanup=True):
             continue
 
         imp_runs, acc_runs, eq_runs = [], [], []
-        for rep in range(N_REPS):
+        start_rep = 0
+        if resume:
+            batch_prefix = f"table2_{_sanitize_ckpt_name(name)}_batch_"
+            for batch_end in range(N_REPS, 0, -10):
+                batch_name = f"{batch_prefix}{batch_end}"
+                if has_checkpoint(batch_name, CKPT_DIR):
+                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                    imp_runs = cached['imp_runs']
+                    acc_runs = cached['acc_runs']
+                    eq_runs = cached['eq_runs']
+                    start_rep = cached['completed_reps']
+                    log(f"    Resuming {name} from rep {start_rep}")
+                    break
+
+        for rep in range(start_rep, N_REPS):
             rep_seed = SEED + rep
             Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = \
                 generate_synthetic_linear(N=5000, rho=0.9, seed=rep_seed)
@@ -1080,6 +1095,13 @@ def experiment_table2_baselines(resume=False, cleanup=True):
             acc_runs.append(r)
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
+            if (rep + 1) % 10 == 0:
+                save_checkpoint(
+                    f"table2_{_sanitize_ckpt_name(name)}_batch_{rep+1}",
+                    checkpoint_dir=CKPT_DIR,
+                    imp_runs=imp_runs, acc_runs=acc_runs, eq_runs=eq_runs,
+                    completed_reps=rep + 1,
+                )
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
@@ -1097,6 +1119,7 @@ def experiment_table2_baselines(resume=False, cleanup=True):
         log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=table2_results[name])
+        clear_checkpoints_by_prefix(f"table2_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
     log(f"  Saved: {OUT}/tables/table2_baselines.json")
@@ -1148,7 +1171,22 @@ def experiment_real_california(resume=False, cleanup=True):
             continue
 
         imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
-        for rep in range(N_REPS):
+        start_rep = 0
+        if resume:
+            batch_prefix = f"california_{_sanitize_ckpt_name(name)}_batch_"
+            for batch_end in range(N_REPS, 0, -10):
+                batch_name = f"{batch_prefix}{batch_end}"
+                if has_checkpoint(batch_name, CKPT_DIR):
+                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                    imp_runs = cached['imp_runs']
+                    rmse_runs = cached['rmse_runs']
+                    ablation_runs = cached['ablation_runs']
+                    keff_runs = cached['keff_runs']
+                    start_rep = cached['completed_reps']
+                    log(f"    Resuming {name} from rep {start_rep}")
+                    break
+
+        for rep in range(start_rep, N_REPS):
             rep_seed = SEED + rep
 
             # D2: Re-split and re-fit scaler per rep
@@ -1220,6 +1258,14 @@ def experiment_real_california(resume=False, cleanup=True):
             ablation_runs.append(abl)
             if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
                 keff_runs.append(len(m.selected_indices_))
+            if (rep + 1) % 10 == 0:
+                save_checkpoint(
+                    f"california_{_sanitize_ckpt_name(name)}_batch_{rep+1}",
+                    checkpoint_dir=CKPT_DIR,
+                    imp_runs=imp_runs, rmse_runs=rmse_runs,
+                    ablation_runs=ablation_runs, keff_runs=keff_runs,
+                    completed_reps=rep + 1,
+                )
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
@@ -1242,6 +1288,7 @@ def experiment_real_california(resume=False, cleanup=True):
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=cal_results[name])
+        clear_checkpoints_by_prefix(f"california_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
     _log_pairwise_significance(cal_results, 'DASH (MaxMin)', cal_methods, 'California Housing')
@@ -1305,7 +1352,21 @@ def experiment_real_breast_cancer(resume=False, cleanup=True):
             continue
 
         imp_runs, ablation_runs, keff_runs = [], [], []
-        for rep in range(N_REPS):
+        start_rep = 0
+        if resume:
+            batch_prefix = f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_"
+            for batch_end in range(N_REPS, 0, -10):
+                batch_name = f"{batch_prefix}{batch_end}"
+                if has_checkpoint(batch_name, CKPT_DIR):
+                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                    imp_runs = cached['imp_runs']
+                    ablation_runs = cached['ablation_runs']
+                    keff_runs = cached['keff_runs']
+                    start_rep = cached['completed_reps']
+                    log(f"    Resuming {name} from rep {start_rep}")
+                    break
+
+        for rep in range(start_rep, N_REPS):
             rep_seed = SEED + rep
 
             # D2: Re-split and re-fit scaler per rep (avoids scaler leakage)
@@ -1368,6 +1429,13 @@ def experiment_real_breast_cancer(resume=False, cleanup=True):
             ablation_runs.append(abl)
             if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
                 keff_runs.append(len(m.selected_indices_))
+            if (rep + 1) % 10 == 0:
+                save_checkpoint(
+                    f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_{rep+1}",
+                    checkpoint_dir=CKPT_DIR,
+                    imp_runs=imp_runs, ablation_runs=ablation_runs, keff_runs=keff_runs,
+                    completed_reps=rep + 1,
+                )
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
@@ -1388,6 +1456,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=True):
         log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=bc_results[name])
+        clear_checkpoints_by_prefix(f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(bc_results, 'DASH (MaxMin)', bc_methods, 'Breast Cancer')
@@ -1459,7 +1528,22 @@ def experiment_real_superconductor(resume=False, cleanup=True):
             continue
 
         imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
-        for rep in range(N_REPS):
+        start_rep = 0
+        if resume:
+            batch_prefix = f"superconductor_{_sanitize_ckpt_name(name)}_batch_"
+            for batch_end in range(N_REPS, 0, -10):
+                batch_name = f"{batch_prefix}{batch_end}"
+                if has_checkpoint(batch_name, CKPT_DIR):
+                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                    imp_runs = cached['imp_runs']
+                    rmse_runs = cached['rmse_runs']
+                    ablation_runs = cached['ablation_runs']
+                    keff_runs = cached['keff_runs']
+                    start_rep = cached['completed_reps']
+                    log(f"    Resuming {name} from rep {start_rep}")
+                    break
+
+        for rep in range(start_rep, N_REPS):
             rep_seed = SEED + rep
 
             # A4: Separate explain set from test
@@ -1539,6 +1623,14 @@ def experiment_real_superconductor(resume=False, cleanup=True):
             ablation_runs.append(abl)
             if hasattr(m, 'selected_indices_') and m.selected_indices_ is not None:
                 keff_runs.append(len(m.selected_indices_))
+            if (rep + 1) % 10 == 0:
+                save_checkpoint(
+                    f"superconductor_{_sanitize_ckpt_name(name)}_batch_{rep+1}",
+                    checkpoint_dir=CKPT_DIR,
+                    imp_runs=imp_runs, rmse_runs=rmse_runs,
+                    ablation_runs=ablation_runs, keff_runs=keff_runs,
+                    completed_reps=rep + 1,
+                )
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
@@ -1561,6 +1653,7 @@ def experiment_real_superconductor(resume=False, cleanup=True):
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
             f"ablation={np.mean(ablation_runs):.4f}")
         save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=sc_results[name])
+        clear_checkpoints_by_prefix(f"superconductor_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(sc_results, 'DASH (MaxMin)', sc_methods, 'Superconductor')
