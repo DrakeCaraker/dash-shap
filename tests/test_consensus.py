@@ -1,6 +1,6 @@
 """Tests for dash_shap.core.consensus module (Stage 4: SHAP aggregation)."""
+
 import numpy as np
-import pytest
 from xgboost import XGBRegressor
 from dash_shap.core.consensus import compute_consensus, _compute_shap_for_model
 
@@ -10,8 +10,10 @@ def _train_models(X_train, y_train, n=3, seed=42):
     models = {}
     for i in range(n):
         m = XGBRegressor(
-            n_estimators=20, max_depth=3,
-            colsample_bytree=0.5, random_state=seed + i,
+            n_estimators=20,
+            max_depth=3,
+            colsample_bytree=0.5,
+            random_state=seed + i,
         )
         m.fit(X_train, y_train)
         models[i] = m
@@ -46,8 +48,12 @@ class TestComputeConsensus:
         models = _train_models(d["X_train"], d["y_train"], n=3)
         selected = [0, 1, 2]
         consensus, all_shap = compute_consensus(
-            models, selected, d["X_explain"],
-            background_size=20, seed=42, verbose=False,
+            models,
+            selected,
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
         )
         N, P = d["X_explain"].shape
         assert consensus.shape == (N, P)
@@ -57,8 +63,12 @@ class TestComputeConsensus:
         d = synthetic_small
         models = _train_models(d["X_train"], d["y_train"], n=3)
         consensus, all_shap = compute_consensus(
-            models, [0, 1, 2], d["X_explain"],
-            background_size=20, seed=42, verbose=False,
+            models,
+            [0, 1, 2],
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
         )
         expected = np.mean(all_shap, axis=0)
         np.testing.assert_array_almost_equal(consensus, expected)
@@ -67,8 +77,12 @@ class TestComputeConsensus:
         d = synthetic_small
         models = _train_models(d["X_train"], d["y_train"], n=1)
         consensus, all_shap = compute_consensus(
-            models, [0], d["X_explain"],
-            background_size=20, seed=42, verbose=False,
+            models,
+            [0],
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
         )
         np.testing.assert_array_almost_equal(consensus, all_shap[0])
 
@@ -76,12 +90,20 @@ class TestComputeConsensus:
         d = synthetic_small
         models = _train_models(d["X_train"], d["y_train"], n=3)
         c1, _ = compute_consensus(
-            models, [0, 1, 2], d["X_explain"],
-            background_size=20, seed=42, verbose=False,
+            models,
+            [0, 1, 2],
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
         )
         c2, _ = compute_consensus(
-            models, [0, 1, 2], d["X_explain"],
-            background_size=20, seed=42, verbose=False,
+            models,
+            [0, 1, 2],
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
         )
         np.testing.assert_array_almost_equal(c1, c2)
 
@@ -90,12 +112,20 @@ class TestComputeConsensus:
         d = synthetic_small
         models = _train_models(d["X_train"], d["y_train"], n=2)
         c1, _ = compute_consensus(
-            models, [0, 1], d["X_explain"],
-            background_size=20, seed=None, verbose=False,
+            models,
+            [0, 1],
+            d["X_explain"],
+            background_size=20,
+            seed=None,
+            verbose=False,
         )
         c2, _ = compute_consensus(
-            models, [0, 1], d["X_explain"],
-            background_size=20, seed=None, verbose=False,
+            models,
+            [0, 1],
+            d["X_explain"],
+            background_size=20,
+            seed=None,
+            verbose=False,
         )
         np.testing.assert_array_almost_equal(c1, c2)
 
@@ -104,12 +134,22 @@ class TestComputeConsensus:
         d = synthetic_small
         models = _train_models(d["X_train"], d["y_train"], n=3)
         c_seq, _ = compute_consensus(
-            models, [0, 1, 2], d["X_explain"],
-            background_size=20, seed=42, verbose=False, n_jobs=1,
+            models,
+            [0, 1, 2],
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
+            n_jobs=1,
         )
         c_par, _ = compute_consensus(
-            models, [0, 1, 2], d["X_explain"],
-            background_size=20, seed=42, verbose=False, n_jobs=-1,
+            models,
+            [0, 1, 2],
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
+            n_jobs=-1,
         )
         np.testing.assert_array_almost_equal(c_seq, c_par)
 
@@ -118,8 +158,12 @@ class TestComputeConsensus:
         d = synthetic_small
         models = _train_models(d["X_train"], d["y_train"], n=2)
         consensus, all_shap = compute_consensus(
-            models, [0, 1], d["X_explain"],
-            background_size=9999, seed=42, verbose=False,
+            models,
+            [0, 1],
+            d["X_explain"],
+            background_size=9999,
+            seed=42,
+            verbose=False,
         )
         assert consensus.shape == d["X_explain"].shape
 
@@ -128,7 +172,11 @@ class TestComputeConsensus:
         d = synthetic_small
         models = _train_models(d["X_train"], d["y_train"], n=5)
         consensus, all_shap = compute_consensus(
-            models, [1, 3], d["X_explain"],
-            background_size=20, seed=42, verbose=False,
+            models,
+            [1, 3],
+            d["X_explain"],
+            background_size=20,
+            seed=42,
+            verbose=False,
         )
         assert all_shap.shape[0] == 2  # only 2 models

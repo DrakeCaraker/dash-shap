@@ -2,6 +2,7 @@
 
 Exactly 3 functions. Single-extension utilities stay in their own module.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
@@ -33,7 +34,7 @@ def per_model_rankings(result: "DASHResult") -> np.ndarray:
     """
     importance = per_model_importance(result)  # (K, P)
     # argsort descending, then convert to 1-based ranks
-    order = np.argsort(-importance, axis=1)    # (K, P)
+    order = np.argsort(-importance, axis=1)  # (K, P)
     K, P = importance.shape
     ranks = np.empty_like(order)
     for k in range(K):

@@ -1,7 +1,7 @@
 """DASHPipeline: End-to-end orchestration of all five DASH stages."""
+
 import numpy as np
 import time
-from typing import Dict, List, Optional
 
 from dash_shap.core.population import generate_model_population, DEFAULT_SEARCH_SPACE
 from dash_shap.core.filtering import performance_filter
@@ -207,15 +207,14 @@ class DASHPipeline:
         """
         if X_ref is None:
             import warnings
+
             warnings.warn(
                 "X_ref not provided; defaulting to X_val. Consider using a "
                 "held-out reference set (X_explain) to avoid potential confounds.",
                 UserWarning,
             )
             X_ref = X_val
-        self.feature_names_ = feature_names or [
-            f"f{i}" for i in range(X_train.shape[1])
-        ]
+        self.feature_names_ = feature_names or [f"f{i}" for i in range(X_train.shape[1])]
 
         # Stage 1: Population Generation
         t0 = time.time()
@@ -224,9 +223,16 @@ class DASHPipeline:
             print("DASH Stage 1: Population Generation")
             print("=" * 60)
         self.models_, self.val_scores_, self.configs_ = generate_model_population(
-            X_train, y_train, X_val, y_val,
-            M=self.M, task=self.task, search_space=self.search_space,
-            n_jobs=self.n_jobs, seed=self.seed, verbose=self.verbose,
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            M=self.M,
+            task=self.task,
+            search_space=self.search_space,
+            n_jobs=self.n_jobs,
+            seed=self.seed,
+            verbose=self.verbose,
         )
         self.timing_["stage1_training"] = time.time() - t0
 
@@ -235,14 +241,17 @@ class DASHPipeline:
         if self.verbose:
             print(f"\nDASH Stage 2: Performance Filtering (epsilon={self.epsilon})")
         self.filtered_indices_ = performance_filter(
-            self.val_scores_, epsilon=self.epsilon,
-            higher_is_better=True, mode=self.epsilon_mode,
+            self.val_scores_,
+            epsilon=self.epsilon,
+            higher_is_better=True,
+            mode=self.epsilon_mode,
             verbose=self.verbose,
         )
         self.timing_["stage2_filtering"] = time.time() - t0
         n_filtered = len(self.filtered_indices_)
         if n_filtered < self.K:
             import warnings
+
             warnings.warn(
                 f"Only {n_filtered} models passed the performance filter (K={self.K}). "
                 f"Consider increasing epsilon (current: {self.epsilon}) or switching to "
@@ -250,17 +259,16 @@ class DASHPipeline:
                 UserWarning,
             )
         if n_filtered < 2:
-            raise ValueError(
-                f"Only {n_filtered} models passed filter. "
-                f"Increase epsilon."
-            )
+            raise ValueError(f"Only {n_filtered} models passed filter. Increase epsilon.")
 
         # Stage 3: Diversity Selection
         t0 = time.time()
         if self.verbose:
             print(f"\nDASH Stage 3: Diversity Selection ({self.selection_method})")
         imp_vecs = get_preliminary_importance(
-            self.models_, self.filtered_indices_, X_ref,
+            self.models_,
+            self.filtered_indices_,
+            X_ref,
             method=self.preliminary_importance_method,
             seed=self.seed,
         )
@@ -268,24 +276,33 @@ class DASHPipeline:
 
         if self.selection_method == "maxmin":
             self.selected_indices_ = greedy_maxmin_selection(
-                imp_vecs, filt_scores, K=self.K,
-                delta=self.delta, verbose=self.verbose,
+                imp_vecs,
+                filt_scores,
+                K=self.K,
+                delta=self.delta,
+                verbose=self.verbose,
             )
         elif self.selection_method == "cluster":
             self.selected_indices_ = cluster_coverage_selection(
-                imp_vecs, filt_scores, X_train,
-                tau=self.tau, K=self.K, verbose=self.verbose,
+                imp_vecs,
+                filt_scores,
+                X_train,
+                tau=self.tau,
+                K=self.K,
+                verbose=self.verbose,
             )
         elif self.selection_method == "dedup":
             self.selected_indices_ = deduplication_selection(
-                imp_vecs, filt_scores, verbose=self.verbose,
+                imp_vecs,
+                filt_scores,
+                verbose=self.verbose,
             )
             if len(self.selected_indices_) > self.K:
                 self.selected_indices_ = sorted(
                     self.selected_indices_,
                     key=lambda i: self.val_scores_[i],
                     reverse=True,
-                )[:self.K]
+                )[: self.K]
         self.timing_["stage3_selection"] = time.time() - t0
 
         # Stage 4: Consensus SHAP
@@ -293,9 +310,13 @@ class DASHPipeline:
         if self.verbose:
             print(f"\nDASH Stage 4: Consensus SHAP (K={len(self.selected_indices_)})")
         self.consensus_matrix_, self.all_shap_matrices_ = compute_consensus(
-            self.models_, self.selected_indices_, X_ref,
-            background_size=self.background_size, seed=self.seed,
-            verbose=self.verbose, n_jobs=self.n_jobs,
+            self.models_,
+            self.selected_indices_,
+            X_ref,
+            background_size=self.background_size,
+            seed=self.seed,
+            verbose=self.verbose,
+            n_jobs=self.n_jobs,
         )
         self.timing_["stage4_shap"] = time.time() - t0
 
@@ -303,13 +324,12 @@ class DASHPipeline:
         t0 = time.time()
         if self.verbose:
             print("\nDASH Stage 5: Stability Diagnostics")
-        _, self.variance_matrix_, self.fsi_, self.global_importance_ = (
-            compute_diagnostics(self.all_shap_matrices_)
-        )
+        _, self.variance_matrix_, self.fsi_, self.global_importance_ = compute_diagnostics(self.all_shap_matrices_)
         self.timing_["stage5_diagnostics"] = time.time() - t0
 
         # Build DASHResult (additive — all existing attributes unchanged)
         from dash_shap.core.result import DASHResult
+
         self.result_ = DASHResult.from_shap_matrices(
             self.all_shap_matrices_,
             feature_names=self.feature_names_,
@@ -348,9 +368,7 @@ class DASHPipeline:
         """
         attribution_matrices = np.asarray(attribution_matrices, dtype=float)
         if attribution_matrices.ndim != 3:
-            raise ValueError(
-                f"attribution_matrices must be 3D (M, n_ref, P), got {attribution_matrices.ndim}D"
-            )
+            raise ValueError(f"attribution_matrices must be 3D (M, n_ref, P), got {attribution_matrices.ndim}D")
         M_in, n_ref, P = attribution_matrices.shape
 
         # Normalise val_scores to dict {int: float}
@@ -365,8 +383,10 @@ class DASHPipeline:
 
         # Stage 2: Performance Filtering
         self.filtered_indices_ = performance_filter(
-            self.val_scores_, epsilon=self.epsilon,
-            higher_is_better=True, mode=self.epsilon_mode,
+            self.val_scores_,
+            epsilon=self.epsilon,
+            higher_is_better=True,
+            mode=self.epsilon_mode,
             verbose=self.verbose,
         )
 
@@ -375,7 +395,10 @@ class DASHPipeline:
         filt_scores = {i: self.val_scores_[i] for i in self.filtered_indices_}
         self.selected_indices_ = greedy_maxmin_selection(
             {i: prelim_importance[i] for i in self.filtered_indices_},
-            filt_scores, K=self.K, delta=self.delta, verbose=self.verbose,
+            filt_scores,
+            K=self.K,
+            delta=self.delta,
+            verbose=self.verbose,
         )
 
         # Stage 4: Consensus (just average the selected attribution matrices)
@@ -384,12 +407,11 @@ class DASHPipeline:
         self.consensus_matrix_ = np.mean(selected, axis=0)  # (n_ref, P)
 
         # Stage 5: Diagnostics
-        _, self.variance_matrix_, self.fsi_, self.global_importance_ = (
-            compute_diagnostics(self.all_shap_matrices_)
-        )
+        _, self.variance_matrix_, self.fsi_, self.global_importance_ = compute_diagnostics(self.all_shap_matrices_)
 
         # Build DASHResult
         from dash_shap.core.result import DASHResult
+
         self.result_ = DASHResult.from_shap_matrices(
             self.all_shap_matrices_,
             feature_names=self.feature_names_,
@@ -406,13 +428,18 @@ class DASHPipeline:
 
     def get_fsi(self):
         return FeatureStabilityIndex(
-            self.fsi_, self.global_importance_, self.feature_names_,
+            self.fsi_,
+            self.global_importance_,
+            self.feature_names_,
         )
 
     def plot_importance_stability(self, groups=None, **kwargs):
         return ImportanceStabilityPlot.plot(
-            self.global_importance_, self.fsi_,
-            feature_names=self.feature_names_, groups=groups, **kwargs,
+            self.global_importance_,
+            self.fsi_,
+            feature_names=self.feature_names_,
+            groups=groups,
+            **kwargs,
         )
 
     def get_importance_ranking(self):

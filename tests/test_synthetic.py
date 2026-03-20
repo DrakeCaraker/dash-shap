@@ -1,4 +1,5 @@
 """Tests for dash_shap.experiments.synthetic data generators."""
+
 import numpy as np
 from dash_shap.experiments.synthetic import (
     make_correlation_matrix,
@@ -55,7 +56,12 @@ def test_generate_synthetic_nonlinear_shapes():
 
 def test_generate_synthetic_linear_overlapping():
     result = generate_synthetic_linear(
-        N=200, P=10, group_size=5, rho=0.9, seed=0, structure="overlapping",
+        N=200,
+        P=10,
+        group_size=5,
+        rho=0.9,
+        seed=0,
+        structure="overlapping",
     )
     X_train, _, _, _, _, _, _, _, groups, true_imp, meta = result
     assert meta["structure"] == "overlapping"

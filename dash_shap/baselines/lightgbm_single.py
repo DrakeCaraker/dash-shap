@@ -1,4 +1,5 @@
 """Baseline: LightGBM Single Best — tests whether leaf-wise GBM exhibits first-mover bias."""
+
 import numpy as np
 
 from dash_shap.utils.shap_helpers import compute_global_importance
@@ -23,8 +24,7 @@ class LightGBMSingleBestBaseline:
         self.global_importance_ = None
         self.fsi_ = None
 
-    def fit(self, X_train, y_train, X_val, y_val, X_ref=None,
-            background_size=100, seed=None):
+    def fit(self, X_train, y_train, X_val, y_val, X_ref=None, background_size=100, seed=None):
         """Fit a LightGBM model and compute interventional TreeSHAP importance.
 
         Parameters
@@ -64,7 +64,9 @@ class LightGBMSingleBestBaseline:
             bg = X_ref[:n_bg]
 
         explainer = shap.TreeExplainer(
-            self.model_, data=bg, feature_perturbation="interventional",
+            self.model_,
+            data=bg,
+            feature_perturbation="interventional",
         )
         sv = explainer.shap_values(X_ref, check_additivity=False)
         self.global_importance_ = compute_global_importance(sv)

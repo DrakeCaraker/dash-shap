@@ -1,6 +1,6 @@
 """Tests for Extension 9: Robust Certification."""
+
 import numpy as np
-import pytest
 
 from dash_shap.core.result import DASHResult
 from dash_shap.extensions.certification import robust_certification, CertificationResult
@@ -13,9 +13,7 @@ def _make_stable_result(seed=0):
     base = np.array([4.0, 3.0, 2.0, 1.0])  # descending importance
     noise = rng.standard_normal((K, n_ref, P)) * 0.02
     m = base[np.newaxis, np.newaxis, :] + noise
-    return DASHResult.from_shap_matrices(
-        m, feature_names=["rank1", "rank2", "rank3", "rank4"]
-    )
+    return DASHResult.from_shap_matrices(m, feature_names=["rank1", "rank2", "rank3", "rank4"])
 
 
 class TestRobustCertification:
@@ -37,8 +35,7 @@ class TestRobustCertification:
         for k1, k2 in zip([1, 2, 3], [2, 3, 4]):
             set_k1 = set(cert.certified[k1])
             set_k2 = set(cert.certified[k2])
-            assert set_k1.issubset(set_k2), \
-                f"top-{k1} {set_k1} should be ⊆ top-{k2} {set_k2}"
+            assert set_k1.issubset(set_k2), f"top-{k1} {set_k1} should be ⊆ top-{k2} {set_k2}"
 
     def test_stable_result_certifies_correctly(self):
         """With all K models agreeing on rank order, f0 should be top-1."""
@@ -75,9 +72,5 @@ class TestRobustCertification:
         """certified[k] should exactly match features with max_rank <= k."""
         cert = robust_certification(dash_result, k_values=[1, 2, 3])
         for k in [1, 2, 3]:
-            expected = {
-                dash_result.feature_names[j]
-                for j in range(dash_result.P)
-                if cert.max_ranks[j] <= k
-            }
+            expected = {dash_result.feature_names[j] for j in range(dash_result.P) if cert.max_ranks[j] <= k}
             assert set(cert.certified[k]) == expected

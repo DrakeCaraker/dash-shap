@@ -1,4 +1,5 @@
 """Tests for Extension 2: Partial Orders."""
+
 import numpy as np
 import pytest
 
@@ -12,9 +13,7 @@ def _make_dominant_result(seed=0):
     K, n_ref, P = 15, 30, 4
     m = rng.standard_normal((K, n_ref, P)) * 0.1
     m[:, :, 0] += 10.0  # f0 dominates
-    return DASHResult.from_shap_matrices(
-        m, feature_names=["dominant", "noise1", "noise2", "noise3"]
-    )
+    return DASHResult.from_shap_matrices(m, feature_names=["dominant", "noise1", "noise2", "noise3"])
 
 
 class TestPartialOrder:
@@ -40,16 +39,14 @@ class TestPartialOrder:
             for j in range(P):
                 if i != j:
                     total = po.confidence_matrix[i, j] + po.confidence_matrix[j, i]
-                    assert abs(total - 1.0) < 0.15, \
-                        f"π({i}>{j}) + π({j}>{i}) = {total:.3f}, expected ≈ 1"
+                    assert abs(total - 1.0) < 0.15, f"π({i}>{j}) + π({j}>{i}) = {total:.3f}, expected ≈ 1"
 
     def test_dominant_feature_ranked_first(self):
         """Known dominant feature should have π > 0.9 over all others."""
         result = _make_dominant_result()
         po = partial_order(result)
         # f0 (index 0) should beat f1, f2, f3 with near certainty
-        assert np.all(po.confidence_matrix[0, 1:] > 0.9), \
-            f"dominant feature π values: {po.confidence_matrix[0, 1:]}"
+        assert np.all(po.confidence_matrix[0, 1:] > 0.9), f"dominant feature π values: {po.confidence_matrix[0, 1:]}"
 
     def test_transitivity(self):
         """If A > B and B > C, then A > C (check fraction method)."""
