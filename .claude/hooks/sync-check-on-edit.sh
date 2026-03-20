@@ -11,11 +11,11 @@ for path in files:
     try:
         content = open(path).read()
         configs[path] = {
-            'M': int(re.search(r\"'M':\\s*(\\d+)\", content).group(1)),
-            'K': int(re.search(r\"'K':\\s*(\\d+)\", content).group(1)),
-            'N_REPS': int(re.search(r\"'N_REPS':\\s*(\\d+)\", content).group(1)),
-            'EPSILON': float(re.search(r\"'EPSILON':\\s*([\\d.]+)\", content).group(1)),
-            'DELTA': float(re.search(r\"'DELTA':\\s*([\\d.]+)\", content).group(1)),
+            'M': int(re.search(r'[\"\\x27]M[\"\\x27]:\\s*(\\d+)', content).group(1)),
+            'K': int(re.search(r'[\"\\x27]K[\"\\x27]:\\s*(\\d+)', content).group(1)),
+            'N_REPS': int(re.search(r'[\"\\x27]N_REPS[\"\\x27]:\\s*(\\d+)', content).group(1)),
+            'EPSILON': float(re.search(r'[\"\\x27]EPSILON[\"\\x27]:\\s*([\\d.]+)', content).group(1)),
+            'DELTA': float(re.search(r'[\"\\x27]DELTA[\"\\x27]:\\s*([\\d.]+)', content).group(1)),
             'SEED': int(re.search(r'SEED\\s*=\\s*(\\d+)', content).group(1)),
         }
     except Exception as e:
