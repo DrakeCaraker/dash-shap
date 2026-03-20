@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-slow lint fmt typecheck coverage rebase clean
+.PHONY: test test-fast test-slow lint fmt typecheck coverage ci rebase clean
 
 test:
 	pytest -v
@@ -19,7 +19,10 @@ typecheck:
 	mypy dash_shap/ --ignore-missing-imports --no-error-summary
 
 coverage:
-	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
+	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=80
+
+ci: lint typecheck test coverage
+	@echo "All CI checks passed."
 
 rebase:
 	git fetch origin main
