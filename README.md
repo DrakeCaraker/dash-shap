@@ -111,6 +111,11 @@ Activate the pre-push hook (blocks `.pkl` files and files >10MB):
 git config core.hooksPath .githooks
 ```
 
+**Verify your installation:**
+```bash
+python -c "from dash_shap import DASHPipeline; print('DASH installation OK')"
+```
+
 | Package | Version | Purpose |
 |---|---|---|
 | xgboost | >= 2.0.0 | Gradient boosting models |
@@ -120,14 +125,23 @@ git config core.hooksPath .githooks
 | scipy | >= 1.11.0 | Statistical tests, clustering |
 | joblib | >= 1.3.0 | Parallel model training |
 
+> Dependency versions are specified in `pyproject.toml`. If you encounter version conflicts, `requirements.txt` lists the exact versions used in CI.
+
 ---
 
 ## Quick Start
 
 ```python
-from dash_shap.core.pipeline import DASHPipeline
+from dash_shap import DASHPipeline
+from dash_shap.experiments.synthetic import generate_synthetic_linear
 
-pipeline = DASHPipeline(
+# Generate synthetic data (P=20 features in 4 correlated groups of 5)
+(X_train, y_train, X_val, y_val, X_explain, _,
+ X_test, y_test, groups, true_importance, _) = generate_synthetic_linear(
+    N=2000, P=20, group_size=5, rho=0.9, seed=42
+)
+
+pipe = DASHPipeline(
     M=200,                      # Train 200 diverse models
     K=30,                       # Select up to 30 for consensus
     epsilon=0.08,               # Keep models within 0.08 of best score
@@ -136,16 +150,16 @@ pipeline = DASHPipeline(
 )
 
 # Fit (use a held-out explain set as X_ref, separate from X_test)
-pipeline.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
+pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 
 # Consensus feature importance
-importance = pipeline.global_importance_
-ranking = pipeline.get_importance_ranking()
+importance = pipe.global_importance_
+ranking = pipe.get_importance_ranking()
 
 # Diagnostics — see docs/DIAGNOSTICS.md for interpretation
-fig = pipeline.plot_importance_stability()   # IS plot: 4 quadrants of feature behavior
+fig = pipe.plot_importance_stability()   # IS plot: 4 quadrants of feature behavior
 
-fsi = pipeline.get_fsi()
+fsi = pipe.get_fsi()
 print(fsi.summary(top_k=10))                # Importance + stability per feature
 
 # Quadrant labels: which features are stable vs. collinear?
@@ -155,14 +169,14 @@ robust = [f for f, l in zip(fsi.feature_names, labels) if "Robust" in l]
 # Local disagreement map for the highest-variance observation
 from dash_shap.core.diagnostics import local_disagreement_map
 import numpy as np
-var_per_obs = np.mean(pipeline.variance_matrix_, axis=1)
+var_per_obs = np.mean(pipe.variance_matrix_, axis=1)
 fig = local_disagreement_map(                # Bar chart with cross-model error bars
-    pipeline.all_shap_matrices_, np.argmax(var_per_obs),
-    feature_names=pipeline.feature_names_,
+    pipe.all_shap_matrices_, np.argmax(var_per_obs),
+    feature_names=pipe.feature_names_,
 )
 
 # Ensemble predictions
-predictions = pipeline.get_consensus_ensemble_predictions(X_test)
+predictions = pipe.get_consensus_ensemble_predictions(X_test)
 ```
 
 Diagnostic interpretation: **[Diagnostics Guide](docs/DIAGNOSTICS.md)** | Full API: **[API Reference](docs/API_REFERENCE.md)**
