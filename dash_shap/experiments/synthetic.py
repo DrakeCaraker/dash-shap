@@ -7,6 +7,7 @@ __all__ = [
     "make_correlation_matrix",
     "generate_synthetic_linear",
     "generate_synthetic_nonlinear",
+    "generate_synthetic_asymmetric",
 ]
 
 
@@ -225,3 +226,59 @@ def generate_synthetic_nonlinear(
         "structure": structure,
     }
     return (X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, groups, true_importance, meta)
+
+
+def generate_synthetic_asymmetric(
+    N=5000,
+    rho=0.9,
+    sigma_noise=0.5,
+    seed=42,
+    test_size=0.15,
+    val_size=0.15,
+    explain_size=0.10,
+):
+    """Asymmetric collinear DGP: only f0 has nonzero coefficient, f1 is a collinear proxy.
+
+    Causal structure:
+        y = 2 * f0 + noise
+        f1 = rho * f0 + sqrt(1 - rho^2) * z   (z ~ N(0,1), independent)
+
+    True importance: f0 has all signal, f1 has none. Under collinearity,
+    tree models may spuriously assign importance to f1.
+
+    Returns
+    -------
+    X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test,
+    true_importance, meta
+
+    Notes
+    -----
+    No ``groups`` return value (only 2 features). ``true_importance`` is [1.0, 0.0]
+    (normalized so f0=1.0).
+    """
+    rng = np.random.RandomState(seed)
+    f0 = rng.normal(0, 1, N)
+    z = rng.normal(0, 1, N)
+    f1 = rho * f0 + np.sqrt(1 - rho**2) * z
+    X = np.column_stack([f0, f1])
+    y = 2.0 * f0 + rng.normal(0, sigma_noise, N)
+    true_importance = np.array([1.0, 0.0])
+
+    # Four-way split: train / val / explain / test
+    X_tv, X_test, y_tv, y_test = train_test_split(X, y, test_size=test_size, random_state=seed)
+    remaining = 1 - test_size
+    val_frac = val_size / remaining
+    X_te2, X_val, y_te2, y_val = train_test_split(X_tv, y_tv, test_size=val_frac, random_state=seed)
+    explain_frac = explain_size / (remaining - val_size)
+    X_train, X_explain, y_train, y_explain = train_test_split(X_te2, y_te2, test_size=explain_frac, random_state=seed)
+
+    meta = {
+        "dgp": "asymmetric",
+        "N": N,
+        "P": 2,
+        "rho": rho,
+        "sigma_noise": sigma_noise,
+        "seed": seed,
+        "causal_structure": "y = 2*f0 + noise; f1 = rho*f0 + sqrt(1-rho^2)*z",
+    }
+    return (X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, true_importance, meta)

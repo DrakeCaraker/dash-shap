@@ -86,6 +86,11 @@ def feature_groups(
     threshold : float
         Substitutability threshold in (0, 1]. Features with mean SHAP correlation
         ≥ threshold are grouped together. Higher threshold → more, smaller groups.
+
+        **Note**: SHAP co-variation reflects shared input signal, not causal
+        substitutability. Features in the same group tend to capture overlapping
+        variance; they are not necessarily interchangeable in the model or in
+        the data-generating process.
     method : str
         Currently only ``"shap_substitutability"`` is supported.
 

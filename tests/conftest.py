@@ -151,3 +151,14 @@ def dash_result():
     assert result.global_importance[3] < result.fsi[3], "f3 should be QIV: FSI exceeds importance"
 
     return result
+
+
+@pytest.fixture(scope="session", autouse=True)
+def matplotlib_agg_backend():
+    """Force Agg backend for all plot tests to avoid display errors."""
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+    except ImportError:
+        pass

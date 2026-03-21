@@ -250,6 +250,28 @@ def test_tost_equivalence_large_diff():
     assert equiv is False
 
 
+def test_tost_equivalence_identical_adaptive():
+    """Nearly identical arrays should always be equivalent with adaptive delta."""
+    from dash_shap.evaluation import tost_equivalence
+
+    a = np.array([0.9, 0.95, 0.92, 0.88, 0.91])
+    b = a + 1e-6  # nearly identical — adaptive delta should declare equivalent
+    _, _, _, _, equiv = tost_equivalence(a, b)  # delta=None (adaptive)
+    assert equiv is True
+
+
+def test_tost_equivalence_offset_stability_scale():
+    """On stability-scale data (0-1), +0.5 offset should NOT be equivalent at adaptive delta."""
+    from dash_shap.evaluation import tost_equivalence
+
+    # Stability data in range [0, 1]
+    a = np.array([0.9, 0.95, 0.92, 0.88, 0.91])
+    b = a + 0.5  # Offset by 0.5 on stability scale (clipping to valid range would be 1.0)
+    _, _, _, _, equiv = tost_equivalence(a, b)  # delta=None (adaptive)
+    # With adaptive delta, this large offset should NOT be declared equivalent
+    assert equiv is False
+
+
 def test_bootstrap_stability_test_significant():
     """Clearly different importance vectors should yield significant p-value."""
     from dash_shap.evaluation import bootstrap_stability_test

@@ -1,0 +1,34 @@
+{
+  "1": {
+    "DASH": {
+      "stability": NaN,
+      "stability_se": NaN,
+      "accuracy_mean": NaN,
+      "accuracy_std": NaN,
+      "n_successful": 0
+    },
+    "SR": {
+      "stability": 0.9478511404561825,
+      "stability_se": NaN,
+      "accuracy_mean": 0.9749208784289982,
+      "accuracy_std": 0.006141409035701495,
+      "n_successful": 2
+    }
+  },
+  "5": {
+    "DASH": {
+      "stability": 0.9759903961584634,
+      "stability_se": NaN,
+      "accuracy_mean": 0.9855362010350057,
+      "accuracy_std": 0.010918060507913725,
+      "n_successful": 2
+    },
+    "SR": {
+      "stability": 0.9804081632653061,
+      "stability_se": NaN,
+      "accuracy_mean": 0.9872250023586887,
+      "accuracy_std": 0.005117840863084645,
+      "n_successful": 2
+    }
+  }
+}
