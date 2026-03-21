@@ -22,6 +22,7 @@ Available experiments:
     real_superconductor    Superconductor UCI benchmark
     epsilon_sensitivity    Epsilon sensitivity analysis
     ablation               Ablation studies (M, K, epsilon, delta)
+    k_sweep_independence   K sweep: stability vs K for DASH vs RandomSelection
     variance_decomposition Variance decomposition (data vs model variance)
     first_mover_visualization First-mover bias concentration figure
     first_mover_bias       First-mover bias isolation (concentration vs tree count)
@@ -2574,11 +2575,14 @@ def plot_k_sweep_independence(k_values, results):
     log(f"  Saved: {OUT}/figures/k_sweep_independence.png")
 
 
-def experiment_k_sweep_independence(k_values=None, n_reps=20, seed=42):
+def experiment_k_sweep_independence(k_values=None, n_reps=None, seed=42):
     """K sweep: stability and DGP agreement vs K for DASH and SR.
 
     For each K, run DASH and RandomSelection with fixed M=200.
     """
+    if n_reps is None:
+        n_reps = N_REPS
+
     if k_values is None:
         k_values = [1, 3, 5, 10, 20, 30]
 
@@ -2592,6 +2596,10 @@ def experiment_k_sweep_independence(k_values=None, n_reps=20, seed=42):
     feature_names = make_feature_names()
     results = {}
 
+    def _fmt(v: float) -> str:
+        """Format float values for logging."""
+        return f"{v:.4f}" if not np.isnan(v) else "nan"
+
     for k_val in k_values:
         log(f"\n--- K={k_val} ---")
         dash_imp_runs: list = []
@@ -2600,6 +2608,7 @@ def experiment_k_sweep_independence(k_values=None, n_reps=20, seed=42):
         sr_acc_runs: list = []
 
         for rep in range(n_reps):
+            log(f"  K={k_val}  Rep {rep+1}/{n_reps}")
             rep_seed = seed + rep
             Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
                 N=5000, rho=0.9, seed=rep_seed
@@ -2646,7 +2655,7 @@ def experiment_k_sweep_independence(k_values=None, n_reps=20, seed=42):
         if len(dash_imp_runs) >= 2:
             try:
                 dash_stab, dash_se, _, _ = stability_bootstrap_ci(dash_imp_runs)
-            except (ValueError, RuntimeWarning):
+            except ValueError:
                 dash_stab = importance_stability(dash_imp_runs)
                 dash_se = float("nan")
         else:
@@ -2656,7 +2665,7 @@ def experiment_k_sweep_independence(k_values=None, n_reps=20, seed=42):
         if len(sr_imp_runs) >= 2:
             try:
                 sr_stab, sr_se, _, _ = stability_bootstrap_ci(sr_imp_runs)
-            except (ValueError, RuntimeWarning):
+            except ValueError:
                 sr_stab = importance_stability(sr_imp_runs)
                 sr_se = float("nan")
         else:
@@ -2681,9 +2690,6 @@ def experiment_k_sweep_independence(k_values=None, n_reps=20, seed=42):
                 "n_successful": len(sr_imp_runs),
             },
         }
-
-        def _fmt(v: float) -> str:
-            return f"{v:.4f}" if not np.isnan(v) else "nan"
 
         log(
             f"  K={k_val}  DASH: stab={_fmt(dash_stab)}±{_fmt(dash_se)}  acc={_fmt(dash_acc_mean)}"
