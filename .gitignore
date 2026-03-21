@@ -36,3 +36,7 @@ venv/
 __pycache__/
 *.pyc
 .worktrees/
+
+# Private strategy documents (never commit)
+docs/private/
+docs/TMLR_cover_letter_draft.md

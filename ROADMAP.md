@@ -46,7 +46,7 @@ DASH already stores the full K x N' x P tensor of SHAP values across models. Cur
 
 No single importance ranking can simultaneously satisfy stability (invariance to model specification within the Rashomon set), accuracy (recovery of the true importance ordering), and completeness (total order over all features) when features are collinear. This is a fundamental limitation analogous to Arrow's impossibility theorem for social choice.
 
-**Proof strategy:** In the linear Gaussian case with block-diagonal correlation, there exist models in the Rashomon set that achieve the same loss but attribute different importances to features within a correlated group. Any estimator producing a total order must violate stability, accuracy, or completeness. The constructive resolution: relax completeness to a partial order (Paper 2) and you recover stability and accuracy. The FSI identifies exactly which features require the relaxation.
+**Proof strategy:** [Documented privately. Key claim: no single importance ranking can simultaneously satisfy stability, accuracy, and completeness when features are collinear. Relaxing completeness to a partial order recovers the other two properties.]
 
 **Empirical validation:** From the DASH population, plot each model's accuracy vs stability. Show they trace a Pareto frontier that no single model escapes. Show DASH's consensus sits outside this frontier because it aggregates rather than selects.
 
