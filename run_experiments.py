@@ -169,7 +169,7 @@ COLORS = {
 
 MARKERS = {
     "Single Best": "s",
-    "Single Best (M=200)": "S",
+    "Single Best (M=200)": "*",
     "Large Single Model": "X",
     "LSM (Tuned)": "x",
     "Ensemble SHAP": "D",
