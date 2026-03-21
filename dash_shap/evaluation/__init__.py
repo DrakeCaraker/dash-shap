@@ -222,17 +222,23 @@ def holm_bonferroni(p_values):
     return adjusted
 
 
-def tost_equivalence(a, b, delta=0.5):
+def tost_equivalence(a, b, delta=None):
     """Two One-Sided T-test for equivalence (paired).
 
     Tests H0: |mean(a) - mean(b)| >= delta vs H1: |mean(a) - mean(b)| < delta.
+
+    When delta is None, computes it adaptively as 5% of the pooled mean of
+    absolute values, with a lower bound of 0.01. For stability scores
+    (range 0–1), a reasonable delta is 0.02 (2 percentage points).
 
     Parameters
     ----------
     a, b : array-like
         Paired observations.
-    delta : float
-        Equivalence margin (default 0.5).
+    delta : float or None
+        Equivalence margin. If None, computed as max(0.01, 0.05 * pooled_mean),
+        where pooled_mean is the mean of absolute values across both arrays.
+        Default: None (adaptive).
 
     Returns
     -------
@@ -250,6 +256,11 @@ def tost_equivalence(a, b, delta=0.5):
     from scipy.stats import ttest_rel
 
     a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+
+    # Compute adaptive delta if not provided
+    if delta is None:
+        pooled_mean = (np.mean(np.abs(a)) + np.mean(np.abs(b))) / 2.0
+        delta = max(0.01, 0.05 * pooled_mean)
 
     # Test 1: H0: mean(a-b) >= delta  vs  H1: mean(a-b) < delta
     t1, p1_two = ttest_rel(a - delta, b)
