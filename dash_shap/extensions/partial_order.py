@@ -144,20 +144,17 @@ def partial_order(
 
     elif method == "bootstrap":
         rng = np.random.default_rng(seed)
-        # Bootstrap: resample K models, compute π(i>j) for each replicate
-        adjacency = np.zeros((P, P), dtype=bool)
-        for _ in range(n_boot):
+        # Bootstrap CI: for each replicate, compute π_b(i>j) = fraction of
+        # resampled models where rank_i < rank_j. adjacency[i,j] = True iff
+        # the lower alpha-quantile of {π_b(i>j)} > 0.5 (one-sided bootstrap test).
+        boot_confidence = np.zeros((n_boot, P, P))
+        for b in range(n_boot):
             idx = rng.integers(0, K, size=K)
-            boot_ranks = ranks[idx]  # (K, P)
-            pi_boot = np.zeros((P, P))
-            for i in range(P):
-                for j in range(P):
-                    if i != j:
-                        pi_boot[i, j] = np.mean(boot_ranks[:, i] < boot_ranks[:, j])
-            # Not implemented as a proper per-pair bootstrap CI here;
-            # use fraction method for simplicity and efficiency
-        # Fall back to fraction-based adjacency for now
-        adjacency = confidence_matrix > (1 - alpha)
+            boot_ranks = ranks[idx, :]  # (K, P) resampled
+            # Vectorized: comparison across all (i, j) pairs at once
+            boot_confidence[b] = np.mean(boot_ranks[:, :, np.newaxis] < boot_ranks[:, np.newaxis, :], axis=0)
+        lower_ci = np.quantile(boot_confidence, alpha, axis=0)
+        adjacency = lower_ci > 0.5
 
     else:
         raise ValueError(f"method must be 'fraction' or 'bootstrap', got {method!r}")
