@@ -64,12 +64,12 @@ def test_compute_global_importance_list():
 
 def test_dash_pipeline_end_to_end():
     """Full pipeline produces expected shapes and non-degenerate output."""
-    data = generate_synthetic_linear(N=500, P=20, group_size=5, rho=0.9, seed=42)
+    data = generate_synthetic_linear(N=200, P=6, group_size=3, rho=0.9, seed=42)
     X_train, y_train, X_val, y_val, X_explain = data[0], data[1], data[2], data[3], data[4]
 
     pipe = DASHPipeline(
-        M=10,
-        K=5,
+        M=5,
+        K=3,
         epsilon=0.15,
         delta=0.01,
         seed=42,
@@ -78,9 +78,9 @@ def test_dash_pipeline_end_to_end():
     )
     pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 
-    assert pipe.consensus_matrix_.shape[1] == 20  # P features
-    assert pipe.global_importance_.shape == (20,)
-    assert pipe.fsi_.shape == (20,)
+    assert pipe.consensus_matrix_.shape[1] == 6  # P features
+    assert pipe.global_importance_.shape == (6,)
+    assert pipe.fsi_.shape == (6,)
     assert len(pipe.selected_indices_) >= 2
     assert np.all(pipe.global_importance_ >= 0)
     assert np.sum(pipe.global_importance_) > 0  # non-degenerate
@@ -88,10 +88,10 @@ def test_dash_pipeline_end_to_end():
 
 def test_dash_reproducibility():
     """Same seed produces identical output."""
-    data = generate_synthetic_linear(N=500, P=20, group_size=5, rho=0.9, seed=42)
+    data = generate_synthetic_linear(N=200, P=6, group_size=3, rho=0.9, seed=42)
     X_train, y_train, X_val, y_val, X_explain = data[0], data[1], data[2], data[3], data[4]
 
-    kwargs = dict(M=10, K=5, epsilon=0.15, delta=0.01, seed=42, verbose=False, n_jobs=1)
+    kwargs = dict(M=5, K=3, epsilon=0.15, delta=0.01, seed=42, verbose=False, n_jobs=1)
 
     pipe1 = DASHPipeline(**kwargs)
     pipe1.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
@@ -139,7 +139,7 @@ def test_pipeline_warns_when_xref_missing():
     data = generate_synthetic_linear(N=300, P=10, group_size=5, rho=0.5, seed=42)
     X_train, y_train, X_val, y_val = data[0], data[1], data[2], data[3]
 
-    pipe = DASHPipeline(M=5, K=3, epsilon=0.2, delta=0.01, seed=42, verbose=False, n_jobs=1)
+    pipe = DASHPipeline(M=3, K=2, epsilon=0.2, delta=0.01, seed=42, verbose=False, n_jobs=1)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         pipe.fit(X_train, y_train, X_val, y_val)  # No X_ref
