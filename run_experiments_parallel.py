@@ -2458,9 +2458,9 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=True):
     methods = ["Single Best", "DASH (MaxMin)"]
     importances = {m: {} for m in methods}
 
-    log(f"  Running {R}×{R}={R*R} cells...")
+    log(f"  Running {R}×{R}={R * R} cells...")
     for di, data_seed in enumerate(data_seeds):
-        log(f"  Data seed {di+1}/{R} (seed={data_seed})")
+        log(f"  Data seed {di + 1}/{R} (seed={data_seed})")
         Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
             N=5000, rho=VD_RHO, seed=data_seed
         )
