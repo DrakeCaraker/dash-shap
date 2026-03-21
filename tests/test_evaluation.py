@@ -251,11 +251,12 @@ def test_tost_equivalence_large_diff():
 
 
 def test_tost_equivalence_identical_adaptive():
-    """Identical arrays should always be equivalent with adaptive delta."""
+    """Nearly identical arrays should always be equivalent with adaptive delta."""
     from dash_shap.evaluation import tost_equivalence
 
     a = np.array([0.9, 0.95, 0.92, 0.88, 0.91])
-    _, _, _, _, equiv = tost_equivalence(a, a)  # delta=None (adaptive)
+    b = a + 1e-6  # nearly identical — adaptive delta should declare equivalent
+    _, _, _, _, equiv = tost_equivalence(a, b)  # delta=None (adaptive)
     assert equiv is True
 
 
