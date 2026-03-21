@@ -79,6 +79,28 @@ class SelectionResult:
         fig.tight_layout()
         return fig
 
+    def plot_pareto(self):
+        """Scatter plot of importance_rank vs stability_rank, colored by selection."""
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        selected_set = set(self.selected_features)
+        colors = ["tab:blue" if f in selected_set else "tab:gray" for f in self.feature_names]
+        ax.scatter(self.importance_ranks, self.stability_ranks, c=colors, s=80, zorder=3)
+        for i, name in enumerate(self.feature_names):
+            ax.annotate(
+                name,
+                (self.importance_ranks[i], self.stability_ranks[i]),
+                fontsize=8,
+                ha="left",
+                va="bottom",
+            )
+        ax.set_xlabel("Importance rank (1 = most important)")
+        ax.set_ylabel("Stability rank (1 = most stable, lowest FSI)")
+        ax.set_title("Feature Selection: Importance vs Stability Trade-off")
+        fig.tight_layout()
+        return fig
+
 
 def stable_feature_selection(
     result: "DASHResult",

@@ -127,3 +127,16 @@ class TestStableFeatureSelection:
         result = _make_result()
         sr = stable_feature_selection(result, k=3)
         assert isinstance(sr.summary(), str)
+
+    def test_plot_pareto_returns_figure(self):
+        pytest.importorskip("matplotlib")
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        result = _make_result()
+        sr = stable_feature_selection(result, k=3)
+        fig = sr.plot_pareto()
+        assert isinstance(fig, plt.Figure)
+        plt.close("all")
