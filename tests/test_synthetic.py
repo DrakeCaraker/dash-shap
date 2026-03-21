@@ -5,6 +5,7 @@ from dash_shap.experiments.synthetic import (
     make_correlation_matrix,
     generate_synthetic_linear,
     generate_synthetic_nonlinear,
+    generate_synthetic_asymmetric,
 )
 
 
@@ -69,8 +70,6 @@ def test_generate_synthetic_linear_overlapping():
 
 
 def test_generate_synthetic_asymmetric_shapes():
-    from dash_shap.experiments.synthetic import generate_synthetic_asymmetric
-
     result = generate_synthetic_asymmetric(N=200, rho=0.9, seed=0)
     X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, true_imp, meta = result
     assert X_train.shape[1] == 2
@@ -82,8 +81,6 @@ def test_generate_synthetic_asymmetric_shapes():
 
 
 def test_generate_synthetic_asymmetric_correlation():
-    from dash_shap.experiments.synthetic import generate_synthetic_asymmetric
-
     result = generate_synthetic_asymmetric(N=5000, rho=0.9, seed=0)
     X_train, _, X_val, _, X_explain, _, X_test, _, _, _ = result
     X_all = np.vstack([X_train, X_val, X_explain, X_test])
