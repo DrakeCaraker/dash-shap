@@ -528,9 +528,9 @@ def anova_decomposition(importances_grid):
     for (di, mi), imp in importances_grid.items():
         grid[d_map[di], m_map[mi], :] = np.asarray(imp, dtype=float)
 
-    grand_mean = grid.mean(axis=(0, 1))          # (P,)
-    row_means = grid.mean(axis=1)                 # (R_d, P) — data-seed means
-    col_means = grid.mean(axis=0)                 # (R_m, P) — model-seed means
+    grand_mean = grid.mean(axis=(0, 1))  # (P,)
+    row_means = grid.mean(axis=1)  # (R_d, P) — data-seed means
+    col_means = grid.mean(axis=0)  # (R_m, P) — model-seed means
 
     ss_total = float(np.sum((grid - grand_mean) ** 2))
     ss_data = float(R_m * np.sum((row_means - grand_mean) ** 2))
