@@ -21,6 +21,7 @@ __all__ = [
     "tost_equivalence",
     "bootstrap_stability_test",
     "fsi_collinearity_correlation",
+    "anova_decomposition",
 ]
 
 
@@ -478,3 +479,79 @@ def fsi_collinearity_correlation(fsi_values, feature_rho, groups=None):
         result["group_pvalue"] = float(g_pval)
 
     return result
+
+
+def anova_decomposition(importances_grid):
+    """Exact two-way variance decomposition using a fully crossed R×R design.
+
+    Decomposes total importance variance into data-sampling variance,
+    model-selection variance, and residual (interaction) variance using
+    a balanced two-way ANOVA without replication.
+
+    Parameters
+    ----------
+    importances_grid : dict
+        Mapping ``(data_idx, model_idx) -> importance_vector`` where
+        data_idx ∈ {0, …, R_d-1} and model_idx ∈ {0, …, R_m-1}.
+        The grid must be fully crossed (all combinations present).
+
+    Returns
+    -------
+    dict with keys:
+        data_var_frac : float
+            Fraction of SS_total attributable to data-sampling variation.
+        model_var_frac : float
+            Fraction of SS_total attributable to model-selection variation.
+        residual_var_frac : float
+            Residual/interaction fraction (SS_total - SS_data - SS_model).
+        ss_data, ss_model, ss_error, ss_total : float
+            Raw sum-of-squares values (summed across all features).
+
+    Notes
+    -----
+    Replaces the approximate ``1 - stability`` proxy used in
+    ``experiment_variance_decomposition``.  Unlike the proxy, the ANOVA
+    decomposition satisfies the additive identity
+    SS_data + SS_model + SS_error = SS_total exactly.
+    """
+    keys = list(importances_grid.keys())
+    d_indices = sorted({k[0] for k in keys})
+    m_indices = sorted({k[1] for k in keys})
+    R_d = len(d_indices)
+    R_m = len(m_indices)
+
+    d_map = {v: i for i, v in enumerate(d_indices)}
+    m_map = {v: i for i, v in enumerate(m_indices)}
+
+    P = len(next(iter(importances_grid.values())))
+    grid = np.zeros((R_d, R_m, P))
+    for (di, mi), imp in importances_grid.items():
+        grid[d_map[di], m_map[mi], :] = np.asarray(imp, dtype=float)
+
+    grand_mean = grid.mean(axis=(0, 1))          # (P,)
+    row_means = grid.mean(axis=1)                 # (R_d, P) — data-seed means
+    col_means = grid.mean(axis=0)                 # (R_m, P) — model-seed means
+
+    ss_total = float(np.sum((grid - grand_mean) ** 2))
+    ss_data = float(R_m * np.sum((row_means - grand_mean) ** 2))
+    ss_model = float(R_d * np.sum((col_means - grand_mean) ** 2))
+    ss_error = ss_total - ss_data - ss_model
+
+    if ss_total > 0:
+        data_var_frac = ss_data / ss_total
+        model_var_frac = ss_model / ss_total
+        residual_var_frac = ss_error / ss_total
+    else:
+        data_var_frac = model_var_frac = residual_var_frac = 0.0
+
+    return {
+        "data_var_frac": float(data_var_frac),
+        "model_var_frac": float(model_var_frac),
+        "residual_var_frac": float(residual_var_frac),
+        "ss_data": ss_data,
+        "ss_model": ss_model,
+        "ss_error": ss_error,
+        "ss_total": ss_total,
+        "R_d": R_d,
+        "R_m": R_m,
+    }
