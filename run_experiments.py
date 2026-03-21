@@ -27,6 +27,7 @@ Available experiments:
     first_mover_visualization First-mover bias concentration figure
     first_mover_bias       First-mover bias isolation (concentration vs tree count)
     success_criteria       Run linear_sweep then evaluate pass/fail criteria
+    asymmetric_dgp         Asymmetric DGP: DASH vs SB vs LSM with one causal, one proxy feature
 """
 
 import argparse
@@ -2710,6 +2711,104 @@ def experiment_k_sweep_independence(k_values=None, n_reps=None, seed=42):
     return results
 
 
+def experiment_asymmetric_dgp(n_reps=None):
+    """Asymmetric DGP: test DASH stability and bias when only f0 is causal, f1 is a proxy."""
+    if n_reps is None:
+        n_reps = N_REPS
+
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Asymmetric Collinear DGP")
+    log("=" * 70)
+
+    from dash_shap.experiments.synthetic import generate_synthetic_asymmetric
+
+    RHO_LEVELS = [0.5, 0.7, 0.9, 0.95]
+    ASYM_N_REPS = n_reps
+    FEATURE_NAMES = ["f0_causal", "f1_proxy"]
+
+    all_results: dict = {}
+
+    for rho in RHO_LEVELS:
+        log(f"\n--- rho={rho} ---")
+        all_results[rho] = {}
+
+        for method_name in ["DASH", "Single Best", "LSM"]:
+            imp_runs: list = []
+            bias_runs: list = []
+
+            for rep in range(ASYM_N_REPS):
+                log(f"  rho={rho}  {method_name}  Rep {rep+1}/{ASYM_N_REPS}")
+                rep_seed = SEED + rep
+                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, true_imp, _ = generate_synthetic_asymmetric(
+                    N=5000, rho=rho, seed=rep_seed
+                )
+
+                try:
+                    if method_name == "DASH":
+                        pipe = DASHPipeline(
+                            M=M,
+                            K=K,
+                            epsilon=EPSILON,
+                            delta=DELTA,
+                            selection_method="maxmin",
+                            n_jobs=-1,
+                            seed=rep_seed,
+                            verbose=False,
+                        )
+                        pipe.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
+                        imp = pipe.global_importance_
+                    elif method_name == "Single Best":
+                        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
+                        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
+                        imp = sb.global_importance_
+                    elif method_name == "LSM":
+                        lsm = LargeSingleModelBaseline(seed=rep_seed)
+                        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
+                        imp = lsm.global_importance_
+                    else:
+                        continue
+                except ValueError:
+                    continue
+
+                # Normalize imp to sum=1 for fair comparison
+                imp_sum = np.sum(imp)
+                if imp_sum > 0:
+                    imp_norm = imp / imp_sum
+                else:
+                    continue
+
+                # Bias: |estimated f0 importance - true f0 importance (=1.0 normalized)|
+                # true_imp already = [1.0, 0.0], so normalized true = [1.0, 0.0]
+                bias = abs(imp_norm[0] - 1.0)
+                bias_runs.append(bias)
+                imp_runs.append(imp)
+
+            if len(imp_runs) >= 2:
+                stab = importance_stability(imp_runs)
+            else:
+                stab = float("nan")
+
+            all_results[rho][method_name] = {
+                "stability": stab,
+                "bias_mean": float(np.mean(bias_runs)) if bias_runs else float("nan"),
+                "bias_std": float(np.std(bias_runs, ddof=1)) if len(bias_runs) >= 2 else float("nan"),
+                "n_successful": len(imp_runs),
+            }
+            log(
+                f"  stab={stab:.4f}  bias={np.mean(bias_runs) if bias_runs else float('nan'):.4f}"
+                f"  ({len(imp_runs)}/{ASYM_N_REPS} reps)"
+            )
+
+    save_json(all_results, f"{OUT}/tables/asymmetric_dgp.json")
+    log(f"  Saved: {OUT}/tables/asymmetric_dgp.json")
+
+    elapsed = time.time() - t0
+    log(f"  Asymmetric DGP completed in {elapsed / 60:.1f} min")
+    return all_results
+
+
 ###############################################################################
 # EXPERIMENT REGISTRY
 ###############################################################################
@@ -2730,6 +2829,7 @@ EXPERIMENTS = {
     "first_mover_bias": experiment_first_mover_bias,
     "background_sensitivity": experiment_background_sensitivity,
     "success_criteria": experiment_success_criteria,
+    "asymmetric_dgp": experiment_asymmetric_dgp,
 }
 
 # Default run order (all experiments)
@@ -2745,6 +2845,7 @@ DEFAULT_ORDER = [
     "epsilon_sensitivity",
     "ablation",
     "k_sweep_independence",
+    "asymmetric_dgp",
     "variance_decomposition",
     "first_mover_bias",
     "background_sensitivity",

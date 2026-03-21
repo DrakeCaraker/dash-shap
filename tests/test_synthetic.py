@@ -66,3 +66,26 @@ def test_generate_synthetic_linear_overlapping():
     X_train, _, _, _, _, _, _, _, groups, true_imp, meta = result
     assert meta["structure"] == "overlapping"
     assert X_train.shape[1] == 10
+
+
+def test_generate_synthetic_asymmetric_shapes():
+    from dash_shap.experiments.synthetic import generate_synthetic_asymmetric
+
+    result = generate_synthetic_asymmetric(N=200, rho=0.9, seed=0)
+    X_train, y_train, X_val, y_val, X_explain, y_explain, X_test, y_test, true_imp, meta = result
+    assert X_train.shape[1] == 2
+    assert len(y_train) == X_train.shape[0]
+    assert len(true_imp) == 2
+    assert true_imp[0] == 1.0
+    assert true_imp[1] == 0.0
+    assert meta["dgp"] == "asymmetric"
+
+
+def test_generate_synthetic_asymmetric_correlation():
+    from dash_shap.experiments.synthetic import generate_synthetic_asymmetric
+
+    result = generate_synthetic_asymmetric(N=5000, rho=0.9, seed=0)
+    X_train, _, X_val, _, X_explain, _, X_test, _, _, _ = result
+    X_all = np.vstack([X_train, X_val, X_explain, X_test])
+    emp_rho = np.corrcoef(X_all[:, 0], X_all[:, 1])[0, 1]
+    assert abs(emp_rho - 0.9) < 0.05  # empirical correlation close to specified rho
