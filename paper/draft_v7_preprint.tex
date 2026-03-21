@@ -153,7 +153,8 @@ Single Best ($M{=}200$).
 
 \dash{} additionally provides two novel diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
-first-mover bias without ground truth, enabling practitioners to audit
+first-mover bias without ground truth and can be applied independently
+of the full \dash{} pipeline, enabling practitioners to audit
 explanation reliability before acting on feature rankings. Software and
 reproducible benchmarks are available at
 \url{https://github.com/DrakeCaraker/dash-shap}.
@@ -1456,6 +1457,13 @@ selection to reduce the feature set would still benefit from \dash{}
 when explaining the model trained on the selected features, as
 within-group collinearity among retained features can persist.
 
+The \dash{} ensemble's $K$ importance vectors also support a richer
+output representation: features that consistently swap rank across
+ensemble members can be treated as \emph{incomparable} rather than
+arbitrarily ordered, yielding a partial order on feature importance
+that more honestly reflects genuine attribution ambiguity under
+collinearity. We pursue this direction in companion work.
+
 \subsection{Practical recommendations}
 
 \begin{enumerate}
@@ -1485,10 +1493,14 @@ within-group collinearity among retained features can persist.
 \subsection{Limitations}
 
 \begin{itemize}
-  \item \textbf{Scope.} The current implementation targets XGBoost and
+  \item \textbf{Scope.} The default pipeline targets XGBoost and
     TreeSHAP. Extension to other model families (\eg neural networks
     with KernelSHAP) would require adapting the diversity selection
-    criteria to non-tree-based importance measures.
+    criteria to non-tree-based importance measures. The
+    \texttt{fit\_from\_attributions()} interface partially relaxes this
+    constraint: any attribution method producing feature-level vectors
+    can plug into the diversity selection and consensus stages without
+    retraining.
   \item \textbf{Interventional SHAP under correlation.} DASH uses
     interventional TreeSHAP, which conditions on marginal rather than
     conditional feature distributions. Under high correlation, this
@@ -1516,7 +1528,13 @@ within-group collinearity among retained features can persist.
   \item \textbf{Ground truth.} On real-world data, we can only evaluate
     stability, not accuracy. The synthetic accuracy metric presupposes
     equitable credit distribution (Section~\ref{sec:experiments}),
-    partially confounding accuracy with equity.
+    partially confounding accuracy with equity. Specifically, the
+    linear DGP assigns equal true importance to all features within a
+    correlated group by construction, aligning the equity and accuracy
+    metrics by design rather than testing them independently.
+    Appendix~\ref{app:asymmetric} examines the asymmetric case where
+    one feature is causally active and its correlate is a passive proxy,
+    directly testing whether \dash{} over-equalizes.
   \item \textbf{Confidence intervals.} With $N_{\text{reps}} = 20$, the
     Wilcoxon test is underpowered for the small effect sizes between
     \dash{} and Stochastic Retrain. Larger $N_{\text{reps}}$ would
