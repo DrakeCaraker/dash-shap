@@ -27,6 +27,8 @@ Available experiments:
     epsilon_sensitivity    Epsilon sensitivity analysis
     ablation               Ablation studies (M, K, epsilon, delta)
     variance_decomposition Variance decomposition (data vs model variance)
+    variance_decomposition_crossed Exact ANOVA decomposition (7×7 crossed design)
+    asymmetric_dgp         Asymmetric causal DGP: f0 causal, f1 passive correlate
     first_mover_visualization First-mover bias concentration figure
     first_mover_bias       First-mover bias isolation (concentration vs tree count)
     success_criteria       Run linear_sweep then evaluate pass/fail criteria
@@ -67,6 +69,7 @@ from dash_shap.core.diagnostics import (
 from dash_shap.experiments.synthetic import (
     generate_synthetic_linear,
     generate_synthetic_nonlinear,
+    generate_synthetic_asymmetric,
 )
 from dash_shap.baselines import (
     SingleBestBaseline,
@@ -102,6 +105,7 @@ from dash_shap.evaluation import (
     feature_ablation_score,
     tost_equivalence,
     bootstrap_stability_test,
+    anova_decomposition,
 )
 from dash_shap.utils.io import save_json
 from dash_shap.utils.checkpoint import (
@@ -2310,6 +2314,197 @@ def experiment_variance_decomposition(resume=False, cleanup=True):
 
 
 ###############################################################################
+# ASYMMETRIC CAUSAL DGP EXPERIMENT
+###############################################################################
+
+
+def experiment_asymmetric_dgp(resume=False, cleanup=True):
+    """Asymmetric causal DGP: f0 is causal, f1 is a passive correlate.
+
+    Tests whether DASH over-equalizes when one feature has all the signal.
+    Sweeps rho in {0.5, 0.7, 0.9, 0.95}; measures stability, attribution
+    bias for f0, and passive leak to f1.
+    """
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Asymmetric Causal DGP")
+    log("=" * 70)
+
+    RHO_LEVELS = [0.5, 0.7, 0.9, 0.95]
+    N_ASYM_REPS = 20
+    feature_names_asym = ["f0", "f1"]
+
+    methods = {
+        "Single Best": lambda seed: SingleBestBaseline(n_trials=N_TRIALS_SB, seed=seed, n_jobs=-1),
+        "Stochastic Retrain": lambda seed: StochasticRetrainBaseline(K=K, seed=seed, n_jobs=-1),
+        "DASH (MaxMin)": None,  # handled separately
+        "Large Single Model": lambda seed: LargeSingleModelBaseline(seed=seed, n_jobs=-1),
+    }
+
+    all_results = {}
+
+    for rho in RHO_LEVELS:
+        log(f"\n  rho={rho}")
+        rho_imps = {m: [] for m in methods}
+
+        start_rep = 0
+        ckpt_name = f"asym_dgp_rho{rho}"
+        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+            cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            rho_imps = cached["rho_imps"]
+            start_rep = cached["completed_reps"]
+            log(f"  Resuming from rep {start_rep}")
+
+        for rep in range(start_rep, N_ASYM_REPS):
+            rep_seed = SEED + rep
+            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, true_imp, _ = generate_synthetic_asymmetric(
+                N=5000, rho=rho, seed=rep_seed
+            )
+
+            # Single Best
+            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
+            sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+            rho_imps["Single Best"].append(sb.global_importance_)
+
+            # Stochastic Retrain
+            sr = StochasticRetrainBaseline(K=K, seed=rep_seed, n_jobs=-1)
+            sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+            rho_imps["Stochastic Retrain"].append(sr.global_importance_)
+
+            # DASH (MaxMin) — needs small epsilon for 2-feature problem
+            dm = DASHPipeline(
+                M=M,
+                K=K,
+                epsilon=EPSILON,
+                delta=DELTA,
+                selection_method="maxmin",
+                n_jobs=-1,
+                seed=rep_seed,
+                verbose=False,
+            )
+            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names_asym)
+            rho_imps["DASH (MaxMin)"].append(dm.global_importance_)
+
+            # Large Single Model
+            lsm = LargeSingleModelBaseline(seed=rep_seed, n_jobs=-1)
+            lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+            rho_imps["Large Single Model"].append(lsm.global_importance_)
+
+        if cleanup:
+            clear_checkpoints_by_prefix(f"asym_dgp_rho{rho}", CKPT_DIR)
+        else:
+            save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_imps=rho_imps, completed_reps=N_ASYM_REPS)
+
+        # Compute metrics for each method
+        # true_imp = [1.0, 0.0] — f0 is causal, f1 is passive
+        true_imp_fixed = np.array([1.0, 0.0])
+        rho_summary = {}
+        log(f"  {'Method':<22} {'Stab':>8} {'Bias(f0)':>10} {'Leak(f1)':>10}")
+        log("  " + "=" * 55)
+        for m_name, imp_list in rho_imps.items():
+            if not imp_list:
+                continue
+            stab = importance_stability(imp_list)
+            # Normalize each importance vector to sum to 1 before computing bias
+            imp_arr = np.array(imp_list)
+            row_sums = imp_arr.sum(axis=1, keepdims=True)
+            row_sums = np.where(row_sums == 0, 1.0, row_sums)
+            imp_norm = imp_arr / row_sums
+            mean_imp = imp_norm.mean(axis=0)
+            bias_f0 = float(abs(mean_imp[0] - true_imp_fixed[0]))
+            leak_f1 = float(mean_imp[1])
+            rho_summary[m_name] = {
+                "stability": stab,
+                "bias_f0": bias_f0,
+                "passive_leak_f1": leak_f1,
+                "mean_importance": mean_imp.tolist(),
+            }
+            log(f"  {m_name:<22} {stab:>8.4f} {bias_f0:>10.4f} {leak_f1:>10.4f}")
+
+        all_results[rho] = rho_summary
+
+    save_json(all_results, f"{OUT}/tables/asymmetric_dgp.json")
+
+    elapsed = time.time() - t0
+    log(f"\n  Asymmetric DGP experiment completed in {elapsed / 60:.1f} min")
+    return all_results
+
+
+###############################################################################
+# CROSSED VARIANCE DECOMPOSITION (ANOVA)
+###############################################################################
+
+
+def experiment_variance_decomposition_crossed(resume=False, cleanup=True):
+    """Crossed R×R variance decomposition: exact ANOVA replacing 1-stability proxy.
+
+    Uses a fully crossed 7×7 design (7 data seeds × 7 model seeds = 49 cells)
+    and two-way ANOVA to decompose importance variance into data-sampling,
+    model-selection, and residual components.
+    """
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Crossed Variance Decomposition (ANOVA)")
+    log("=" * 70)
+
+    R = 7  # 7×7 = 49 cells
+    VD_RHO = 0.9
+    feature_names = make_feature_names()
+    data_seeds = [SEED + i for i in range(R)]
+    model_seeds = [SEED + 1000 + i for i in range(R)]
+
+    methods = ["Single Best", "DASH (MaxMin)"]
+    importances = {m: {} for m in methods}
+
+    log(f"  Running {R}×{R}={R * R} cells...")
+    for di, data_seed in enumerate(data_seeds):
+        log(f"  Data seed {di + 1}/{R} (seed={data_seed})")
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+            N=5000, rho=VD_RHO, seed=data_seed
+        )
+        for mi, model_seed in enumerate(model_seeds):
+            # Single Best
+            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=-1)
+            sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=model_seed)
+            importances["Single Best"][(di, mi)] = sb.global_importance_
+
+            # DASH (MaxMin)
+            dm = DASHPipeline(
+                M=M,
+                K=K,
+                epsilon=EPSILON,
+                delta=DELTA,
+                selection_method="maxmin",
+                n_jobs=-1,
+                seed=model_seed,
+                verbose=False,
+            )
+            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+            importances["DASH (MaxMin)"][(di, mi)] = dm.global_importance_
+
+    # Compute ANOVA decomposition for each method
+    log(f"\n  {'Method':<22} {'Data%':>8} {'Model%':>8} {'Residual%':>10}")
+    log("  " + "=" * 52)
+    summary = {}
+    for m in methods:
+        result = anova_decomposition(importances[m])
+        summary[m] = result
+        log(
+            f"  {m:<22} {result['data_var_frac']:>8.1%} "
+            f"{result['model_var_frac']:>8.1%} "
+            f"{result['residual_var_frac']:>10.1%}"
+        )
+
+    save_json(summary, f"{OUT}/tables/variance_decomposition_crossed.json")
+
+    elapsed = time.time() - t0
+    log(f"\n  Crossed variance decomposition completed in {elapsed / 60:.1f} min")
+    return summary
+
+
+###############################################################################
 # SUCCESS CRITERIA
 ###############################################################################
 
@@ -3068,9 +3263,11 @@ EXPERIMENTS = {
     "epsilon_sensitivity": experiment_epsilon_sensitivity,
     "ablation": experiment_ablation,
     "variance_decomposition": experiment_variance_decomposition,
+    "variance_decomposition_crossed": experiment_variance_decomposition_crossed,
     "first_mover_visualization": experiment_first_mover_visualization,
     "first_mover_bias": experiment_first_mover_bias,
     "background_sensitivity": experiment_background_sensitivity,
+    "asymmetric_dgp": experiment_asymmetric_dgp,
     "success_criteria": experiment_success_criteria,
     "extensions_sanity_check": experiment_extensions_sanity_check,
 }
@@ -3088,6 +3285,8 @@ DEFAULT_ORDER = [
     "epsilon_sensitivity",
     "ablation",
     "variance_decomposition",
+    "variance_decomposition_crossed",
+    "asymmetric_dgp",
     "first_mover_bias",
     "background_sensitivity",
 ]

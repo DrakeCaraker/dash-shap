@@ -69,7 +69,7 @@ epsilon_mode = 'relative'
 - **4-way data split** in synthetic generators: X_train, X_val, X_explain (SHAP background), X_test (RMSE eval)
 - **Checkpoint pattern** in notebooks: `save_checkpoint(name, data)` / `load_checkpoint(name)` writes `.pkl` to `checkpoints/`
 - **Notebook naming**: `demo_benchmark_{N}.ipynb` — **6 is authoritative for ArXiv**; **7 is authoritative for TMLR (in development, not yet run)**
-- **Current paper draft**: `paper/draft_v6_preprint.tex` (latest; v5 was ArXiv-ready after 3 review rounds)
+- **Current paper draft**: `paper/draft_v7_preprint.tex` (TMLR submission target; v6 was ArXiv-ready)
 - **Tests**: `pytest` from repo root. No GPU required.
 - **Parallelism** via `joblib` (n_jobs parameter on DASHPipeline)
 
