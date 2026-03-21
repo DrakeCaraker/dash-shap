@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-slow lint fmt typecheck coverage ci rebase clean
+.PHONY: test test-fast test-slow lint fmt fmt-check typecheck coverage ci rebase clean
 
 test:
 	pytest -v
@@ -15,13 +15,16 @@ lint:
 fmt:
 	ruff format .
 
+fmt-check:
+	ruff format --check .
+
 typecheck:
 	mypy dash_shap/ --ignore-missing-imports --no-error-summary
 
 coverage:
 	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
 
-ci: lint typecheck test coverage
+ci: lint fmt-check typecheck test coverage
 	@echo "All CI checks passed."
 
 rebase:
