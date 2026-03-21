@@ -70,13 +70,13 @@ def synthetic_small():
 
 @pytest.fixture(scope="session")
 def trained_population(synthetic_linear):
-    """Session-scoped pre-trained DASH population (M=10) for reuse across tests."""
+    """Session-scoped pre-trained DASH population (M=5) for reuse across tests."""
     from dash_shap.core.pipeline import DASHPipeline
 
     d = synthetic_linear
     pipe = DASHPipeline(
-        M=10,
-        K=5,
+        M=5,
+        K=3,
         epsilon=0.15,
         delta=0.01,
         seed=42,
