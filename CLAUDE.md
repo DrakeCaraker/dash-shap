@@ -129,6 +129,20 @@ Enable these settings in GitHub > Settings > Branches > Branch protection rules 
 3. **Require pull request reviews before merging**: at least 1 approval
 4. **Do not allow bypassing the above settings**: checked
 
+## Notebooks
+
+- **Canonical notebooks keep their outputs** — `demo_benchmark_6.ipynb` and `demo_benchmark_7_parallel.ipynb` outputs are empirical records and must not be cleared. Only clear outputs on scratch/dev notebooks.
+
+## Pre-push Checklist
+
+Before any `git push`, run the full local CI pipeline and fix all failures before pushing:
+
+```bash
+make lint && make fmt && make typecheck && make test-fast
+```
+
+Do not push partial fixes. CI failures on ruff quote style, mypy ignore codes, and sync-check regexes are avoidable locally.
+
 ## Do NOT
 
 - Commit `.pkl` files or anything in `checkpoints/`

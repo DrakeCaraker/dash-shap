@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run ruff and mypy before allowing a commit.
+# Install: git config core.hooksPath .githooks
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Ruff lint (auto-fix, then verify clean)
+ruff check . --fix --quiet
+ruff format . --quiet
+
+# Stage any auto-fixes ruff made so they're included in the commit
+git add -u
+
+# mypy (non-blocking warning — mypy errors shouldn't silently break a commit
+# but also shouldn't prevent saving work; promote to exit 1 when ready)
+if ! python -m mypy dash_shap --ignore-missing-imports --quiet 2>/dev/null; then
+    echo "WARNING: mypy found type errors. Run 'make typecheck' to review."
+    echo "  (commit allowed — fix before pushing)"
+fi
+
+echo "Pre-commit checks passed."
+exit 0
