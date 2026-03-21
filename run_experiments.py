@@ -195,7 +195,7 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
         m = MARKERS.get(name, "o")
 
         vals = [all_results[rho][name]["stability"] for rho in rho_levels]
-        axes[0].plot(rho_levels, vals, f"{m}-", color=c, label=name, linewidth=2, markersize=7)
+        axes[0].plot(rho_levels, vals, "-", marker=m, color=c, label=name, linewidth=2, markersize=7)
 
         vals = [all_results[rho][name]["accuracy_mean"] for rho in rho_levels]
         errs = [all_results[rho][name]["accuracy_std"] for rho in rho_levels]
@@ -203,7 +203,8 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
             rho_levels,
             vals,
             yerr=errs,
-            fmt=f"{m}-",
+            fmt="-",
+            marker=m,
             color=c,
             label=name,
             linewidth=2,
@@ -217,7 +218,8 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
             rho_levels,
             vals,
             yerr=errs,
-            fmt=f"{m}-",
+            fmt="-",
+            marker=m,
             color=c,
             label=name,
             linewidth=2,
