@@ -307,6 +307,15 @@ class DASHPipeline:
         )
         self.timing_["stage5_diagnostics"] = time.time() - t0
 
+        # Wrap outputs in DASHResult for extensions
+        from dash_shap.core.result import DASHResult
+
+        self.result_ = DASHResult.from_shap_matrices(
+            self.all_shap_matrices_,
+            self.feature_names_,
+            val_scores=[self.val_scores_[i] for i in self.selected_indices_],
+        )
+
         if self.verbose:
             total = sum(self.timing_.values())
             print(

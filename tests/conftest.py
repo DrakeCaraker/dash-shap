@@ -57,3 +57,43 @@ def trained_population(synthetic_linear):
     )
     pipe.fit(d["X_train"], d["y_train"], d["X_val"], d["y_val"], X_ref=d["X_explain"])
     return pipe
+
+
+@pytest.fixture(scope="session")
+def dash_result():
+    """DASHResult with 4 features spanning all 4 IS-plot quadrants.
+
+    f0: high importance, low FSI   (QI:   Robust Driver)
+    f1: high importance, high FSI  (QII:  Collinear Cluster)
+    f2: low importance,  low FSI   (QIII: Unimportant)
+    f3: low importance,  high FSI  (QIV:  Fragile)
+    """
+    from dash_shap.core.result import DASHResult
+
+    rng = np.random.default_rng(42)
+    K, n_ref, P = 5, 20, 4
+
+    shap = np.zeros((K, n_ref, P))
+
+    # f0: consistent high SHAP across models → high importance, low FSI
+    for k in range(K):
+        shap[k, :, 0] = 5.0 + rng.normal(0, 0.1, n_ref)
+
+    # f1: high but variable SHAP across models → high importance, high FSI
+    for k in range(K):
+        shap[k, :, 1] = rng.normal(0, 1, n_ref) * (3.0 + 4.0 * rng.random())
+
+    # f2: consistent near-zero → low importance, low FSI
+    for k in range(K):
+        shap[k, :, 2] = rng.normal(0, 0.05, n_ref)
+
+    # f3: low mean, high variance across models → low importance, high FSI
+    for k in range(K):
+        sign = rng.choice([-1, 1])
+        shap[k, :, 3] = sign * rng.uniform(0.5, 2.0) + rng.normal(0, 0.1, n_ref)
+
+    return DASHResult.from_shap_matrices(
+        shap,
+        feature_names=["f0", "f1", "f2", "f3"],
+        val_scores=np.array([0.90, 0.88, 0.92, 0.85, 0.91]),
+    )
