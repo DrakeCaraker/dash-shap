@@ -7,6 +7,7 @@ from dash_shap.evaluation import (
     within_group_equity,
     cohens_d,
     compare_methods,
+    anova_decomposition,
 )
 
 
@@ -405,3 +406,46 @@ def test_feature_ablation_score_nonnegative():
     imp = np.array([0.5, 0.5, 0.0])
     score = feature_ablation_score(model, X, y, imp, top_k=2)
     assert score >= 0
+
+
+def test_anova_decomposition_additive_identity():
+    """SS_data + SS_model + SS_error == SS_total exactly."""
+    rng = np.random.RandomState(0)
+    R = 4
+    grid = {(d, m): rng.rand(10) for d in range(R) for m in range(R)}
+    result = anova_decomposition(grid)
+    assert abs(result["ss_data"] + result["ss_model"] + result["ss_error"] - result["ss_total"]) < 1e-10
+
+
+def test_anova_decomposition_fractions_sum_to_one():
+    rng = np.random.RandomState(1)
+    R = 3
+    grid = {(d, m): rng.rand(5) for d in range(R) for m in range(R)}
+    result = anova_decomposition(grid)
+    total_frac = result["data_var_frac"] + result["model_var_frac"] + result["residual_var_frac"]
+    assert abs(total_frac - 1.0) < 1e-10
+
+
+def test_anova_decomposition_data_variance_dominates():
+    """When only data seed varies (model fixed), data_var_frac should dominate."""
+    R = 5
+    rng = np.random.RandomState(2)
+    # Grid where all rows with same data_idx are identical (model has no variance)
+    # but different data_idx rows differ → data variance dominates
+    row_vecs = [rng.rand(8) for _ in range(R)]
+    grid = {(d, m): row_vecs[d].copy() for d in range(R) for m in range(R)}
+    result = anova_decomposition(grid)
+    assert result["data_var_frac"] > 0.99
+    assert result["model_var_frac"] < 1e-10
+
+
+def test_anova_decomposition_zero_variance():
+    """Identical importance vectors → all fractions are 0.0."""
+    R = 3
+    vec = np.ones(6) * 0.5
+    grid = {(d, m): vec.copy() for d in range(R) for m in range(R)}
+    result = anova_decomposition(grid)
+    assert result["data_var_frac"] == 0.0
+    assert result["model_var_frac"] == 0.0
+    assert result["residual_var_frac"] == 0.0
+    assert result["ss_total"] == 0.0
