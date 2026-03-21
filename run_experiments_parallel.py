@@ -868,7 +868,7 @@ def experiment_linear_sweep(resume=False, cleanup=False):
 ###############################################################################
 
 
-def experiment_overlapping(resume=False, cleanup=True):
+def experiment_overlapping(resume=False, cleanup=False):
     """Overlapping correlation structure at rho=0.9.
 
     M7 fix: now reports accuracy, equity, and RMSE alongside stability.
@@ -1014,7 +1014,7 @@ def experiment_overlapping(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_nonlinear_sweep(resume=False, cleanup=True):
+def experiment_nonlinear_sweep(resume=False, cleanup=False):
     """Nonlinear DGP sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Evaluates stability and equity (no ground-truth accuracy for nonlinear DGP).
@@ -1168,7 +1168,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_table2_baselines(resume=False, cleanup=True):
+def experiment_table2_baselines(resume=False, cleanup=False):
     """Extended baselines at rho=0.9: Ensemble SHAP, Stochastic Retrain, DASH (Dedup)."""
     _ensure_dirs()
     t0 = time.time()
@@ -1321,7 +1321,7 @@ def experiment_table2_baselines(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_real_california(resume=False, cleanup=True):
+def experiment_real_california(resume=False, cleanup=False):
     """California Housing benchmark with scale-appropriate epsilon."""
     _ensure_dirs()
     t0 = time.time()
@@ -1534,7 +1534,7 @@ def experiment_real_california(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_real_breast_cancer(resume=False, cleanup=True):
+def experiment_real_breast_cancer(resume=False, cleanup=False):
     """Breast Cancer benchmark (binary classification, N_REPS=20)."""
     _ensure_dirs()
     t0 = time.time()
@@ -1742,7 +1742,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_real_superconductor(resume=False, cleanup=True):
+def experiment_real_superconductor(resume=False, cleanup=False):
     """Superconductor UCI benchmark with scale-appropriate epsilon."""
     _ensure_dirs()
     t0 = time.time()
@@ -1961,7 +1961,7 @@ def experiment_real_superconductor(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_epsilon_sensitivity(resume=False, cleanup=True):
+def experiment_epsilon_sensitivity(resume=False, cleanup=False):
     """Epsilon sensitivity sweep: epsilon ∈ {0.03, 0.05, 0.08, 0.10}.
 
     Trains population ONCE per rep, then varies epsilon on the same models
@@ -2086,7 +2086,7 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_ablation(resume=False, cleanup=True):
+def experiment_ablation(resume=False, cleanup=False):
     """Ablation studies: one parameter at a time, across multiple rho levels."""
     _ensure_dirs()
     t0 = time.time()
@@ -2200,7 +2200,7 @@ def experiment_ablation(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_variance_decomposition(resume=False, cleanup=True):
+def experiment_variance_decomposition(resume=False, cleanup=False):
     """Variance decomposition: separates data-sampling vs model-selection variance."""
     _ensure_dirs()
     t0 = time.time()
@@ -2321,7 +2321,7 @@ def experiment_variance_decomposition(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_asymmetric_dgp(resume=False, cleanup=True):
+def experiment_asymmetric_dgp(resume=False, cleanup=False):
     """Asymmetric causal DGP: f0 is causal, f1 is a passive correlate.
 
     Tests whether DASH over-equalizes when one feature has all the signal.
@@ -2439,7 +2439,7 @@ def experiment_asymmetric_dgp(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_variance_decomposition_crossed(resume=False, cleanup=True):
+def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
     """Crossed R×R variance decomposition: exact ANOVA replacing 1-stability proxy.
 
     Uses a fully crossed 7×7 design (7 data seeds × 7 model seeds = 49 cells)
@@ -2694,7 +2694,7 @@ def check_success_criteria(
 ###############################################################################
 
 
-def experiment_background_sensitivity(resume=False, cleanup=True):
+def experiment_background_sensitivity(resume=False, cleanup=False):
     """Sweep background dataset size B ∈ {50, 100, 200, 500} at ρ=0.9."""
     _ensure_dirs()
     t0 = time.time()
@@ -2777,7 +2777,7 @@ def experiment_background_sensitivity(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_success_criteria(resume=False, cleanup=True):
+def experiment_success_criteria(resume=False, cleanup=False):
     """Run linear_sweep (if needed) then evaluate pass/fail success criteria."""
     sweep_results = experiment_linear_sweep(resume=resume, cleanup=cleanup)
     check_success_criteria(sweep_results)
@@ -2789,7 +2789,7 @@ def experiment_success_criteria(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_first_mover_visualization(resume=False, cleanup=True):
+def experiment_first_mover_visualization(resume=False, cleanup=False):
     """Visualize first-mover bias: importance concentration within a correlated group.
 
     Generates a grouped bar chart showing per-feature importance within
@@ -2932,7 +2932,7 @@ def experiment_first_mover_visualization(resume=False, cleanup=True):
 ###############################################################################
 
 
-def experiment_first_mover_bias(resume=False, cleanup=True):
+def experiment_first_mover_bias(resume=False, cleanup=False):
     """First-mover bias isolation: concentration grows with tree count.
 
     Trains a single XGBoost with increasing n_estimators and measures how
@@ -3124,7 +3124,7 @@ def format_timing_table(sweep_results, rho=0.9):
 ###############################################################################
 
 
-def experiment_extensions_sanity_check(resume=False, cleanup=True):
+def experiment_extensions_sanity_check(resume=False, cleanup=False):
     """Lightweight (~2 min) check that Phase 0+1 extensions hold Paper 2 claims.
 
     Runs one rep at rho=0.9 (M=50, K=15), then asserts:
