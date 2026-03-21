@@ -78,7 +78,7 @@ jobs:
           pip install -e .
           pip install pytest pytest-cov
       - name: Run tests with coverage
-        run: pytest -v -m "not slow" --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
+        run: pytest -v -m "not slow" --cov=dash_shap --cov-report=term-missing --cov-fail-under=69
       - name: Upload coverage artifact
         if: matrix.python-version == '3.12'
         uses: actions/upload-artifact@v7
@@ -337,5 +337,5 @@ jobs:
           pip install -r requirements.txt
           pip install -e .
           pip install pytest pytest-cov
-      - name: Run slow tests
-        run: pytest -v -m "slow" --timeout=3600
+      - name: Run full test suite with coverage
+        run: pytest -v --cov=dash_shap --cov-report=term-missing --cov-fail-under=70 --timeout=3600
