@@ -270,9 +270,7 @@ def generate_synthetic_asymmetric(
     val_frac = val_size / remaining
     X_te2, X_val, y_te2, y_val = train_test_split(X_tv, y_tv, test_size=val_frac, random_state=seed)
     explain_frac = explain_size / (remaining - val_size)
-    X_train, X_explain, y_train, y_explain = train_test_split(
-        X_te2, y_te2, test_size=explain_frac, random_state=seed
-    )
+    X_train, X_explain, y_train, y_explain = train_test_split(X_te2, y_te2, test_size=explain_frac, random_state=seed)
 
     meta = {
         "dgp": "asymmetric",

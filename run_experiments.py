@@ -2609,7 +2609,7 @@ def experiment_k_sweep_independence(k_values=None, n_reps=None, seed=42):
         sr_acc_runs: list = []
 
         for rep in range(n_reps):
-            log(f"  K={k_val}  Rep {rep+1}/{n_reps}")
+            log(f"  K={k_val}  Rep {rep + 1}/{n_reps}")
             rep_seed = seed + rep
             Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
                 N=5000, rho=0.9, seed=rep_seed
@@ -2739,7 +2739,7 @@ def experiment_asymmetric_dgp(n_reps=None):
             bias_runs: list = []
 
             for rep in range(ASYM_N_REPS):
-                log(f"  rho={rho}  {method_name}  Rep {rep+1}/{ASYM_N_REPS}")
+                log(f"  rho={rho}  {method_name}  Rep {rep + 1}/{ASYM_N_REPS}")
                 rep_seed = SEED + rep
                 Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, true_imp, _ = generate_synthetic_asymmetric(
                     N=5000, rho=rho, seed=rep_seed
