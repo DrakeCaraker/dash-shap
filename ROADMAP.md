@@ -2,6 +2,8 @@
 
 DASH is Paper 1 of a five-paper research program that builds from a practical tool toward a new framework for trustworthy feature attribution. Each paper builds on the previous, uses the same codebase and experimental infrastructure, and targets a progressively more ambitious claim. Total timeline: 12-18 months.
 
+> **See also**: `docs/RESEARCH_DIRECTIONS.md` — consolidated catalog of all research directions (including exploratory work on efficient Rashomon set construction) with prioritized recommendations.
+
 ## Paper 1: First-Mover Bias in Gradient Boosting Explanations
 
 **Target:** TMLR (Transactions on Machine Learning Research) | **Status:** ArXiv pre-print posted; TMLR submission in preparation | **Risk:** Low

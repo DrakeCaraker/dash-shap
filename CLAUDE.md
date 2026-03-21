@@ -19,7 +19,7 @@ dash_shap/
   utils/          I/O helpers, SHAP utilities
 notebooks/        Progressive experiment notebooks (demo_benchmark_{N}.ipynb)
 tests/            pytest suite (test_pipeline, test_baselines, test_evaluation, test_synthetic)
-docs/             API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md
+docs/             API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md, RESEARCH_DIRECTIONS.md
 docs/archive/     Historical documents (IMPLEMENTATION_PLAN.md, PEER_REVIEW.md)
 paper/            LaTeX source
 ```
