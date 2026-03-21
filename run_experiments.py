@@ -2786,6 +2786,8 @@ def experiment_asymmetric_dgp(n_reps=None):
                 imp_runs.append(imp)
 
             if len(imp_runs) >= 2:
+                # Note: with P=2 features, Spearman-based stability is nearly always 1.0
+                # (rank order is binary). Primary metric is bias_mean, not stability.
                 stab = importance_stability(imp_runs)
             else:
                 stab = float("nan")

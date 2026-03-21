@@ -25,3 +25,4 @@ def test_asymmetric_dgp_smoke():
     assert 0.5 in results
     assert "DASH" in results[0.5]
     assert "stability" in results[0.5]["DASH"]
+    assert "bias_mean" in results[0.5]["DASH"]
