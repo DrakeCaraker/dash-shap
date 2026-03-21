@@ -129,12 +129,9 @@ class TestPartialOrder:
         assert not po_frac.adjacency[0, 1], "fraction should NOT include π=0.80 at alpha=0.05"
 
         # bootstrap lower CI ≈ 0.59 > 0.5 → adjacent
-        assert po_boot.adjacency[0, 1], (
-            "bootstrap lower CI for π=0.80 should be > 0.5, making (f0,f1) adjacent"
-        )
+        assert po_boot.adjacency[0, 1], "bootstrap lower CI for π=0.80 should be > 0.5, making (f0,f1) adjacent"
 
         # The matrices must differ
         assert not np.array_equal(po_boot.adjacency, po_frac.adjacency), (
-            "bootstrap and fraction produced identical adjacency — "
-            "bootstrap CI is not being applied correctly"
+            "bootstrap and fraction produced identical adjacency — bootstrap CI is not being applied correctly"
         )

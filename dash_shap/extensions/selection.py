@@ -33,9 +33,9 @@ class SelectionResult:
     """
 
     selected_features: list
-    scores: np.ndarray          # (P,)
+    scores: np.ndarray  # (P,)
     importance_ranks: np.ndarray  # (P,) int
-    stability_ranks: np.ndarray   # (P,) int
+    stability_ranks: np.ndarray  # (P,) int
     k: int
     feature_names: list
 
@@ -125,12 +125,12 @@ def stable_feature_selection(
 
     # importance_ranks: descending global_importance → 1-based rank
     imp_order = np.argsort(-result.global_importance)  # most important first
-    importance_ranks = np.empty(P, dtype=float)
+    importance_ranks: np.ndarray = np.empty(P, dtype=float)
     importance_ranks[imp_order] = np.arange(1, P + 1)
 
     # stability_ranks: ascending FSI → 1-based rank (low FSI = rank 1)
     fsi_order = np.argsort(result.fsi)  # lowest FSI first
-    stability_ranks = np.empty(P, dtype=float)
+    stability_ranks: np.ndarray = np.empty(P, dtype=float)
     stability_ranks[fsi_order] = np.arange(1, P + 1)
 
     scores = importance_weight * importance_ranks + stability_weight * stability_ranks

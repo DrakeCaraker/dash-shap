@@ -34,7 +34,7 @@ class GroupResult:
 
     groups: list
     substitutability_matrix: np.ndarray  # (P, P)
-    labels: np.ndarray                   # (P,) int
+    labels: np.ndarray  # (P,) int
     n_groups: int
     threshold: float
     feature_names: list
@@ -114,7 +114,7 @@ def feature_groups(
     for k in range(K):
         shap_k = result.all_shap_matrices[k]  # (n_ref, P)
         with np.errstate(invalid="ignore"):
-            c = np.corrcoef(shap_k.T)          # (P, P)
+            c = np.corrcoef(shap_k.T)  # (P, P)
         c = np.nan_to_num(c, nan=0.0)
         sub += c
     sub /= K

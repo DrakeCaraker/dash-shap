@@ -74,9 +74,7 @@ class TestFeatureGroups:
     def test_substitutability_matrix_symmetric(self):
         result = _make_result(P=6)
         gr = feature_groups(result)
-        np.testing.assert_allclose(
-            gr.substitutability_matrix, gr.substitutability_matrix.T, atol=1e-10
-        )
+        np.testing.assert_allclose(gr.substitutability_matrix, gr.substitutability_matrix.T, atol=1e-10)
 
     def test_perfectly_correlated_pairs_grouped_together(self):
         """f0,f1 and f2,f3 must land in the same group at high threshold."""
