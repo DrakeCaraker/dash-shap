@@ -105,7 +105,10 @@ def robust_certification(
     P = result.P
     if k_values is None:
         k_values = [k for k in [1, 2, 3, 5, 10] if k <= P]
-    k_values = sorted(set(k_values))
+    original_k_values = list(k_values)
+    k_values = sorted(set(k for k in k_values if 1 <= k <= P))
+    if not k_values:
+        raise ValueError(f"No valid k_values in [1, {P}]. Got: {original_k_values}")
 
     ranks = per_model_rankings(result)  # (K, P) — 1-based
     max_ranks = np.max(ranks, axis=0)  # (P,) — worst-case rank per feature
