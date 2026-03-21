@@ -45,6 +45,7 @@ class PartialOrderResult:
     feature_names: list
     method: str
     alpha: float
+    transitivity_enforced: bool = False
 
     def summary(self) -> str:
         P = len(self.feature_names)
@@ -86,6 +87,7 @@ def partial_order(
     method: Literal["fraction", "bootstrap"] = "fraction",
     n_boot: int = 1000,
     seed: int = 42,
+    enforce_transitivity: bool = True,
 ) -> PartialOrderResult:
     """Compute a partial order over features by confidence in importance ranking.
 
@@ -104,6 +106,11 @@ def partial_order(
     n_boot : int
         Bootstrap replicates (only used when method='bootstrap').
     seed : int
+    enforce_transitivity : bool
+        If True (default), apply Floyd-Warshall transitive closure to the
+        adjacency matrix so that if A>B and B>C are both True, A>C is
+        guaranteed True. n_determined and n_undetermined counts reflect the
+        closed matrix.
 
     Returns
     -------
@@ -159,6 +166,13 @@ def partial_order(
     else:
         raise ValueError(f"method must be 'fraction' or 'bootstrap', got {method!r}")
 
+    if enforce_transitivity:
+        # Floyd-Warshall transitive closure
+        tc = adjacency.copy()
+        for k in range(P):
+            tc = tc | (tc[:, k : k + 1] & tc[k : k + 1, :])
+        adjacency = tc
+
     # Count determined pairs
     n_determined = int(np.sum(adjacency))
 
@@ -177,4 +191,5 @@ def partial_order(
         feature_names=list(result.feature_names),
         method=method,
         alpha=alpha,
+        transitivity_enforced=enforce_transitivity,
     )
