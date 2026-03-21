@@ -1,8 +1,34 @@
 # Benchmark Results
 
+> **Version guide**
+> | Version | Notebook | N_REPS | Status | Use for |
+> |---------|----------|--------|--------|---------|
+> | **v7 (TMLR)** | `demo_benchmark_7_parallel.ipynb` | 50 | ⚠️ IN PROGRESS | TMLR submission |
+> | **v6 (ArXiv/Zenodo)** | `demo_benchmark_6.ipynb` | 20 | ✅ FROZEN | ArXiv/Zenodo; responding to ArXiv comments |
+>
+> When writing the TMLR paper, use v7 numbers only. Use `/paper-context` for TMLR, `/paper-context-arxiv` for ArXiv.
+
+---
+
+## v7 Results (TMLR — in progress)
+
+> ⚠️ **Status: PENDING** — `demo_benchmark_7_parallel.ipynb` has not yet completed its full run.
+> Paste results here as the notebook produces them. Do not cite these numbers in the TMLR draft until confirmed.
+
+**Configuration:** M=200, K=30, N_REPS=50, EPSILON=0.08, DELTA=0.05, SEED=42
+
+*Results to be filled in when notebook completes.*
+
+---
+
+## v6 Results (ArXiv/Zenodo — FROZEN)
+
+> ✅ **These numbers are published on ArXiv/Zenodo. Do not modify.**
+> For TMLR writing, use v7 numbers above once available.
+
 **Canonical source:** `notebooks/demo_benchmark_6.ipynb` (M=200, K=30, 20 repetitions, PAPER_CONFIG)
 
-> All numbers in this document are sourced from `demo_benchmark_6.ipynb` unless otherwise noted. The paper (`paper/draft_v6_preprint.tex`) and this document should always agree; any discrepancy should be resolved in favor of `demo_benchmark_6.ipynb`.
+> All numbers in this section are sourced from `demo_benchmark_6.ipynb`. The paper (`paper/draft_v6_preprint.tex`) and this section should always agree; any discrepancy should be resolved in favor of `demo_benchmark_6.ipynb`.
 
 ---
 
