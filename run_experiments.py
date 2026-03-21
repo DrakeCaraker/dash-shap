@@ -2761,11 +2761,11 @@ def experiment_asymmetric_dgp(n_reps=None):
                         imp = pipe.global_importance_
                     elif method_name == "Single Best":
                         sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed)
-                        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
+                        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                         imp = sb.global_importance_
                     elif method_name == "LSM":
                         lsm = LargeSingleModelBaseline(seed=rep_seed)
-                        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=FEATURE_NAMES)
+                        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                         imp = lsm.global_importance_
                     else:
                         continue
