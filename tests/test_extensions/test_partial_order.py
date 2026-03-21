@@ -143,7 +143,6 @@ class TestPartialOrder:
         assert po_on.transitivity_enforced is True
         assert po_off.transitivity_enforced is False
 
-
     def test_transitivity_closure_boolean_matrix(self):
         """Floyd-Warshall closes A→B, B→C chain into A→C."""
         rng = np.random.default_rng(0)
@@ -269,18 +268,18 @@ class TestPartialOrder:
 
         # Verify the confidence values match our construction (use alpha=0.5 to get all edges)
         po_check = partial_order(result, alpha=0.5, method="fraction", enforce_transitivity=False)
-        assert abs(po_check.confidence_matrix[0, 1] - 18 / 20) < 0.01, f"π(A>B)={po_check.confidence_matrix[0,1]}"
-        assert abs(po_check.confidence_matrix[1, 2] - 18 / 20) < 0.01, f"π(B>C)={po_check.confidence_matrix[1,2]}"
-        assert abs(po_check.confidence_matrix[0, 2] - 16 / 20) < 0.01, f"π(A>C)={po_check.confidence_matrix[0,2]}"
+        assert abs(po_check.confidence_matrix[0, 1] - 18 / 20) < 0.01, f"π(A>B)={po_check.confidence_matrix[0, 1]}"
+        assert abs(po_check.confidence_matrix[1, 2] - 18 / 20) < 0.01, f"π(B>C)={po_check.confidence_matrix[1, 2]}"
+        assert abs(po_check.confidence_matrix[0, 2] - 16 / 20) < 0.01, f"π(A>C)={po_check.confidence_matrix[0, 2]}"
 
         # Use alpha=0.15 → threshold = 1 - 0.15 = 0.85
         po_no_tc = partial_order(result, alpha=0.15, method="fraction", enforce_transitivity=False)
         po_tc = partial_order(result, alpha=0.15, method="fraction", enforce_transitivity=True)
 
         # Confirm base adjacency: A>B True, B>C True, A>C False
-        assert po_no_tc.adjacency[0, 1], f"A>B should be True: π={po_no_tc.confidence_matrix[0,1]:.3f} > 0.85"
-        assert po_no_tc.adjacency[1, 2], f"B>C should be True: π={po_no_tc.confidence_matrix[1,2]:.3f} > 0.85"
-        assert not po_no_tc.adjacency[0, 2], f"A>C should be False: π={po_no_tc.confidence_matrix[0,2]:.3f} ≤ 0.85"
+        assert po_no_tc.adjacency[0, 1], f"A>B should be True: π={po_no_tc.confidence_matrix[0, 1]:.3f} > 0.85"
+        assert po_no_tc.adjacency[1, 2], f"B>C should be True: π={po_no_tc.confidence_matrix[1, 2]:.3f} > 0.85"
+        assert not po_no_tc.adjacency[0, 2], f"A>C should be False: π={po_no_tc.confidence_matrix[0, 2]:.3f} ≤ 0.85"
 
         # Confirm closure promotes A>C
         assert po_tc.adjacency[0, 2], "Transitivity closure must set A>C=True when A>B and B>C are True"

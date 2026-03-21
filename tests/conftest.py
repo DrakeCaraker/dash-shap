@@ -158,6 +158,7 @@ def matplotlib_agg_backend():
     """Force Agg backend for all plot tests to avoid display errors."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
     except ImportError:
         pass
