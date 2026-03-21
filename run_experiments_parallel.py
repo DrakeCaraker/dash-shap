@@ -184,7 +184,7 @@ COLORS = {
 
 MARKERS = {
     "Single Best": "s",
-    "Single Best (M=200)": "S",
+    "Single Best (M=200)": "*",
     "Large Single Model": "X",
     "LSM (Tuned)": "x",
     "Ensemble SHAP": "D",
@@ -478,7 +478,7 @@ def _collect_rep(md, imp, true_imp, grps, rmse_val, model_obj):
 ###############################################################################
 
 
-def experiment_linear_sweep(resume=False, cleanup=True):
+def experiment_linear_sweep(resume=False, cleanup=False):
     """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Parallel-optimized: rep-outer loop with population sharing between
@@ -850,6 +850,7 @@ def experiment_linear_sweep(resume=False, cleanup=True):
     sweep_results["_equity_tests"] = eq_test_results
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
+    sweep_results.pop("_equity_tests", None)  # remove string key before return
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
 
