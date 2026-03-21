@@ -32,7 +32,7 @@ class LocalResult:
     """
 
     mean_shap: np.ndarray  # (P,)
-    std_shap: np.ndarray   # (P,)
+    std_shap: np.ndarray  # (P,)
     sign_flip_rate: np.ndarray  # (P,)
     feature_names: list
     obs_idx: int
@@ -41,7 +41,7 @@ class LocalResult:
     def summary(self) -> str:
         P = len(self.feature_names)
         # Sort by |mean_shap| descending, show top_k
-        order = np.argsort(-np.abs(self.mean_shap))[:self.top_k]
+        order = np.argsort(-np.abs(self.mean_shap))[: self.top_k]
         lines = [
             f"LocalResult: obs_idx={self.obs_idx}, P={P}, top_k={self.top_k}",
             "",
@@ -60,7 +60,7 @@ class LocalResult:
     def plot(self):
         import matplotlib.pyplot as plt
 
-        order = np.argsort(-np.abs(self.mean_shap))[:self.top_k]
+        order = np.argsort(-np.abs(self.mean_shap))[: self.top_k]
         names = [self.feature_names[i] for i in order]
         means = self.mean_shap[order]
         stds = self.std_shap[order]
@@ -113,8 +113,8 @@ def local_uncertainty(
     top_k = min(top_k, result.P)
 
     shap_obs = result.all_shap_matrices[:, obs_idx, :]  # (K, P)
-    mean_shap = np.mean(shap_obs, axis=0)               # (P,)
-    std_shap = np.std(shap_obs, axis=0, ddof=1)         # (P,)
+    mean_shap = np.mean(shap_obs, axis=0)  # (P,)
+    std_shap = np.std(shap_obs, axis=0, ddof=1)  # (P,)
 
     majority_sign = np.sign(mean_shap)
     # sign_flip_rate: fraction of K models whose sign ≠ majority sign

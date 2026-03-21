@@ -211,7 +211,7 @@ def confidence_intervals(
     fsi_ci = np.zeros((P, 3))
     ranking_ci = np.zeros((P, 3))
 
-    all_rankings = per_model_rankings(result).astype(float)  # (K, P) — computed once
+    all_rankings: np.ndarray = per_model_rankings(result).astype(float)  # (K, P) — computed once
     for p in range(P):
         importance_ci[p] = _bca_ci(boot_importance[:, p], float(result.global_importance[p]), alpha)
         fsi_ci[p] = _bca_ci(boot_fsi[:, p], float(result.fsi[p]), alpha)

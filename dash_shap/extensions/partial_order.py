@@ -152,9 +152,7 @@ def partial_order(
             idx = rng.integers(0, K, size=K)
             boot_ranks = ranks[idx, :]  # (K, P) resampled
             # Vectorized: comparison across all (i, j) pairs at once
-            boot_confidence[b] = np.mean(
-                boot_ranks[:, :, np.newaxis] < boot_ranks[:, np.newaxis, :], axis=0
-            )
+            boot_confidence[b] = np.mean(boot_ranks[:, :, np.newaxis] < boot_ranks[:, np.newaxis, :], axis=0)
         lower_ci = np.quantile(boot_confidence, alpha, axis=0)
         adjacency = lower_ci > 0.5
 
