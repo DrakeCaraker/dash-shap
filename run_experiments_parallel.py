@@ -494,11 +494,243 @@ def _collect_rep(md, imp, true_imp, grps, rmse_val, model_obj):
 ###############################################################################
 
 
+def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
+    """Run all reps for a single rho level. Returns (rho, rho_results, fsi_list, grps).
+
+    Designed to be called in parallel across rho levels via joblib.
+    n_jobs_inner controls parallelism within each method (SHAP, etc.).
+    """
+    log(f"\n--- ρ = {rho} ---")
+
+    method_data = {
+        name: {
+            "acc_runs": [],
+            "eq_runs": [],
+            "imp_runs": [],
+            "rmse_runs": [],
+            "gacc_runs": [],
+            "gmse_runs": [],
+            "keff_runs": [],
+            "t_accum": 0.0,
+        }
+        for name in sweep_methods
+    }
+    fsi_list = []
+    grps_last = None
+
+    for rep in range(N_REPS):
+        rep_seed = SEED + rep
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+            N=5000, rho=rho, seed=rep_seed
+        )
+        grps_last = grps
+
+        # --- DASH (MaxMin): trains the M=200 population ---
+        t_m = time.time()
+        dash_pipeline = DASHPipeline(
+            M=M,
+            K=K,
+            epsilon=EPSILON,
+            delta=DELTA,
+            selection_method="maxmin",
+            n_jobs=n_jobs_inner,
+            seed=rep_seed,
+            verbose=False,
+        )
+        dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        imp = dash_pipeline.global_importance_
+        preds = dash_pipeline.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["DASH (MaxMin)"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["DASH (MaxMin)"], imp, true_imp, grps, rmse_val, dash_pipeline)
+        if hasattr(dash_pipeline, "fsi_") and dash_pipeline.fsi_ is not None:
+            fsi_list.append(dash_pipeline.fsi_.copy())
+
+        # --- SingleBest(M=200): reuse DASH population ---
+        t_m = time.time()
+        sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb200.fit_from_population(
+            dash_pipeline.models_,
+            dash_pipeline.val_scores_,
+            Xexp,
+            seed=rep_seed,
+        )
+        imp = sb200.global_importance_
+        preds = sb200.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Single Best (M=200)"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Single Best (M=200)"], imp, true_imp, grps, rmse_val, sb200)
+
+        # --- RandomSelection: reuse DASH population ---
+        t_m = time.time()
+        rs = RandomSelectionBaseline(
+            M=M,
+            K=K,
+            epsilon=EPSILON,
+            delta=DELTA,
+            n_jobs=n_jobs_inner,
+            seed=rep_seed,
+            verbose=False,
+        )
+        rs.fit_from_population(
+            dash_pipeline.models_,
+            dash_pipeline.val_scores_,
+            Xexp,
+            feature_names=feature_names,
+        )
+        imp = rs.global_importance_
+        preds = rs.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Random Selection"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Random Selection"], imp, true_imp, grps, rmse_val, rs)
+
+        # --- Naive Top-N: reuse DASH population ---
+        t_m = time.time()
+        naive = NaiveAveragingBaseline(N=K, task="regression")
+        naive.fit_from_population(
+            dash_pipeline.models_,
+            dash_pipeline.val_scores_,
+            Xexp,
+        )
+        imp = naive.global_importance_
+        preds = naive.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Naive Top-N"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Naive Top-N"], imp, true_imp, grps, rmse_val, naive)
+
+        # --- Single Best (n_trials=30): independent ---
+        t_m = time.time()
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = sb.global_importance_
+        preds = sb.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Single Best"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Single Best"], imp, true_imp, grps, rmse_val, sb)
+
+        # --- Large Single Model ---
+        t_m = time.time()
+        lsm = LargeSingleModelBaseline(
+            K=K,
+            T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+            colsample_bytree=0.2,
+            seed=rep_seed,
+            tune=False,
+        )
+        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = lsm.global_importance_
+        preds = lsm.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Large Single Model"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Large Single Model"], imp, true_imp, grps, rmse_val, lsm)
+
+        # --- LSM (Tuned) ---
+        t_m = time.time()
+        lsm_t = LargeSingleModelBaseline(
+            K=K,
+            T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+            colsample_bytree=0.2,
+            seed=rep_seed,
+            tune=True,
+        )
+        lsm_t.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = lsm_t.global_importance_
+        preds = lsm_t.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["LSM (Tuned)"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["LSM (Tuned)"], imp, true_imp, grps, rmse_val, lsm_t)
+
+        # --- Stochastic Retrain ---
+        t_m = time.time()
+        sr = StochasticRetrainBaseline(
+            N=K,
+            task="regression",
+            n_jobs=n_jobs_inner,
+            seed=rep_seed,
+        )
+        sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = sr.global_importance_
+        preds = sr.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Stochastic Retrain"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Stochastic Retrain"], imp, true_imp, grps, rmse_val, sr)
+
+        # --- Random Forest ---
+        t_m = time.time()
+        rf = RandomForestBaseline(
+            n_estimators=500,
+            task="regression",
+            seed=rep_seed,
+        )
+        rf.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = rf.global_importance_
+        preds = rf.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Random Forest"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Random Forest"], imp, true_imp, grps, rmse_val, rf)
+
+    # Aggregate results per method
+    rho_results = {}
+    for name in sweep_methods:
+        md = method_data[name]
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md["imp_runs"])
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(md["imp_runs"], k=5)
+        n_reps = len(md["acc_runs"])
+        rho_results[name] = {
+            "stability": stab,
+            "stability_se": stab_se,
+            "stability_ci_lo": stab_ci_lo,
+            "stability_ci_hi": stab_ci_hi,
+            "topk5_stability": topk5,
+            "topk5_se": topk5_se,
+            "topk5_ci_lo": topk5_ci_lo,
+            "topk5_ci_hi": topk5_ci_hi,
+            "k_eff_mean": float(np.mean(md["keff_runs"])) if md["keff_runs"] else None,
+            "k_eff_std": float(np.std(md["keff_runs"], ddof=1)) if len(md["keff_runs"]) > 1 else None,
+            "accuracy_mean": np.mean(md["acc_runs"]),
+            "accuracy_se": np.std(md["acc_runs"], ddof=1) / np.sqrt(n_reps),
+            "accuracy_std": np.std(md["acc_runs"], ddof=1),
+            "group_accuracy_mean": np.mean(md["gacc_runs"]),
+            "group_accuracy_std": np.std(md["gacc_runs"], ddof=1),
+            "group_mse_mean": np.mean(md["gmse_runs"]),
+            "group_mse_std": np.std(md["gmse_runs"], ddof=1),
+            "equity_mean": np.mean(md["eq_runs"]),
+            "equity_se": np.std(md["eq_runs"], ddof=1) / np.sqrt(n_reps),
+            "equity_std": np.std(md["eq_runs"], ddof=1),
+            "rmse_mean": np.mean(md["rmse_runs"]),
+            "rmse_std": np.std(md["rmse_runs"], ddof=1),
+            "elapsed_s": md["t_accum"],
+            # Save per-rep arrays for significance tests
+            "acc_runs": np.array(md["acc_runs"]),
+            "eq_runs": np.array(md["eq_runs"]),
+            "rmse_runs": np.array(md["rmse_runs"]),
+            "imp_runs": md["imp_runs"],
+        }
+        log(
+            f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
+            f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
+            f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
+            f"({md['t_accum']:.1f}s)"
+        )
+
+    # Checkpoint per-rho results
+    save_checkpoint(
+        f"linear_sweep_rho_{rho}",
+        checkpoint_dir=CKPT_DIR,
+        rho_results=rho_results,
+        fsi_list=fsi_list,
+        grps=grps_last,
+    )
+
+    return rho, rho_results, fsi_list, grps_last
+
+
 def experiment_linear_sweep(resume=False, cleanup=False):
     """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Parallel-optimized: rep-outer loop with population sharing between
     DASH, RandomSelection, SingleBest(M=200), and NaiveTop-N.
+    Rho levels run in parallel via joblib when multiple cores are available.
 
     Matches notebook Section 4.  Uses four-way split: X_explain for SHAP
     (X_ref), X_test exclusively for RMSE (A4 fix).  Reports BCa bootstrap
@@ -514,6 +746,8 @@ def experiment_linear_sweep(resume=False, cleanup=False):
     Includes LSM (Tuned) — a tuned variant of the Large Single Model that
     searches over max_depth and learning_rate, making the comparison fair.
     """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("=" * 70)
@@ -537,6 +771,8 @@ def experiment_linear_sweep(resume=False, cleanup=False):
     fsi_by_rho = {}  # FSI validation: collect DASH FSI per rho (reviewer #7)
     grps_by_rho = {}  # Groups array per rho (deterministic, saved once)
 
+    # Separate resumed vs pending rho levels
+    pending_rhos = []
     for rho in rho_levels:
         ckpt_name = f"linear_sweep_rho_{rho}"
         if resume and _has(ckpt_name):
@@ -547,229 +783,30 @@ def experiment_linear_sweep(resume=False, cleanup=False):
                 fsi_by_rho[rho] = ckpt_data["fsi_list"]
             if "grps" in ckpt_data:
                 grps_by_rho[rho] = ckpt_data["grps"]
-            continue
+        else:
+            pending_rhos.append(rho)
 
-        log(f"\n--- ρ = {rho} ---")
+    if pending_rhos:
+        # Determine parallelism: run rho levels concurrently, subdivide cores
+        n_rho = len(pending_rhos)
+        try:
+            total_cores = len(os.sched_getaffinity(0))
+        except AttributeError:
+            total_cores = os.cpu_count() or 1
+        # Each rho level gets a share of cores for inner parallelism
+        n_jobs_inner = max(1, total_cores // n_rho)
+        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
 
-        # Per-method accumulators (same structure as original)
-        method_data = {
-            name: {
-                "acc_runs": [],
-                "eq_runs": [],
-                "imp_runs": [],
-                "rmse_runs": [],
-                "gacc_runs": [],
-                "gmse_runs": [],
-                "keff_runs": [],
-                "t_accum": 0.0,
-            }
-            for name in sweep_methods
-        }
-
-        # Rep-outer loop: share population between DASH, RandomSelection,
-        # SingleBest(M=200), and NaiveTop-N
-        for rep in range(N_REPS):
-            rep_seed = SEED + rep
-            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-                N=5000, rho=rho, seed=rep_seed
-            )
-
-            # --- DASH (MaxMin): trains the M=200 population ---
-            t_m = time.time()
-            dash_pipeline = DASHPipeline(
-                M=M,
-                K=K,
-                epsilon=EPSILON,
-                delta=DELTA,
-                selection_method="maxmin",
-                n_jobs=-1,
-                seed=rep_seed,
-                verbose=False,
-            )
-            dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-            imp = dash_pipeline.global_importance_
-            preds = dash_pipeline.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["DASH (MaxMin)"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["DASH (MaxMin)"], imp, true_imp, grps, rmse_val, dash_pipeline)
-            # FSI validation (reviewer #7): collect per-rep FSI from DASH
-            if hasattr(dash_pipeline, "fsi_") and dash_pipeline.fsi_ is not None:
-                fsi_by_rho.setdefault(rho, []).append(dash_pipeline.fsi_.copy())
-            grps_by_rho[rho] = grps  # deterministic per rho, save last
-
-            # --- SingleBest(M=200): reuse DASH population ---
-            t_m = time.time()
-            sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=-1)
-            sb200.fit_from_population(
-                dash_pipeline.models_,
-                dash_pipeline.val_scores_,
-                Xexp,
-                seed=rep_seed,
-            )
-            imp = sb200.global_importance_
-            preds = sb200.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Single Best (M=200)"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Single Best (M=200)"], imp, true_imp, grps, rmse_val, sb200)
-
-            # --- RandomSelection: reuse DASH population ---
-            t_m = time.time()
-            rs = RandomSelectionBaseline(
-                M=M,
-                K=K,
-                epsilon=EPSILON,
-                delta=DELTA,
-                n_jobs=-1,
-                seed=rep_seed,
-                verbose=False,
-            )
-            rs.fit_from_population(
-                dash_pipeline.models_,
-                dash_pipeline.val_scores_,
-                Xexp,
-                feature_names=feature_names,
-            )
-            imp = rs.global_importance_
-            preds = rs.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Random Selection"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Random Selection"], imp, true_imp, grps, rmse_val, rs)
-
-            # --- Naive Top-N: reuse DASH population ---
-            t_m = time.time()
-            naive = NaiveAveragingBaseline(N=K, task="regression")
-            naive.fit_from_population(
-                dash_pipeline.models_,
-                dash_pipeline.val_scores_,
-                Xexp,
-            )
-            imp = naive.global_importance_
-            preds = naive.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Naive Top-N"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Naive Top-N"], imp, true_imp, grps, rmse_val, naive)
-
-            # --- Single Best (n_trials=30): independent ---
-            t_m = time.time()
-            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
-            sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = sb.global_importance_
-            preds = sb.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Single Best"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Single Best"], imp, true_imp, grps, rmse_val, sb)
-
-            # --- Large Single Model ---
-            t_m = time.time()
-            lsm = LargeSingleModelBaseline(
-                K=K,
-                T_per_model=PAPER_CONFIG["T_PER_MODEL"],
-                colsample_bytree=0.2,
-                seed=rep_seed,
-                tune=False,
-            )
-            lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = lsm.global_importance_
-            preds = lsm.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Large Single Model"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Large Single Model"], imp, true_imp, grps, rmse_val, lsm)
-
-            # --- LSM (Tuned) ---
-            t_m = time.time()
-            lsm_t = LargeSingleModelBaseline(
-                K=K,
-                T_per_model=PAPER_CONFIG["T_PER_MODEL"],
-                colsample_bytree=0.2,
-                seed=rep_seed,
-                tune=True,
-            )
-            lsm_t.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = lsm_t.global_importance_
-            preds = lsm_t.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["LSM (Tuned)"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["LSM (Tuned)"], imp, true_imp, grps, rmse_val, lsm_t)
-
-            # --- Stochastic Retrain ---
-            t_m = time.time()
-            sr = StochasticRetrainBaseline(
-                N=K,
-                task="regression",
-                n_jobs=-1,
-                seed=rep_seed,
-            )
-            sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = sr.global_importance_
-            preds = sr.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Stochastic Retrain"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Stochastic Retrain"], imp, true_imp, grps, rmse_val, sr)
-
-            # --- Random Forest ---
-            t_m = time.time()
-            rf = RandomForestBaseline(
-                n_estimators=500,
-                task="regression",
-                seed=rep_seed,
-            )
-            rf.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = rf.global_importance_
-            preds = rf.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Random Forest"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Random Forest"], imp, true_imp, grps, rmse_val, rf)
-
-        # Aggregate results per method (identical output format)
-        for name in sweep_methods:
-            md = method_data[name]
-            stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md["imp_runs"])
-            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(md["imp_runs"], k=5)
-            n_reps = len(md["acc_runs"])
-            sweep_results[rho][name] = {
-                "stability": stab,
-                "stability_se": stab_se,
-                "stability_ci_lo": stab_ci_lo,
-                "stability_ci_hi": stab_ci_hi,
-                "topk5_stability": topk5,
-                "topk5_se": topk5_se,
-                "topk5_ci_lo": topk5_ci_lo,
-                "topk5_ci_hi": topk5_ci_hi,
-                "k_eff_mean": float(np.mean(md["keff_runs"])) if md["keff_runs"] else None,
-                "k_eff_std": float(np.std(md["keff_runs"], ddof=1)) if len(md["keff_runs"]) > 1 else None,
-                "accuracy_mean": np.mean(md["acc_runs"]),
-                "accuracy_se": np.std(md["acc_runs"], ddof=1) / np.sqrt(n_reps),
-                "accuracy_std": np.std(md["acc_runs"], ddof=1),
-                "group_accuracy_mean": np.mean(md["gacc_runs"]),
-                "group_accuracy_std": np.std(md["gacc_runs"], ddof=1),
-                "group_mse_mean": np.mean(md["gmse_runs"]),
-                "group_mse_std": np.std(md["gmse_runs"], ddof=1),
-                "equity_mean": np.mean(md["eq_runs"]),
-                "equity_se": np.std(md["eq_runs"], ddof=1) / np.sqrt(n_reps),
-                "equity_std": np.std(md["eq_runs"], ddof=1),
-                "rmse_mean": np.mean(md["rmse_runs"]),
-                "rmse_std": np.std(md["rmse_runs"], ddof=1),
-                "elapsed_s": md["t_accum"],
-                # Save per-rep arrays for significance tests
-                "acc_runs": np.array(md["acc_runs"]),
-                "eq_runs": np.array(md["eq_runs"]),
-                "rmse_runs": np.array(md["rmse_runs"]),
-                "imp_runs": md["imp_runs"],
-            }
-            log(
-                f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
-                f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
-                f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
-                f"({md['t_accum']:.1f}s)"
-            )
-
-        save_checkpoint(
-            ckpt_name,
-            checkpoint_dir=CKPT_DIR,
-            rho_results=sweep_results[rho],
-            fsi_list=fsi_by_rho.get(rho, []),
-            grps=grps_by_rho.get(rho),
+        results_list = Parallel(n_jobs=n_rho, backend="loky")(
+            delayed(_run_single_rho)(rho, sweep_methods, feature_names, n_jobs_inner) for rho in pending_rhos
         )
+
+        for rho, rho_results, fsi_list, grps_last in results_list:
+            sweep_results[rho] = rho_results
+            if fsi_list:
+                fsi_by_rho[rho] = fsi_list
+            if grps_last is not None:
+                grps_by_rho[rho] = grps_last
 
     # FSI collinearity validation (reviewer #7): show FSI rises with rho
     log("\n  FSI Collinearity Validation (DASH):")
