@@ -3087,6 +3087,18 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
     plt.close(fig)
     log(f"  Saved: {OUT}/figures/first_mover_concentration.pdf")
 
+    # Save JSON for explorer notebook
+    fmv_json: dict[str, dict[str, object]] = {}
+    for m in methods_to_run:
+        conc = float(np.max(avg_imp[m]) / (np.sum(avg_imp[m]) + 1e-10))
+        fmv_json[m] = {
+            "avg_importance": avg_imp[m],
+            "std_importance": std_imp[m],
+            "concentration": conc,
+        }
+    save_json(fmv_json, f"{OUT}/tables/first_mover_visualization.json")
+    log(f"  Saved: {OUT}/tables/first_mover_visualization.json")
+
     if cleanup:
         clear_checkpoints_by_prefix("first_mover_vis_batch_", CKPT_DIR)
 
