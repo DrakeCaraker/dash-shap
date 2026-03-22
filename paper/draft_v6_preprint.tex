@@ -39,6 +39,13 @@
 %   - Added stability testing gap note (BCa CIs as alternative)
 %   - Added significance table "selected comparisons" note
 %
+% draft_v6_preprint — numerical audit + peer-review fixes (2026-03-21):
+%   - CORRECTED Table 9 nonlinear DGP equity values (all 5 rho levels were wrong)
+%   - Added footnote to Table 8 flagging Breast Cancer SB(standard) provenance
+%   - Renamed "Accuracy" column header to "DGP Agreement" in Tables 5 & 6
+%   - Updated filter equation to show both absolute and relative modes
+%   - Clarified SR hyperparameter specification (best of 100 random draws from same grid)
+%
 % draft_v5_preprint — revised per third review pass:
 %   - Fixed math typesetting for tree count expression in Introduction
 %   - Standardized SE formatting in real-world results table
@@ -519,18 +526,20 @@ with early stopping, using a separate random seed to diversify initialization.
 \subsection{Stage 2: Performance Filtering}
 
 We retain models whose validation score is within $\varepsilon$ of the
-best:
+best. Two modes are supported:
 \begin{equation}
-  \mathcal{F} = \{i : |s_i - s^*| \leq \varepsilon\},
+  \mathcal{F}_{\text{abs}} = \{i : |s_i - s^*| \leq \varepsilon\},
+  \qquad
+  \mathcal{F}_{\text{rel}} = \{i : |s_i - s^*| \leq \varepsilon \cdot |s^*|\},
   \quad s^* = \max_i s_i,
   \label{eq:filter}
 \end{equation}
 where $s_i$ is the negative RMSE (for regression) or AUC (for
 classification) of model $i$. This ensures that all explanations come from
 models that have learned meaningful signal. We use $\varepsilon = 0.08$
-(absolute mode) for synthetic data and $\varepsilon = 0.05$ (relative
-mode, retaining models within 5\% of the best score) for real-world
-datasets.
+(absolute mode, $\mathcal{F}_{\text{abs}}$) for synthetic data and
+$\varepsilon = 0.05$ (relative mode, $\mathcal{F}_{\text{rel}}$,
+retaining models within 5\% of the best score) for real-world datasets.
 
 \subsection{Stage 3: Diversity Selection}
 
@@ -730,7 +739,7 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \midrule
 \addlinespace
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
-  & Stochastic Retrain & $K$ models, different seeds, same hyperparameters \\
+  & Stochastic Retrain & $K$ models, different seeds, single fixed hyperparameter config (best of 100 random draws from the same grid as \dash{}) \\
   & Random Selection  & DASH population + filtering, random $K$ selection \\
   & Naive Top-$N$     & Top $K$ models by score, no diversity selection \\
   & \dash{} (MaxMin)  & Full pipeline with MaxMin diversity selection \\
@@ -831,7 +840,7 @@ $\rhovar = 0.9$ in Table~\ref{tab:extended}.}
 \small
 \begin{tabular}{clcccc}
 \toprule
-$\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
+$\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{DGP Agreement} &
   \textbf{Equity (CV$\downarrow$)} & \textbf{RMSE} \\
 \midrule
 \multirow{4}{*}{0.0}
@@ -939,8 +948,9 @@ Table~\ref{tab:extended} compares all methods at $\rhovar = 0.9$. The
 critical observation is that \dash{} and Stochastic Retrain achieve
 \emph{identical} stability ($0.977$ each). These methods differ substantially in design---
 \dash{} uses forced feature restriction, performance filtering, and
-diversity-aware selection, while Stochastic Retrain simply trains $K$
-models with different random seeds and the same hyperparameters---but they
+diversity-aware selection, while Stochastic Retrain trains $K$
+models with different random seeds and a single fixed hyperparameter
+configuration (the best of 100 random draws from the same grid)---but they
 share one property: their explained models are trained independently.
 
 \begin{table}[htbp]
@@ -956,7 +966,7 @@ and were not independently measured.
 \small
 \begin{tabular}{llcccc}
 \toprule
-& \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
+& \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{DGP Agreement} &
   \textbf{Equity (CV$\downarrow$)} & \textbf{Time (s)} \\
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
@@ -1250,15 +1260,16 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 $^\dagger$Matched training budget ($M{=}200$ models trained).
+$^\ddagger$Breast Cancer Single Best from a separate preliminary analysis ($N_{\text{reps}}{=}20$, same protocol); the main benchmark ran only the ($M{=}200$) variant.
 $\Delta$Stab.\ is relative to standard Single Best.
-All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
+SB($M{=}200$) and DASH sourced directly from \texttt{demo\_benchmark\_6.ipynb}.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{$\Delta$Stab.} & \textbf{RMSE} \\
 \midrule
 \multirow{3}{*}{Breast Cancer}
-  & Single Best              & $.534 \pm .040$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
+  & Single Best$^\ddagger$   & $.534 \pm .040$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
   & Single Best ($M{=}200$)$^\dagger$ & $.317 \pm .053$ & $-0.217$ & \multicolumn{1}{c}{---} \\
   & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.396$ & \multicolumn{1}{c}{---} \\
 \addlinespace
@@ -1358,11 +1369,11 @@ $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \multicolumn{6}{c}{\textit{Equity (CV, lower is better)}} \\
 $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \midrule
-0.0  & 0.112 & \textbf{0.076} & 0.088 & 0.097 & 0.085 \\
-0.5  & 0.229 & \textbf{0.174} & 0.193 & 0.203 & \textbf{0.174} \\
-0.7  & 0.257 & 0.195 & 0.211 & 0.215 & \textbf{0.173} \\
-0.9  & 0.340 & 0.305 & 0.297 & 0.244 & \textbf{0.201} \\
-0.95 & 0.399 & 0.388 & 0.341 & 0.246 & \textbf{0.209} \\
+0.0  & 0.178 & 0.181 & 0.181 & 0.180 & \textbf{0.168} \\
+0.5  & 0.177 & 0.189 & 0.174 & \textbf{0.169} & 0.172 \\
+0.7  & 0.192 & 0.203 & 0.184 & 0.180 & \textbf{0.170} \\
+0.9  & 0.200 & 0.241 & 0.220 & 0.177 & \textbf{0.173} \\
+0.95 & 0.231 & 0.267 & 0.229 & 0.176 & \textbf{0.167} \\
 \bottomrule
 \end{tabular}
 \end{table}
