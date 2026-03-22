@@ -45,6 +45,11 @@
 %   - Renamed "Accuracy" column header to "DGP Agreement" in Tables 5 & 6
 %   - Updated filter equation to show both absolute and relative modes
 %   - Clarified SR hyperparameter specification (best of 100 random draws from same grid)
+%   - Fixed TOST paragraph: removed false TOST claim (TOST not run in v6); replaced
+%     with correct description of Wilcoxon non-significance + practical equivalence note
+%   - Added SR stability SE to BCa CI footnote (overlaps DASH, consistent with equivalence)
+%   - Fixed Paillard positioning: their paper addresses intra-model consistency, not
+%     cross-fit reproducibility; clarified the distinction
 %
 % draft_v5_preprint — revised per third review pass:
 %   - Fixed math typesetting for tree count expression in Introduction
@@ -331,13 +336,17 @@ distribute credit among features that carry overlapping information
 \citep{kumar2020problems, chen2020true}.
 
 \paragraph{Ensemble explanations.}
-\citet{paillard2025ensemble} argue for computing SHAP values from a single
-large ensemble rather than aggregating explanations from multiple models,
-on the grounds that a single ensemble provides a consistent explanation.
-Our results challenge this recommendation: the single-ensemble approach
-(our ``Ensemble SHAP'' baseline) does not resolve the instability caused
-by correlated features and, when taken to its extreme (the Large Single
-Model), amplifies it.
+\citet{paillard2025ensemble} address a distinct consistency problem:
+given a single already-fitted ensemble model, they argue for computing
+one SHAP attribution over the full ensemble rather than averaging
+per-tree attributions, for internal consistency within that model.
+Their setting does not address cross-fit reproducibility---whether
+retraining the model on the same data yields the same attributions.
+Our results show that this cross-fit instability (our focus) is
+not resolved by the single-ensemble approach: the single-ensemble
+baseline (``Ensemble SHAP'') does not improve stability over Single
+Best, and the Large Single Model, which maximizes sequential
+tree dependency, produces the worst stability of any method tested.
 
 \paragraph{Stable explanations.}
 \citet{alvarez2018towards} propose metrics for explanation stability.
@@ -961,7 +970,9 @@ $^\dagger$Matched training budget ($M{=}200$ models trained).
 Timing entries marked --- share infrastructure with other methods
 and were not independently measured.
 95\% BCa bootstrap CIs on stability: Single Best $[0.952, 0.963]$,
-\dash{} $[0.975, 0.978]$ (non-overlapping).}
+\dash{} $[0.975, 0.978]$ (non-overlapping).
+Stochastic Retrain: $0.977 \pm 0.0015$ (SE); BCa interval overlaps
+with \dash{} ($0.977 \pm 0.0012$~SE), consistent with equivalence.}
 \label{tab:extended}
 \small
 \begin{tabular}{llcccc}
@@ -1045,16 +1056,13 @@ $\rhovar \geq 0.7$ for both accuracy ($d = +0.98$) and equity
 \emph{not} significant on either accuracy ($d = +0.05$) or equity
 ($d = -0.21$), consistent with the independence principle.
 
-We additionally apply two one-sided $t$-tests (TOST) to evaluate
-practical equivalence between \dash{} and SR.  The equivalence margin
-is set adaptively as $\delta = \max(0.01,\; 0.05 \times \bar{\mu})$,
-where $\bar{\mu}$ is the pooled mean of the two methods' metric values;
-for accuracy metrics in the range $0.93$--$0.98$ this evaluates to
-$\delta \approx 0.049$.  We justify this margin by the empirical
-observation that at $\rhovar = 0.9$, accuracy differences smaller than
-$0.049$ produce identical top-5 feature rankings in over 95\% of
-repetitions.  TOST confirms equivalence for both accuracy ($p_{\max} =
-0.926$) and equity ($p_{\max} = 0.622$) at $\alpha = 0.05$.
+The small effect sizes ($d = +0.05$ for accuracy, $d = -0.21$ for equity)
+and large Wilcoxon $p$-values ($p = 0.926$ for accuracy, $p = 0.622$ for
+equity) are consistent with practical equivalence: differences of this
+magnitude---well under $0.005$ in absolute accuracy---do not change
+top-5 feature rankings in practice.  Formal equivalence testing (TOST)
+is deferred to the TMLR version where $N_{\text{reps}} = 50$ provides
+adequate power.
 
 Note that stability, computed as a single aggregate across all repetition
 pairs, cannot be subjected to per-repetition Wilcoxon tests; we report
