@@ -10,10 +10,11 @@ __all__ = ["RandomForestBaseline"]
 
 
 class RandomForestBaseline:
-    def __init__(self, n_estimators=500, task="regression", seed=42):
+    def __init__(self, n_estimators=500, task="regression", seed=42, n_jobs=None):
         self.n_estimators = n_estimators
         self.task = task
         self.seed = seed
+        self.n_jobs = n_jobs
         self.model_ = None
         self.global_importance_ = None
         self.fsi_ = None
@@ -34,14 +35,14 @@ class RandomForestBaseline:
                 n_estimators=self.n_estimators,
                 max_depth=None,
                 random_state=self.seed,
-                n_jobs=-1,
+                n_jobs=self.n_jobs,
             )
         else:
             self.model_ = RandomForestClassifier(
                 n_estimators=self.n_estimators,
                 max_depth=None,
                 random_state=self.seed,
-                n_jobs=-1,
+                n_jobs=self.n_jobs,
             )
 
         self.model_.fit(X_train, y_train)

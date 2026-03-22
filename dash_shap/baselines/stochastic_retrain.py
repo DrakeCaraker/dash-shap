@@ -11,11 +11,12 @@ __all__ = ["StochasticRetrainBaseline"]
 
 
 class StochasticRetrainBaseline:
-    def __init__(self, N=20, task="regression", n_jobs=-1, seed=42):
+    def __init__(self, N=20, task="regression", n_jobs=-1, seed=42, nthread=None):
         self.N = N
         self.task = task
         self.n_jobs = n_jobs
         self.seed = seed
+        self.nthread = nthread
         self.global_importance_ = None
         self.fsi_ = None
 
@@ -38,6 +39,7 @@ class StochasticRetrainBaseline:
                     y_val,
                     task=self.task,
                     seed=self.seed + i,
+                    nthread=self.nthread,
                 )
                 for i, config in enumerate(configs)
             )
@@ -53,6 +55,7 @@ class StochasticRetrainBaseline:
                 y_val,
                 task=self.task,
                 seed=self.seed + 1000 + i,
+                nthread=self.nthread,
             )
             return i, model, score
 

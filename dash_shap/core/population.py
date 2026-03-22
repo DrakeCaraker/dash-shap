@@ -60,8 +60,10 @@ def train_single_model(
     n_estimators=1000,
     early_stopping_rounds=20,
     seed=42,
+    nthread=None,
 ):
     """Train a single XGBoost model and return (model, validation_score)."""
+    thread_kw = {"nthread": nthread} if nthread is not None else {}
     if task == "regression":
         model = xgb.XGBRegressor(
             n_estimators=n_estimators,
@@ -70,6 +72,7 @@ def train_single_model(
             random_state=seed,
             verbosity=0,
             **config,
+            **thread_kw,
         )
         model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
         preds = model.predict(X_val)
@@ -84,6 +87,7 @@ def train_single_model(
             random_state=seed,
             verbosity=0,
             **config,
+            **thread_kw,
         )
         model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
         preds = model.predict_proba(X_val)[:, 1]
@@ -101,6 +105,7 @@ def train_single_model(
             random_state=seed,
             verbosity=0,
             **config,
+            **thread_kw,
         )
         model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
         preds = model.predict_proba(X_val)
@@ -131,6 +136,7 @@ def generate_model_population(
     n_jobs=-1,
     seed=42,
     verbose=True,
+    nthread=None,
 ):
     """Train M diverse XGBoost models and return (models, val_scores, configs)."""
     if search_space is None:
@@ -154,6 +160,7 @@ def generate_model_population(
             n_estimators=n_estimators,
             early_stopping_rounds=early_stopping_rounds,
             seed=seed + i,
+            nthread=nthread,
         )
         return i, model, score
 
