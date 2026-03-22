@@ -2,6 +2,8 @@
 
 import io
 import json
+import pickle
+import warnings
 import numpy as np
 from dash_shap.utils.checkpoint import (
     save_checkpoint,
@@ -12,6 +14,7 @@ from dash_shap.utils.checkpoint import (
     _checkpoint_path,
     _sanitize_ckpt_name,
     _LegacyUnpickler,
+    _config_fingerprint,
 )
 from dash_shap.utils.io import save_json
 from dash_shap.core.pipeline import DASHPipeline
@@ -92,6 +95,78 @@ class TestCheckpoint:
     def test_checkpoint_path_format(self):
         path = _checkpoint_path("my_test")
         assert str(path).endswith("ckpt_my_test.pkl")
+
+
+class TestCheckpointConfigValidation:
+    def test_config_hash_matching_no_warning(self, tmp_path):
+        """Matching config on save and load → no warning."""
+        config = {"M": 200, "K": 30, "N_REPS": 50}
+        save_checkpoint("match", checkpoint_dir=str(tmp_path), config=config, val=42)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # any warning → test failure
+            result = load_checkpoint("match", checkpoint_dir=str(tmp_path), config=config)
+        assert result["val"] == 42
+
+    def test_config_hash_mismatch_warns(self, tmp_path):
+        """Different config on load → UserWarning, data still returned."""
+        save_checkpoint("mismatch", checkpoint_dir=str(tmp_path),
+                        config={"N_REPS": 20}, val=1)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = load_checkpoint("mismatch", checkpoint_dir=str(tmp_path),
+                                     config={"N_REPS": 50})
+        assert len(w) == 1
+        assert issubclass(w[0].category, UserWarning)
+        assert "mismatch" in str(w[0].message)
+        assert result["val"] == 1  # data still usable
+
+    def test_legacy_checkpoint_no_warning(self, tmp_path):
+        """Old checkpoint with no __meta__ loads silently regardless of config."""
+        path = tmp_path / "ckpt_legacy.pkl"
+        with open(path, "wb") as f:
+            pickle.dump({"val": 99}, f)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = load_checkpoint("legacy", checkpoint_dir=str(tmp_path),
+                                     config={"M": 200})
+        assert len(w) == 0
+        assert result["val"] == 99
+
+    def test_no_config_no_warning(self, tmp_path):
+        """config=None (default) never warns even if __meta__ present."""
+        save_checkpoint("noconfig", checkpoint_dir=str(tmp_path),
+                        config={"M": 200}, val=5)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = load_checkpoint("noconfig", checkpoint_dir=str(tmp_path))
+        assert len(w) == 0
+        assert result["val"] == 5
+
+    def test_meta_key_transparent_to_callers(self, tmp_path):
+        """__meta__ in returned dict doesn't interfere with named-key access."""
+        save_checkpoint("meta", checkpoint_dir=str(tmp_path),
+                        config={"M": 200}, rho_results={"rho": 0.9})
+        result = load_checkpoint("meta", checkpoint_dir=str(tmp_path), config={"M": 200})
+        assert result["rho_results"] == {"rho": 0.9}
+        assert "__meta__" in result
+        assert "config_hash" in result["__meta__"]
+
+
+class TestConfigFingerprint:
+    def test_deterministic(self):
+        cfg = {"M": 200, "K": 30}
+        assert _config_fingerprint(cfg) == _config_fingerprint(cfg)
+
+    def test_order_independent(self):
+        assert _config_fingerprint({"M": 200, "K": 30}) == \
+               _config_fingerprint({"K": 30, "M": 200})
+
+    def test_none_returns_none(self):
+        assert _config_fingerprint(None) is None
+
+    def test_different_values_differ(self):
+        assert _config_fingerprint({"N_REPS": 20}) != \
+               _config_fingerprint({"N_REPS": 50})
 
 
 class TestSaveJson:
