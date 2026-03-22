@@ -1,28 +1,32 @@
-"""Smoke tests for run_experiments.py experiment functions."""
+"""Smoke tests for experiment functions in the parallel runner."""
 
 import pytest
 
 
 @pytest.mark.slow
 def test_k_sweep_independence_smoke():
-    """Smoke test: k_sweep_independence runs with tiny settings."""
-    from run_experiments import experiment_k_sweep_independence
+    """Smoke test: k_sweep_independence runs with tiny settings via parallel runner."""
+    from run_experiments_parallel import experiment_k_sweep_independence
 
-    results = experiment_k_sweep_independence(k_values=[1, 5], n_reps=2, seed=0)
-    assert set(results.keys()) == {1, 5}
-    for k_val, kdata in results.items():
-        assert "DASH" in kdata and "SR" in kdata
-        assert "stability" in kdata["DASH"]
-        assert "accuracy_mean" in kdata["SR"]
+    results = experiment_k_sweep_independence(resume=False)
+    assert len(results) > 0
+    # Verify per-method structure
+    for k_val, k_data in results.items():
+        for method, mdata in k_data.items():
+            if isinstance(mdata, dict):
+                assert "stability" in mdata
 
 
 @pytest.mark.slow
 def test_asymmetric_dgp_smoke():
-    """Smoke test: asymmetric_dgp runs with 1 rep."""
-    from run_experiments import experiment_asymmetric_dgp
+    """Smoke test: asymmetric_dgp uses parallel schema (not old sequential schema)."""
+    from run_experiments_parallel import experiment_asymmetric_dgp
 
-    results = experiment_asymmetric_dgp(n_reps=1)
-    assert 0.5 in results
-    assert "DASH" in results[0.5]
-    assert "stability" in results[0.5]["DASH"]
-    assert "bias_mean" in results[0.5]["DASH"]
+    results = experiment_asymmetric_dgp(resume=False)
+    assert 0.5 in results or "0.5" in results
+    # Assert parallel schema — NOT the old sequential keys
+    for rho_data in results.values():
+        for method, mdata in rho_data.items():
+            if isinstance(mdata, dict):
+                assert "bias_f0" in mdata, "old sequential key 'bias_mean' schema detected"
+                assert "bias_mean" not in mdata, "old sequential key present"

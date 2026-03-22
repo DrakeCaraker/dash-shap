@@ -146,7 +146,8 @@ jobs:
           python -c "
           import re, json, sys, nbformat
 
-          # Extract config from run_experiments.py
+          # NOTE: run_experiments.py is deprecated (superseded by run_experiments_parallel.py)
+          # but its PAPER_CONFIG is still checked for provenance consistency.
           with open('run_experiments.py') as f:
               content = f.read()
 
@@ -187,6 +188,9 @@ jobs:
                   print(f'  {k} = {v}')
           sys.exit(errors)
           "
+      - name: Check sequential runner has deprecation header
+        run: |
+          grep -q "DEPRECATED" run_experiments.py && echo "OK: deprecation header present" || (echo "::error::run_experiments.py is missing deprecation header" && exit 1)
 
   file-guards:
     runs-on: ubuntu-latest
