@@ -122,6 +122,11 @@ from dash_shap.utils.checkpoint import (
 # Canonical configuration — single source of truth in dash_shap.config
 # ---------------------------------------------------------------------------
 from dash_shap.config import PAPER_CONFIG, SEED, REAL_EPSILON, REAL_EPSILON_MODE
+from dash_shap.experiments.schemas import (
+    AsymmetricRhoMethodResult,
+    KSweepMethodResult,
+    VarianceDecompositionMethodResult,
+)
 
 M = PAPER_CONFIG["M"]
 K = PAPER_CONFIG["K"]
@@ -2281,7 +2286,7 @@ def experiment_ablation(resume=False, cleanup=False):
 ###############################################################################
 
 
-def experiment_variance_decomposition(resume=False, cleanup=False):
+def experiment_variance_decomposition(resume=False, cleanup=False) -> dict:
     """Variance decomposition: separates data-sampling vs model-selection variance."""
     _ensure_dirs()
     t0 = time.time()
@@ -2470,7 +2475,7 @@ def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup
     return rho, rho_summary
 
 
-def experiment_asymmetric_dgp(resume=False, cleanup=False):
+def experiment_asymmetric_dgp(resume=False, cleanup=False) -> dict:
     """Asymmetric causal DGP: f0 is causal, f1 is a passive correlate.
 
     Tests whether DASH over-equalizes when one feature has all the signal.
@@ -2580,7 +2585,7 @@ def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inn
     return di, cell_results
 
 
-def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
+def experiment_variance_decomposition_crossed(resume=False, cleanup=False) -> dict:
     """Crossed R×R variance decomposition: exact ANOVA replacing 1-stability proxy.
 
     Uses a fully crossed 7×7 design (7 data seeds × 7 model seeds = 49 cells)
@@ -3462,7 +3467,7 @@ def plot_k_sweep_independence(k_values, results):
     log(f"  Saved: {OUT}/figures/k_sweep_independence.png")
 
 
-def experiment_k_sweep_independence(resume=False, cleanup=False):
+def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
     """Ablation: independence vs. K — stability scaling with ensemble size.
 
     Tests whether increasing K (models selected) provides logarithmically
