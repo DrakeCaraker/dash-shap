@@ -259,14 +259,13 @@ dash-shap/
 │   └── utils/          # I/O and SHAP helpers
 ├── notebooks/          # Interactive benchmarks (demo_benchmark_6 is canonical)
 ├── examples/           # Standalone usage examples (quickstart.py, extensions_quickstart.py)
-├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md, EXTENSIONS.md
+├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md
 ├── tests/              # pytest suite
 ├── paper/              # LaTeX source
 ├── run_experiments.py  # CLI experiment runner
 ├── EXPERIMENT_GUIDE.md # Full methodology and method descriptions
 ├── FAQ.md              # Common questions and answers
-├── CONTRIBUTING.md     # How to contribute and add extensions
-└── ROADMAP.md          # Five-paper research program
+└── CONTRIBUTING.md     # How to contribute and add extensions
 ```
 
 ---
@@ -290,6 +289,3 @@ dash-shap/
 
 [MIT](LICENSE)
 
-## Research Roadmap
-
-DASH is Paper 1 of a five-paper research program extending from gradient boosting to neural networks, impossibility results, and explanation-aware model selection. See **[ROADMAP.md](ROADMAP.md)**.
