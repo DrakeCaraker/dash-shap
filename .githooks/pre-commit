@@ -6,6 +6,34 @@ set -e
 
 echo "Running pre-commit checks..."
 
+# Block commits that include private research strategy files
+PRIVATE_PATTERNS=(
+    "ROADMAP.md"
+    "docs/RESEARCH_DIRECTIONS.md"
+    "docs/EXTENSIONS.md"
+    "paper/REVIEW_v"
+    "PRIVATE_RESEARCH_CONTEXT.md"
+)
+BLOCKED=()
+for pattern in "${PRIVATE_PATTERNS[@]}"; do
+    matches=$(git diff --cached --name-only | grep -F "$pattern" || true)
+    if [ -n "$matches" ]; then
+        BLOCKED+=("$matches")
+    fi
+done
+if [ ${#BLOCKED[@]} -gt 0 ]; then
+    echo ""
+    echo "ERROR: Commit blocked — private research strategy files are staged:"
+    for f in "${BLOCKED[@]}"; do
+        echo "  $f"
+    done
+    echo ""
+    echo "These files contain unpublished research strategy and must not be committed."
+    echo "Run: git restore --staged <file>  to unstage them."
+    echo ""
+    exit 1
+fi
+
 # Ruff lint (auto-fix, then verify clean)
 ruff check . --fix --quiet
 ruff format . --quiet
