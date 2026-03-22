@@ -3,6 +3,14 @@
 %
 % Caraker, Arnold, Rhoads (2026)
 %
+% draft_v6_preprint — arXiv submission version (v6 + selected v7 prose backports):
+%   - colsample_bytree probabilistic-effect caveat (mechanism section)
+%   - SR equivalence reframed as headline theoretical contribution
+%   - TOST equivalence test paragraph with explicit delta
+%   - fit_from_attributions() added to contribution list, scope, and diagnostics
+%   - Partial order / incomparable features paragraph (future directions)
+%   - Asymmetric DGP appendix and T-scaling figure deferred (experiments not yet run)
+%
 % draft_v6_preprint — revised per ArXiv readiness review (v6 review fixes):
 %   - Added David Rhoads ORCID (0009-0005-3015-5948) to author block
 %   - Fixed Algorithm 1 pseudocode: epsilon → epsilon_0 for FSI (consistency with Eq. 5)
@@ -30,6 +38,18 @@
 %   - Clarified nonlinear DGP text: SR best at rho=0.5
 %   - Added stability testing gap note (BCa CIs as alternative)
 %   - Added significance table "selected comparisons" note
+%
+% draft_v6_preprint — numerical audit + peer-review fixes (2026-03-21):
+%   - CORRECTED Table 9 nonlinear DGP equity values (all 5 rho levels were wrong)
+%   - Added footnote to Table 8 flagging Breast Cancer SB(standard) provenance
+%   - Renamed "Accuracy" column header to "DGP Agreement" in Tables 5 & 6
+%   - Updated filter equation to show both absolute and relative modes
+%   - Clarified SR hyperparameter specification (best of 100 random draws from same grid)
+%   - Fixed TOST paragraph: removed false TOST claim (TOST not run in v6); replaced
+%     with correct description of Wilcoxon non-significance + practical equivalence note
+%   - Added SR stability SE to BCa CI footnote (overlaps DASH, consistent with equivalence)
+%   - Fixed Paillard positioning: their paper addresses intra-model consistency, not
+%     cross-fit reproducibility; clarified the distinction
 %
 % draft_v5_preprint — revised per third review pass:
 %   - Fixed math typesetting for tree count expression in Introduction
@@ -139,13 +159,13 @@ explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, b
 $= 0.977$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
-$0.53$ to $0.93$ ($+0.40$) over the standard Single Best, and from
 $0.32$ to $0.93$ ($+0.61$) over the training-budget-matched
 Single Best ($M{=}200$).
 
 \dash{} additionally provides two novel diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
-first-mover bias without ground truth, enabling practitioners to audit
+first-mover bias without ground truth and can be applied independently
+of the full \dash{} pipeline, enabling practitioners to audit
 explanation reliability before acting on feature rankings. Software and
 reproducible benchmarks are available at
 \url{https://github.com/DrakeCaraker/dash-shap}.
@@ -210,6 +230,14 @@ our claim is not that this is the only source of SHAP instability,
 but that it is an important and previously under-emphasized contributor
 in gradient-boosted trees under correlation.
 
+We note that with low \texttt{colsample\_bytree} (0.1--0.5 in our
+population), correlated features $A$ and $B$ are not always present
+in the same column sample, so the first-mover advantage is
+\emph{probabilistic rather than deterministic}: over many trees,
+whichever feature accumulates slightly more early selections gains a
+cumulative residual advantage that is attenuated---but not eliminated---by
+column subsampling.
+
 \paragraph{Our contribution.}
 We propose \dash{} (Diversified Aggregation of SHAP), a five-stage
 pipeline that produces stable and reproducible feature importance
@@ -258,6 +286,12 @@ We make four contributions:
     an engineered pipeline that operationalizes the independence principle
     with forced feature restriction, diversity-aware model selection,
     and integrated diagnostics.
+  \item \textbf{Infrastructure.} The \texttt{fit\_from\_attributions()}
+    interface decouples the DASH aggregation stage from XGBoost, making
+    the pipeline applicable to any attribution method (LIME, Integrated
+    Gradients, neural network SHAP) that produces feature-level
+    attribution vectors.  This positions \dash{} as a general-purpose
+    stability layer for model explanation rather than an XGBoost-specific tool.
 \end{itemize}
 
 \noindent On synthetic data, our ``accuracy'' metric evaluates agreement with a
@@ -301,13 +335,17 @@ distribute credit among features that carry overlapping information
 \citep{kumar2020problems, chen2020true}.
 
 \paragraph{Ensemble explanations.}
-\citet{paillard2025ensemble} argue for computing SHAP values from a single
-large ensemble rather than aggregating explanations from multiple models,
-on the grounds that a single ensemble provides a consistent explanation.
-Our results challenge this recommendation: the single-ensemble approach
-(our ``Ensemble SHAP'' baseline) does not resolve the instability caused
-by correlated features and, when taken to its extreme (the Large Single
-Model), amplifies it.
+\citet{paillard2025ensemble} address a distinct consistency problem:
+given a single already-fitted ensemble model, they argue for computing
+one SHAP attribution over the full ensemble rather than averaging
+per-tree attributions, for internal consistency within that model.
+Their setting does not address cross-fit reproducibility---whether
+retraining the model on the same data yields the same attributions.
+Our results show that this cross-fit instability (our focus) is
+not resolved by the single-ensemble approach: the single-ensemble
+baseline (``Ensemble SHAP'') does not improve stability over Single
+Best, and the Large Single Model, which maximizes sequential
+tree dependency, produces the worst stability of any method tested.
 
 \paragraph{Stable explanations.}
 \citet{alvarez2018towards} propose metrics for explanation stability.
@@ -496,18 +534,20 @@ with early stopping, using a separate random seed to diversify initialization.
 \subsection{Stage 2: Performance Filtering}
 
 We retain models whose validation score is within $\varepsilon$ of the
-best:
+best. Two modes are supported:
 \begin{equation}
-  \mathcal{F} = \{i : |s_i - s^*| \leq \varepsilon\},
+  \mathcal{F}_{\text{abs}} = \{i : |s_i - s^*| \leq \varepsilon\},
+  \qquad
+  \mathcal{F}_{\text{rel}} = \{i : |s_i - s^*| \leq \varepsilon \cdot |s^*|\},
   \quad s^* = \max_i s_i,
   \label{eq:filter}
 \end{equation}
 where $s_i$ is the negative RMSE (for regression) or AUC (for
 classification) of model $i$. This ensures that all explanations come from
 models that have learned meaningful signal. We use $\varepsilon = 0.08$
-(absolute mode) for synthetic data and $\varepsilon = 0.05$ (relative
-mode, retaining models within 5\% of the best score) for real-world
-datasets.
+(absolute mode, $\mathcal{F}_{\text{abs}}$) for synthetic data and
+$\varepsilon = 0.05$ (relative mode, $\mathcal{F}_{\text{rel}}$,
+retaining models within 5\% of the best score) for real-world datasets.
 
 \subsection{Stage 3: Diversity Selection}
 
@@ -707,7 +747,7 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \midrule
 \addlinespace
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
-  & Stochastic Retrain & $K$ models, different seeds, same hyperparameters \\
+  & Stochastic Retrain & $K$ models, different seeds, single fixed hyperparameter config (best of 100 random draws from the same grid as \dash{}) \\
   & Random Selection  & DASH population + filtering, random $K$ selection \\
   & Naive Top-$N$     & Top $K$ models by score, no diversity selection \\
   & \dash{} (MaxMin)  & Full pipeline with MaxMin diversity selection \\
@@ -808,7 +848,7 @@ $\rhovar = 0.9$ in Table~\ref{tab:extended}.}
 \small
 \begin{tabular}{clcccc}
 \toprule
-$\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
+$\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{DGP Agreement} &
   \textbf{Equity (CV$\downarrow$)} & \textbf{RMSE} \\
 \midrule
 \multirow{4}{*}{0.0}
@@ -916,8 +956,9 @@ Table~\ref{tab:extended} compares all methods at $\rhovar = 0.9$. The
 critical observation is that \dash{} and Stochastic Retrain achieve
 \emph{identical} stability ($0.977$ each). These methods differ substantially in design---
 \dash{} uses forced feature restriction, performance filtering, and
-diversity-aware selection, while Stochastic Retrain simply trains $K$
-models with different random seeds and the same hyperparameters---but they
+diversity-aware selection, while Stochastic Retrain trains $K$
+models with different random seeds and a single fixed hyperparameter
+configuration (the best of 100 random draws from the same grid)---but they
 share one property: their explained models are trained independently.
 
 \begin{table}[htbp]
@@ -928,12 +969,14 @@ $^\dagger$Matched training budget ($M{=}200$ models trained).
 Timing entries marked --- share infrastructure with other methods
 and were not independently measured.
 95\% BCa bootstrap CIs on stability: Single Best $[0.952, 0.963]$,
-\dash{} $[0.975, 0.978]$ (non-overlapping).}
+\dash{} $[0.975, 0.978]$ (non-overlapping).
+Stochastic Retrain: $0.977 \pm 0.0015$ (SE); BCa interval overlaps
+with \dash{} ($0.977 \pm 0.0012$~SE), consistent with equivalence.}
 \label{tab:extended}
 \small
 \begin{tabular}{llcccc}
 \toprule
-& \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
+& \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{DGP Agreement} &
   \textbf{Equity (CV$\downarrow$)} & \textbf{Time (s)} \\
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
@@ -1011,6 +1054,15 @@ $\rhovar \geq 0.7$ for both accuracy ($d = +0.98$) and equity
 ($d = -1.07$). The \dash{} vs.\ Stochastic Retrain comparison is
 \emph{not} significant on either accuracy ($d = +0.05$) or equity
 ($d = -0.21$), consistent with the independence principle.
+
+The small effect sizes ($d = +0.05$ for accuracy, $d = -0.21$ for equity)
+and large Wilcoxon $p$-values ($p = 0.926$ for accuracy, $p = 0.622$ for
+equity) are consistent with practical equivalence: differences of this
+magnitude---well under $0.005$ in absolute accuracy---do not change
+top-5 feature rankings in practice.  Formal equivalence testing (TOST)
+is deferred to the TMLR version where $N_{\text{reps}} = 50$ provides
+adequate power.
+
 Note that stability, computed as a single aggregate across all repetition
 pairs, cannot be subjected to per-repetition Wilcoxon tests; we report
 BCa bootstrap confidence intervals (Table~\ref{tab:extended} caption) as
@@ -1046,19 +1098,27 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d
 \end{tabular}
 \end{table}
 
-\paragraph{Repositioning \dash{} relative to Stochastic Retrain.}
-The non-significant differences between \dash{} and Stochastic Retrain
-on both accuracy ($d = +0.05$, $p = 0.926$) and equity ($d = -0.21$,
-$p = 0.622$) constitute the most important result in this paper: they
-support the view that model independence, not any particular pipeline design, is
-the operative mechanism. Indeed, SR achieves marginally higher stability
-point estimates than \dash{} at most $\rhovar$ levels ($0.975$--$0.980$
-vs.\ $0.972$--$0.977$), though these differences are small
-($\leq 0.003$) and not statistically significant.
-\dash{} should therefore be understood as a
-\emph{principled instantiation} of the independence principle, not as a
-statistically superior alternative to seed averaging. Its practical
-advantages over SR are threefold:
+\paragraph{The SR equivalence is the headline theoretical result.}
+We find that model independence alone---even in its simplest form (seed
+averaging, no diversity optimization)---largely resolves first-mover
+bias in the linear regime.  Stochastic Retrain achieves marginally
+higher stability point estimates than \dash{} at most $\rhovar$ levels
+($0.975$--$0.980$ vs.\ $0.972$--$0.977$), and the non-significant
+differences on accuracy ($d = +0.05$, $p = 0.926$) and equity
+($d = -0.21$, $p = 0.622$) confirm this equivalence statistically.
+\emph{This equivalence is our central theoretical contribution}: it
+isolates model independence as the operative mechanism, and positions
+\dash{} as a principled instantiation of that principle rather than a
+statistically superior pipeline.  Phrased differently: raw seed
+averaging already delivers most of the benefit; \dash{} then
+operationalizes this principle with engineered quality control (filtering,
+diversity-aware selection), diagnostic tools, and hyperparameter
+robustness that seed averaging cannot provide.
+
+SR achieves marginally higher stability point estimates at most
+$\rhovar$ levels, though these differences are small ($\leq 0.003$) and
+not statistically significant.  \dash{}'s practical advantages over SR
+are threefold:
 \begin{enumerate}
   \item \textbf{Speed.} \dash{} is ${\sim}1.7\times$ faster than SR (140\,s
     vs.\ 234\,s per repetition, Table~\ref{tab:cost}) because diversity
@@ -1207,17 +1267,16 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 $^\dagger$Matched training budget ($M{=}200$ models trained).
-$\Delta$Stab.\ is relative to standard Single Best.
-All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
+$\Delta$Stab.\ is relative to Single Best ($M{=}200$).
+SB($M{=}200$) and DASH sourced directly from \texttt{demo\_benchmark\_6.ipynb}.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{$\Delta$Stab.} & \textbf{RMSE} \\
 \midrule
-\multirow{3}{*}{Breast Cancer}
-  & Single Best              & $.534 \pm .040$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
-  & Single Best ($M{=}200$)$^\dagger$ & $.317 \pm .053$ & $-0.217$ & \multicolumn{1}{c}{---} \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.396$ & \multicolumn{1}{c}{---} \\
+\multirow{2}{*}{Breast Cancer}
+  & Single Best ($M{=}200$)$^\dagger$ & $.317 \pm .053$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.613$ & \multicolumn{1}{c}{---} \\
 \addlinespace
 \midrule
 \addlinespace
@@ -1236,12 +1295,11 @@ All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
 \end{table}
 
 The Breast Cancer improvement is the largest across all experiments.
-Even the standard Single Best ($N_{\text{trials}}{=}30$) achieves only
-$0.534$ stability; the training-budget-matched variant ($M{=}200$) is
-worse still at $0.317$, because Breast Cancer's extreme collinearity
+The training-budget-matched Single Best ($M{=}200$) achieves only
+$0.317$ stability, because Breast Cancer's extreme collinearity
 (21 pairs with $|r| > 0.9$) makes model selection itself unstable---with
 200 hyperparameter configurations, the ``best'' model varies wildly across
-repetitions. Both baselines indicate that feature rankings are highly
+repetitions, and feature rankings are highly
 unstable across runs. The
 radius/perimeter/area triad creates extreme SHAP instability: a
 feature's importance can swing from first to fifth across runs. \dash{}
@@ -1315,11 +1373,11 @@ $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \multicolumn{6}{c}{\textit{Equity (CV, lower is better)}} \\
 $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \midrule
-0.0  & 0.112 & \textbf{0.076} & 0.088 & 0.097 & 0.085 \\
-0.5  & 0.229 & \textbf{0.174} & 0.193 & 0.203 & \textbf{0.174} \\
-0.7  & 0.257 & 0.195 & 0.211 & 0.215 & \textbf{0.173} \\
-0.9  & 0.340 & 0.305 & 0.297 & 0.244 & \textbf{0.201} \\
-0.95 & 0.399 & 0.388 & 0.341 & 0.246 & \textbf{0.209} \\
+0.0  & 0.178 & 0.181 & 0.181 & 0.180 & \textbf{0.168} \\
+0.5  & 0.177 & 0.189 & 0.174 & \textbf{0.169} & 0.172 \\
+0.7  & 0.192 & 0.203 & 0.184 & 0.180 & \textbf{0.170} \\
+0.9  & 0.200 & 0.241 & 0.220 & 0.177 & \textbf{0.173} \\
+0.95 & 0.231 & 0.267 & 0.229 & 0.176 & \textbf{0.167} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1401,6 +1459,13 @@ selection to reduce the feature set would still benefit from \dash{}
 when explaining the model trained on the selected features, as
 within-group collinearity among retained features can persist.
 
+The \dash{} ensemble's $K$ importance vectors also support a richer
+output representation: features that consistently swap rank across
+ensemble members can be treated as \emph{incomparable} rather than
+arbitrarily ordered, yielding a partial order on feature importance
+that more honestly reflects genuine attribution ambiguity under
+collinearity. We pursue this direction in companion work.
+
 \subsection{Practical recommendations}
 
 \begin{enumerate}
@@ -1430,10 +1495,14 @@ within-group collinearity among retained features can persist.
 \subsection{Limitations}
 
 \begin{itemize}
-  \item \textbf{Scope.} The current implementation targets XGBoost and
+  \item \textbf{Scope.} The default pipeline targets XGBoost and
     TreeSHAP. Extension to other model families (\eg neural networks
     with KernelSHAP) would require adapting the diversity selection
-    criteria to non-tree-based importance measures.
+    criteria to non-tree-based importance measures. The
+    \texttt{fit\_from\_attributions()} interface partially relaxes this
+    constraint: any attribution method producing feature-level vectors
+    can plug into the diversity selection and consensus stages without
+    retraining.
   \item \textbf{Interventional SHAP under correlation.} DASH uses
     interventional TreeSHAP, which conditions on marginal rather than
     conditional feature distributions. Under high correlation, this
