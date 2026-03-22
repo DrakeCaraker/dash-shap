@@ -990,9 +990,7 @@ def experiment_overlapping(resume=False, cleanup=False):
         results["DASH (Cluster)"]["rmse_runs"].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
 
         if (rep + 1) % 10 == 0:
-            _save(
-                f"overlapping_batch_{rep + 1}", results=results, completed_reps=rep + 1
-            )
+            _save(f"overlapping_batch_{rep + 1}", results=results, completed_reps=rep + 1)
 
     log(
         f"\n  {'Method':<20} {'Stability':>10} {'Top-5':>8} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}"
@@ -1167,7 +1165,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
                 f"RMSE={np.mean(rmse_runs):.4f}"
             )
 
-        _save(ckpt_name,rho_results=nl_sweep[rho])
+        _save(ckpt_name, rho_results=nl_sweep[rho])
 
     # Safety desideratum check: flag rho levels where DASH < SB
     log("\n  Safety desideratum check (nonlinear DGP):")
@@ -1330,7 +1328,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
             f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
         )
-        _save(ckpt_name,method_results=table2_results[name])
+        _save(ckpt_name, method_results=table2_results[name])
         clear_checkpoints_by_prefix(f"table2_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
@@ -1530,7 +1528,7 @@ def experiment_real_california(resume=False, cleanup=False):
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}"
         )
-        _save(ckpt_name,method_results=cal_results[name])
+        _save(ckpt_name, method_results=cal_results[name])
         clear_checkpoints_by_prefix(f"california_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
@@ -1727,7 +1725,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
             "imp_runs": imp_runs,
         }
         log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  ablation={np.mean(ablation_runs):.4f}")
-        _save(ckpt_name,method_results=bc_results[name])
+        _save(ckpt_name, method_results=bc_results[name])
         clear_checkpoints_by_prefix(f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
@@ -1967,7 +1965,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
             f"ablation={np.mean(ablation_runs):.4f}"
         )
-        _save(ckpt_name,method_results=sc_results[name])
+        _save(ckpt_name, method_results=sc_results[name])
         clear_checkpoints_by_prefix(f"superconductor_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
@@ -2206,7 +2204,7 @@ def experiment_ablation(resume=False, cleanup=False):
                     }
                     log(f"    SKIPPED — only {len(imp_runs)}/{ABL_N_REPS} reps passed filter")
 
-        _save(ckpt_name,rho_results=abl_results[abl_rho])
+        _save(ckpt_name, rho_results=abl_results[abl_rho])
 
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
@@ -2293,9 +2291,7 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
             results[cond]["DASH (MaxMin)"].append(dm.global_importance_)
 
         if (rep + 1) % 10 == 0:
-            _save(
-                f"variance_decomp_batch_{rep + 1}", results=results, completed_reps=rep + 1
-            )
+            _save(f"variance_decomp_batch_{rep + 1}", results=results, completed_reps=rep + 1)
 
     # Compute stability for each condition × method
     log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10} {'Top-5':>8}")
@@ -2424,7 +2420,7 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False):
         if cleanup:
             clear_checkpoints_by_prefix(f"asym_dgp_rho{rho}", CKPT_DIR)
         else:
-            _save(ckpt_name,rho_imps=rho_imps, completed_reps=N_ASYM_REPS)
+            _save(ckpt_name, rho_imps=rho_imps, completed_reps=N_ASYM_REPS)
 
         # Compute metrics for each method
         # true_imp = [1.0, 0.0] — f0 is causal, f1 is passive
@@ -2806,7 +2802,7 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
             f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
         )
-        _save(ckpt_name,b_results=results[str(B)])
+        _save(ckpt_name, b_results=results[str(B)])
 
     save_json(results, f"{OUT}/tables/background_sensitivity.json")
     log(f"  Saved: {OUT}/tables/background_sensitivity.json")
