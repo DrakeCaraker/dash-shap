@@ -1,7 +1,29 @@
 #!/usr/bin/env bash
 # Pre-push hook: block .pkl files and files >10MB from being pushed.
+# Also runs ruff lint + format checks to catch CI failures locally.
 # Also warns if branch has drifted behind origin/main.
 # Install: git config core.hooksPath .githooks
+
+# --- Ruff lint + format check (blocking) ---
+RUFF_CMD=""
+if command -v ruff >/dev/null 2>&1; then
+    RUFF_CMD="ruff"
+elif python3 -m ruff --version >/dev/null 2>&1; then
+    RUFF_CMD="python3 -m ruff"
+fi
+
+if [ -n "$RUFF_CMD" ]; then
+    if ! $RUFF_CMD check . --quiet 2>&1; then
+        echo "BLOCKED: ruff lint errors found. Run 'make lint' to see details."
+        exit 1
+    fi
+    if ! $RUFF_CMD format --check . --quiet 2>&1; then
+        echo "BLOCKED: ruff format check failed. Run 'make fmt' to fix."
+        exit 1
+    fi
+else
+    echo "WARNING: ruff not found — skipping lint/format checks (install ruff to enforce locally)."
+fi
 
 # --- Drift warning (non-blocking) ---
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
