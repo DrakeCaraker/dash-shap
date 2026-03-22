@@ -525,7 +525,12 @@ def experiment_linear_sweep(resume=False, cleanup=False):
         ckpt_name = f"linear_sweep_rho_{rho}"
         if resume and has_checkpoint(ckpt_name, CKPT_DIR):
             log(f"  Resuming: loaded checkpoint for ρ={rho}")
-            sweep_results[rho] = load_checkpoint(ckpt_name, CKPT_DIR)["rho_results"]
+            ckpt_data = load_checkpoint(ckpt_name, CKPT_DIR)
+            sweep_results[rho] = ckpt_data["rho_results"]
+            if "fsi_list" in ckpt_data:
+                fsi_by_rho[rho] = ckpt_data["fsi_list"]
+            if "grps" in ckpt_data:
+                grps_by_rho[rho] = ckpt_data["grps"]
             continue
 
         log(f"\n--- ρ = {rho} ---")
@@ -742,7 +747,13 @@ def experiment_linear_sweep(resume=False, cleanup=False):
                 f"({md['t_accum']:.1f}s)"
             )
 
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=sweep_results[rho])
+        save_checkpoint(
+            ckpt_name,
+            checkpoint_dir=CKPT_DIR,
+            rho_results=sweep_results[rho],
+            fsi_list=fsi_by_rho.get(rho, []),
+            grps=grps_by_rho.get(rho),
+        )
 
     # FSI collinearity validation (reviewer #7): show FSI rises with rho
     log("\n  FSI Collinearity Validation (DASH):")
