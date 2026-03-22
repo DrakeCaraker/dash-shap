@@ -109,12 +109,10 @@ class TestCheckpointConfigValidation:
 
     def test_config_hash_mismatch_warns(self, tmp_path):
         """Different config on load → UserWarning, data still returned."""
-        save_checkpoint("mismatch", checkpoint_dir=str(tmp_path),
-                        config={"N_REPS": 20}, val=1)
+        save_checkpoint("mismatch", checkpoint_dir=str(tmp_path), config={"N_REPS": 20}, val=1)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = load_checkpoint("mismatch", checkpoint_dir=str(tmp_path),
-                                     config={"N_REPS": 50})
+            result = load_checkpoint("mismatch", checkpoint_dir=str(tmp_path), config={"N_REPS": 50})
         assert len(w) == 1
         assert issubclass(w[0].category, UserWarning)
         assert "mismatch" in str(w[0].message)
@@ -127,15 +125,13 @@ class TestCheckpointConfigValidation:
             pickle.dump({"val": 99}, f)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = load_checkpoint("legacy", checkpoint_dir=str(tmp_path),
-                                     config={"M": 200})
+            result = load_checkpoint("legacy", checkpoint_dir=str(tmp_path), config={"M": 200})
         assert len(w) == 0
         assert result["val"] == 99
 
     def test_no_config_no_warning(self, tmp_path):
         """config=None (default) never warns even if __meta__ present."""
-        save_checkpoint("noconfig", checkpoint_dir=str(tmp_path),
-                        config={"M": 200}, val=5)
+        save_checkpoint("noconfig", checkpoint_dir=str(tmp_path), config={"M": 200}, val=5)
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             result = load_checkpoint("noconfig", checkpoint_dir=str(tmp_path))
@@ -144,8 +140,7 @@ class TestCheckpointConfigValidation:
 
     def test_meta_key_transparent_to_callers(self, tmp_path):
         """__meta__ in returned dict doesn't interfere with named-key access."""
-        save_checkpoint("meta", checkpoint_dir=str(tmp_path),
-                        config={"M": 200}, rho_results={"rho": 0.9})
+        save_checkpoint("meta", checkpoint_dir=str(tmp_path), config={"M": 200}, rho_results={"rho": 0.9})
         result = load_checkpoint("meta", checkpoint_dir=str(tmp_path), config={"M": 200})
         assert result["rho_results"] == {"rho": 0.9}
         assert "__meta__" in result
@@ -158,15 +153,13 @@ class TestConfigFingerprint:
         assert _config_fingerprint(cfg) == _config_fingerprint(cfg)
 
     def test_order_independent(self):
-        assert _config_fingerprint({"M": 200, "K": 30}) == \
-               _config_fingerprint({"K": 30, "M": 200})
+        assert _config_fingerprint({"M": 200, "K": 30}) == _config_fingerprint({"K": 30, "M": 200})
 
     def test_none_returns_none(self):
         assert _config_fingerprint(None) is None
 
     def test_different_values_differ(self):
-        assert _config_fingerprint({"N_REPS": 20}) != \
-               _config_fingerprint({"N_REPS": 50})
+        assert _config_fingerprint({"N_REPS": 20}) != _config_fingerprint({"N_REPS": 50})
 
 
 class TestSaveJson:
