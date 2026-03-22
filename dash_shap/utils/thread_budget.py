@@ -30,7 +30,7 @@ def get_available_cores() -> int:
     if env_limit is not None:
         return max(1, int(env_limit))
     try:
-        return len(os.sched_getaffinity(0))
+        return len(os.sched_getaffinity(0))  # type: ignore[attr-defined]
     except AttributeError:
         return os.cpu_count() or 1
 
