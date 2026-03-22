@@ -24,6 +24,10 @@ __all__ = [
     "anova_decomposition",
 ]
 
+# =============================================================================
+# DGP Agreement & Accuracy
+# =============================================================================
+
 
 def dgp_agreement(estimated, true):
     """Compute Spearman correlation and normalized MSE vs DGP-derived importance.
@@ -79,6 +83,11 @@ def group_level_mse(estimated, true_importance, groups):
     est_norm = est_group / (est_group.sum() + 1e-10)
     true_norm = true_group / (true_group.sum() + 1e-10)
     return float(np.mean((est_norm - true_norm) ** 2))
+
+
+# =============================================================================
+# Stability Metrics
+# =============================================================================
 
 
 def importance_stability(vectors):
@@ -171,6 +180,11 @@ def stability_bootstrap_ci(vectors, n_boot=1000, ci=0.95, seed=42):
     return point, se, ci_lo, ci_hi
 
 
+# =============================================================================
+# Group-Level & Equity Metrics
+# =============================================================================
+
+
 def within_group_equity(importance_vector, groups, include_zero_groups=False):
     """Compute mean coefficient of variation within feature groups.
 
@@ -186,6 +200,11 @@ def within_group_equity(importance_vector, groups, include_zero_groups=False):
         elif include_zero_groups:
             cvs.append(0.0 if gi.std() < 1e-10 else float("inf"))
     return float(np.mean(cvs)) if cvs else 0.0
+
+
+# =============================================================================
+# Statistical Tests
+# =============================================================================
 
 
 def cohens_d(g1, g2):
@@ -321,6 +340,11 @@ def bootstrap_stability_test(imp_runs_a, imp_runs_b, n_bootstrap=10000, seed=42)
     ci_lo = float(np.percentile(boot_diffs, 2.5))
     ci_hi = float(np.percentile(boot_diffs, 97.5))
     return observed_diff, p_value, ci_lo, ci_hi
+
+
+# =============================================================================
+# Specialized: Ablation, FSI Correlation, ANOVA
+# =============================================================================
 
 
 def feature_ablation_score(model, X, y, importance, top_k=5, metric_fn=None):
