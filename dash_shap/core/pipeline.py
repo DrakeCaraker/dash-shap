@@ -38,6 +38,11 @@ class DASHPipeline:
         n_jobs=-1,
         seed=42,
         verbose=True,
+        # Surrogate search parameters (only used when selection_method="surrogate")
+        surrogate_batch_size=10,
+        surrogate_n_initial=30,
+        surrogate_acquisition="diverse_rashomon",
+        surrogate_n_candidates=500,
     ):
         """Create a DASH pipeline for stable feature importance under collinearity.
 
@@ -65,7 +70,7 @@ class DASHPipeline:
         epsilon_mode : {"absolute", "relative", "quantile"}, default="absolute"
             How ``epsilon`` is interpreted (see above). Use "relative" for
             real-world datasets where absolute score scale is unknown.
-        selection_method : {"maxmin", "cluster", "dedup"}, default="maxmin"
+        selection_method : {"maxmin", "cluster", "dedup", "surrogate"}, default="maxmin"
             Diversity selection algorithm:
             - "maxmin": greedy MaxMin — maximizes minimum pairwise cosine
               distance. Default; best for most use cases.
@@ -73,6 +78,11 @@ class DASHPipeline:
               cover different feature-correlation clusters. Requires X_train.
             - "dedup": deduplication only — removes near-duplicate models
               (Spearman > delta) without active diversity maximization.
+            - "surrogate": GP-surrogate-assisted Rashomon set search.
+              Uses a Gaussian Process to model the loss surface and
+              iteratively acquires configs that are both likely near-optimal
+              and diverse. Final K selection uses importance-space MaxMin.
+              See ``surrogate_*`` parameters below.
         delta : float, default=0.05
             Minimum cosine distance between selected models (maxmin) or
             Spearman correlation threshold for deduplication (dedup).
@@ -100,6 +110,15 @@ class DASHPipeline:
             sampling, and all stochastic stages.
         verbose : bool, default=True
             If True, print progress for each of the 5 pipeline stages.
+        surrogate_batch_size : int, default=10
+            Models to acquire per GP iteration (surrogate mode only).
+        surrogate_n_initial : int, default=30
+            Random models to train before fitting the first surrogate.
+        surrogate_acquisition : str, default="diverse_rashomon"
+            Acquisition function: "diverse_rashomon", "rashomon_probability",
+            or "level_set_boundary".
+        surrogate_n_candidates : int, default=500
+            Random candidates to score per acquisition batch.
 
         Examples
         --------
@@ -127,6 +146,10 @@ class DASHPipeline:
         self.n_jobs = n_jobs
         self.seed = seed
         self.verbose = verbose
+        self.surrogate_batch_size = surrogate_batch_size
+        self.surrogate_n_initial = surrogate_n_initial
+        self.surrogate_acquisition = surrogate_acquisition
+        self.surrogate_n_candidates = surrogate_n_candidates
 
         # Fitted attributes
         self.models_ = None
@@ -140,6 +163,7 @@ class DASHPipeline:
         self.global_importance_ = None
         self.variance_matrix_ = None
         self.result_ = None  # DASHResult — set after Stage 5; additive
+        self.surrogate_info_ = None  # set when selection_method="surrogate"
         self.timing_ = {}
 
     def fit(self, X_train, y_train, X_val, y_val, X_ref=None, feature_names=None):
@@ -216,94 +240,134 @@ class DASHPipeline:
             X_ref = X_val
         self.feature_names_ = feature_names or [f"f{i}" for i in range(X_train.shape[1])]
 
-        # Stage 1: Population Generation
-        t0 = time.time()
-        if self.verbose:
-            print("=" * 60)
-            print("DASH Stage 1: Population Generation")
-            print("=" * 60)
-        self.models_, self.val_scores_, self.configs_ = generate_model_population(
-            X_train,
-            y_train,
-            X_val,
-            y_val,
-            M=self.M,
-            task=self.task,
-            search_space=self.search_space,
-            n_jobs=self.n_jobs,
-            seed=self.seed,
-            verbose=self.verbose,
-        )
-        self.timing_["stage1_training"] = time.time() - t0
+        if self.selection_method == "surrogate":
+            # Surrogate-assisted search replaces Stages 1-3
+            t0 = time.time()
+            if self.verbose:
+                print("=" * 60)
+                print("DASH Stages 1-3: Surrogate-Assisted Rashomon Search")
+                print("=" * 60)
+            from dash_shap.core.rashomon_search import rashomon_search
 
-        # Stage 2: Performance Filtering
-        t0 = time.time()
-        if self.verbose:
-            print(f"\nDASH Stage 2: Performance Filtering (epsilon={self.epsilon})")
-        self.filtered_indices_ = performance_filter(
-            self.val_scores_,
-            epsilon=self.epsilon,
-            higher_is_better=True,
-            mode=self.epsilon_mode,
-            verbose=self.verbose,
-        )
-        self.timing_["stage2_filtering"] = time.time() - t0
-        n_filtered = len(self.filtered_indices_)
-        if n_filtered < self.K:
-            import warnings
-
-            warnings.warn(
-                f"Only {n_filtered} models passed the performance filter (K={self.K}). "
-                f"Consider increasing epsilon (current: {self.epsilon}) or switching to "
-                f"epsilon_mode='quantile' to guarantee at least K candidates.",
-                UserWarning,
-            )
-        if n_filtered < 2:
-            raise ValueError(f"Only {n_filtered} models passed filter. Increase epsilon.")
-
-        # Stage 3: Diversity Selection
-        t0 = time.time()
-        if self.verbose:
-            print(f"\nDASH Stage 3: Diversity Selection ({self.selection_method})")
-        imp_vecs = get_preliminary_importance(
-            self.models_,
-            self.filtered_indices_,
-            X_ref,
-            method=self.preliminary_importance_method,
-            seed=self.seed,
-        )
-        filt_scores = {i: self.val_scores_[i] for i in self.filtered_indices_}
-
-        if self.selection_method == "maxmin":
-            self.selected_indices_ = greedy_maxmin_selection(
-                imp_vecs,
-                filt_scores,
-                K=self.K,
-                delta=self.delta,
-                verbose=self.verbose,
-            )
-        elif self.selection_method == "cluster":
-            self.selected_indices_ = cluster_coverage_selection(
-                imp_vecs,
-                filt_scores,
+            (
+                self.models_,
+                self.val_scores_,
+                self.configs_,
+                self.selected_indices_,
+                self.surrogate_info_,
+            ) = rashomon_search(
                 X_train,
-                tau=self.tau,
+                y_train,
+                X_val,
+                y_val,
+                X_ref=X_ref,
+                search_space=self.search_space,
+                budget=self.M,
+                batch_size=self.surrogate_batch_size,
+                n_initial=self.surrogate_n_initial,
                 K=self.K,
+                epsilon=self.epsilon,
+                epsilon_mode=self.epsilon_mode,
+                acquisition=self.surrogate_acquisition,
+                delta=self.delta,
+                task=self.task,
+                n_candidates=self.surrogate_n_candidates,
+                seed=self.seed,
+                n_jobs=self.n_jobs,
                 verbose=self.verbose,
             )
-        elif self.selection_method == "dedup":
-            self.selected_indices_ = deduplication_selection(
-                imp_vecs,
-                filt_scores,
+            self.filtered_indices_ = list(range(len(self.models_)))  # all trained
+            self.timing_["stages1_3_surrogate"] = time.time() - t0
+        else:
+            # Standard Stages 1-3: Population → Filter → Diversity
+            # Stage 1: Population Generation
+            t0 = time.time()
+            if self.verbose:
+                print("=" * 60)
+                print("DASH Stage 1: Population Generation")
+                print("=" * 60)
+            self.models_, self.val_scores_, self.configs_ = generate_model_population(
+                X_train,
+                y_train,
+                X_val,
+                y_val,
+                M=self.M,
+                task=self.task,
+                search_space=self.search_space,
+                n_jobs=self.n_jobs,
+                seed=self.seed,
                 verbose=self.verbose,
             )
-            if len(self.selected_indices_) > self.K:
-                self.selected_indices_ = sorted(
-                    self.selected_indices_,
-                    key=lambda i: self.val_scores_[i],
-                    reverse=True,
-                )[: self.K]
-        self.timing_["stage3_selection"] = time.time() - t0
+            self.timing_["stage1_training"] = time.time() - t0
+
+            # Stage 2: Performance Filtering
+            t0 = time.time()
+            if self.verbose:
+                print(f"\nDASH Stage 2: Performance Filtering (epsilon={self.epsilon})")
+            self.filtered_indices_ = performance_filter(
+                self.val_scores_,
+                epsilon=self.epsilon,
+                higher_is_better=True,
+                mode=self.epsilon_mode,
+                verbose=self.verbose,
+            )
+            self.timing_["stage2_filtering"] = time.time() - t0
+            n_filtered = len(self.filtered_indices_)
+            if n_filtered < self.K:
+                import warnings
+
+                warnings.warn(
+                    f"Only {n_filtered} models passed the performance filter (K={self.K}). "
+                    f"Consider increasing epsilon (current: {self.epsilon}) or switching to "
+                    f"epsilon_mode='quantile' to guarantee at least K candidates.",
+                    UserWarning,
+                )
+            if n_filtered < 2:
+                raise ValueError(f"Only {n_filtered} models passed filter. Increase epsilon.")
+
+            # Stage 3: Diversity Selection
+            t0 = time.time()
+            if self.verbose:
+                print(f"\nDASH Stage 3: Diversity Selection ({self.selection_method})")
+            imp_vecs = get_preliminary_importance(
+                self.models_,
+                self.filtered_indices_,
+                X_ref,
+                method=self.preliminary_importance_method,
+                seed=self.seed,
+            )
+            filt_scores = {i: self.val_scores_[i] for i in self.filtered_indices_}
+
+            if self.selection_method == "maxmin":
+                self.selected_indices_ = greedy_maxmin_selection(
+                    imp_vecs,
+                    filt_scores,
+                    K=self.K,
+                    delta=self.delta,
+                    verbose=self.verbose,
+                )
+            elif self.selection_method == "cluster":
+                self.selected_indices_ = cluster_coverage_selection(
+                    imp_vecs,
+                    filt_scores,
+                    X_train,
+                    tau=self.tau,
+                    K=self.K,
+                    verbose=self.verbose,
+                )
+            elif self.selection_method == "dedup":
+                self.selected_indices_ = deduplication_selection(
+                    imp_vecs,
+                    filt_scores,
+                    verbose=self.verbose,
+                )
+                if len(self.selected_indices_) > self.K:
+                    self.selected_indices_ = sorted(
+                        self.selected_indices_,
+                        key=lambda i: self.val_scores_[i],
+                        reverse=True,
+                    )[: self.K]
+            self.timing_["stage3_selection"] = time.time() - t0
 
         # Stage 4: Consensus SHAP
         t0 = time.time()
@@ -338,11 +402,18 @@ class DASHPipeline:
 
         if self.verbose:
             total = sum(self.timing_.values())
-            print(
-                f"\nPipeline complete in {total:.1f}s "
-                f"(Training: {self.timing_['stage1_training']:.1f}s, "
-                f"SHAP: {self.timing_['stage4_shap']:.1f}s)"
-            )
+            if "stages1_3_surrogate" in self.timing_:
+                print(
+                    f"\nPipeline complete in {total:.1f}s "
+                    f"(Surrogate search: {self.timing_['stages1_3_surrogate']:.1f}s, "
+                    f"SHAP: {self.timing_['stage4_shap']:.1f}s)"
+                )
+            else:
+                print(
+                    f"\nPipeline complete in {total:.1f}s "
+                    f"(Training: {self.timing_['stage1_training']:.1f}s, "
+                    f"SHAP: {self.timing_['stage4_shap']:.1f}s)"
+                )
         return self
 
     def fit_from_attributions(self, attribution_matrices, val_scores, feature_names=None):
