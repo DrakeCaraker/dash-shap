@@ -44,7 +44,13 @@ import os as _os
 # causes each worker to spawn O(cores) threads, producing severe oversubscription.
 # Override with DASH_BLAS_THREADS if you need more (e.g. for pure-numpy workloads).
 _blas_threads = _os.environ.get("DASH_BLAS_THREADS", "1")
-for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+for _var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
     _os.environ.setdefault(_var, _blas_threads)
 
 import numpy as np
