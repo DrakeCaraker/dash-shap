@@ -31,6 +31,8 @@ Available experiments:
     asymmetric_dgp         Asymmetric causal DGP: f0 causal, f1 passive correlate
     first_mover_visualization First-mover bias concentration figure
     first_mover_bias       First-mover bias isolation (concentration vs tree count)
+    background_sensitivity Background set sensitivity analysis
+    k_sweep_independence   K sweep: stability scaling vs ensemble size
     success_criteria       Run linear_sweep then evaluate pass/fail criteria
 """
 
@@ -117,32 +119,16 @@ from dash_shap.utils.checkpoint import (
 )
 
 # ---------------------------------------------------------------------------
-# Canonical configuration — matches PAPER_CONFIG from audited notebook
+# Canonical configuration — single source of truth in dash_shap.config
 # ---------------------------------------------------------------------------
-PAPER_CONFIG = {
-    "M": 200,
-    "K": 30,
-    "N_REPS": 50,
-    "EPSILON": 0.08,
-    "DELTA": 0.05,
-    "N_TRIALS_SB": 30,
-    "T_PER_MODEL": 500,
-    "N_ESTIMATORS_ESHAP": 2000,
-    "TAU_CLUSTER": 0.3,
-}
+from dash_shap.config import PAPER_CONFIG, SEED, REAL_EPSILON, REAL_EPSILON_MODE
 
-SEED = 42
 M = PAPER_CONFIG["M"]
 K = PAPER_CONFIG["K"]
 N_REPS = PAPER_CONFIG["N_REPS"]
 EPSILON = PAPER_CONFIG["EPSILON"]
 DELTA = PAPER_CONFIG["DELTA"]
 N_TRIALS_SB = PAPER_CONFIG["N_TRIALS_SB"]
-
-# F2 fix: Scale-invariant epsilon for real-world datasets via relative mode.
-# Replaces the manually-tuned CAL_EPSILON/BC_EPSILON/SC_EPSILON constants.
-REAL_EPSILON = 0.05
-REAL_EPSILON_MODE = "relative"
 
 OUT = "results"
 CKPT_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), OUT, "checkpoints")
@@ -3434,6 +3420,182 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     return {"status": "passed", "K": result.K, "n_failures": 0}
 
 
+def plot_k_sweep_independence(k_values, results):
+    """Line chart: stability vs K for DASH and SR with error bars."""
+    _ensure_dirs()
+
+    dash_stab = [results[k]["DASH"]["stability"] for k in k_values]
+    dash_se = [results[k]["DASH"]["stability_se"] for k in k_values]
+    sr_stab = [results[k]["SR"]["stability"] for k in k_values]
+    sr_se = [results[k]["SR"]["stability_se"] for k in k_values]
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.errorbar(
+        k_values,
+        dash_stab,
+        yerr=dash_se,
+        label="DASH (MaxMin)",
+        color="#2ecc71",
+        marker="o",
+        linewidth=2,
+        markersize=6,
+        capsize=4,
+    )
+    ax.errorbar(
+        k_values,
+        sr_stab,
+        yerr=sr_se,
+        label="Random Selection",
+        color="#d4ac0d",
+        marker="s",
+        linewidth=2,
+        markersize=6,
+        capsize=4,
+    )
+    ax.set_xlabel("K (models selected)")
+    ax.set_ylabel("Stability (mean \u00b1 SE)")
+    ax.set_title("Stability vs K: DASH vs Random Selection")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(f"{OUT}/figures/k_sweep_independence.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    log(f"  Saved: {OUT}/figures/k_sweep_independence.png")
+
+
+def experiment_k_sweep_independence(resume=False, cleanup=False):
+    """Ablation: independence vs. K — stability scaling with ensemble size.
+
+    Tests whether increasing K (models selected) provides logarithmically
+    diminishing returns, consistent with the model-independence hypothesis.
+    """
+    k_values = [1, 3, 5, 10, 20, 30]
+    n_reps = N_REPS
+    seed = SEED
+
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: K Sweep Independence Boundary")
+    log("=" * 70)
+    log(f"  k_values={k_values}, n_reps={n_reps}, seed={seed}")
+
+    feature_names = make_feature_names()
+    results = {}
+
+    def _fmt(v: float) -> str:
+        """Format float values for logging."""
+        return f"{v:.4f}" if not np.isnan(v) else "nan"
+
+    for k_val in k_values:
+        log(f"\n--- K={k_val} ---")
+        dash_imp_runs: list = []
+        dash_acc_runs: list = []
+        sr_imp_runs: list = []
+        sr_acc_runs: list = []
+
+        for rep in range(n_reps):
+            log(f"  K={k_val}  Rep {rep + 1}/{n_reps}")
+            rep_seed = seed + rep
+            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+                N=5000, rho=0.9, seed=rep_seed
+            )
+
+            # DASH (MaxMin)
+            dm = DASHPipeline(
+                M=M,
+                K=k_val,
+                epsilon=EPSILON,
+                delta=DELTA,
+                selection_method="maxmin",
+                n_jobs=-1,
+                seed=rep_seed,
+                verbose=False,
+            )
+            try:
+                dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+                imp = dm.global_importance_
+                r, _ = dgp_agreement(imp, true_imp)
+                dash_acc_runs.append(r)
+                dash_imp_runs.append(imp)
+            except ValueError:
+                pass
+
+            # Random Selection baseline
+            sr = RandomSelectionBaseline(
+                M=M,
+                K=k_val,
+                epsilon=EPSILON,
+                delta=DELTA,
+                seed=rep_seed,
+            )
+            try:
+                sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+                imp_sr = sr.global_importance_
+                r_sr, _ = dgp_agreement(imp_sr, true_imp)
+                sr_acc_runs.append(r_sr)
+                sr_imp_runs.append(imp_sr)
+            except ValueError:
+                pass
+
+        # Summarize DASH
+        if len(dash_imp_runs) >= 2:
+            try:
+                dash_stab, dash_se, _, _ = stability_bootstrap_ci(dash_imp_runs)
+            except ValueError:
+                dash_stab = importance_stability(dash_imp_runs)
+                dash_se = float("nan")
+        else:
+            dash_stab, dash_se = float("nan"), float("nan")
+
+        # Summarize SR
+        if len(sr_imp_runs) >= 2:
+            try:
+                sr_stab, sr_se, _, _ = stability_bootstrap_ci(sr_imp_runs)
+            except ValueError:
+                sr_stab = importance_stability(sr_imp_runs)
+                sr_se = float("nan")
+        else:
+            sr_stab, sr_se = float("nan"), float("nan")
+
+        dash_acc_mean = float(np.mean(dash_acc_runs)) if dash_acc_runs else float("nan")
+        sr_acc_mean = float(np.mean(sr_acc_runs)) if sr_acc_runs else float("nan")
+
+        results[k_val] = {
+            "DASH": {
+                "stability": dash_stab,
+                "stability_se": dash_se,
+                "accuracy_mean": dash_acc_mean,
+                "accuracy_std": float(np.std(dash_acc_runs, ddof=1)) if len(dash_acc_runs) >= 2 else float("nan"),
+                "n_successful": len(dash_imp_runs),
+            },
+            "SR": {
+                "stability": sr_stab,
+                "stability_se": sr_se,
+                "accuracy_mean": sr_acc_mean,
+                "accuracy_std": float(np.std(sr_acc_runs, ddof=1)) if len(sr_acc_runs) >= 2 else float("nan"),
+                "n_successful": len(sr_imp_runs),
+            },
+        }
+
+        log(
+            f"  K={k_val}  DASH: stab={_fmt(dash_stab)}±{_fmt(dash_se)}  acc={_fmt(dash_acc_mean)}"
+            f"  ({len(dash_imp_runs)}/{n_reps})"
+        )
+        log(
+            f"  K={k_val}  SR:   stab={_fmt(sr_stab)}±{_fmt(sr_se)}  acc={_fmt(sr_acc_mean)}"
+            f"  ({len(sr_imp_runs)}/{n_reps})"
+        )
+
+    save_json(results, f"{OUT}/tables/k_sweep_independence.json")
+    log(f"  Saved: {OUT}/tables/k_sweep_independence.json")
+
+    plot_k_sweep_independence(k_values, results)
+
+    elapsed = time.time() - t0
+    log(f"  K sweep completed in {elapsed / 60:.1f} min")
+    return results
+
+
 EXPERIMENTS = {
     "linear_sweep": experiment_linear_sweep,
     "overlapping": experiment_overlapping,
@@ -3450,6 +3612,7 @@ EXPERIMENTS = {
     "first_mover_bias": experiment_first_mover_bias,
     "background_sensitivity": experiment_background_sensitivity,
     "asymmetric_dgp": experiment_asymmetric_dgp,
+    "k_sweep_independence": experiment_k_sweep_independence,
     "success_criteria": experiment_success_criteria,
     "extensions_sanity_check": experiment_extensions_sanity_check,
 }
@@ -3471,6 +3634,7 @@ DEFAULT_ORDER = [
     "asymmetric_dgp",
     "first_mover_bias",
     "background_sensitivity",
+    "k_sweep_independence",
 ]
 
 
