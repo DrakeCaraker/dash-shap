@@ -159,7 +159,6 @@ explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, b
 $= 0.977$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
-$0.53$ to $0.93$ ($+0.40$) over the standard Single Best, and from
 $0.32$ to $0.93$ ($+0.61$) over the training-budget-matched
 Single Best ($M{=}200$).
 
@@ -1268,18 +1267,16 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 $^\dagger$Matched training budget ($M{=}200$ models trained).
-$^\ddagger$Breast Cancer Single Best from a separate preliminary analysis ($N_{\text{reps}}{=}20$, same protocol); the main benchmark ran only the ($M{=}200$) variant.
-$\Delta$Stab.\ is relative to standard Single Best.
+$\Delta$Stab.\ is relative to Single Best ($M{=}200$).
 SB($M{=}200$) and DASH sourced directly from \texttt{demo\_benchmark\_6.ipynb}.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{$\Delta$Stab.} & \textbf{RMSE} \\
 \midrule
-\multirow{3}{*}{Breast Cancer}
-  & Single Best$^\ddagger$   & $.534 \pm .040$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
-  & Single Best ($M{=}200$)$^\dagger$ & $.317 \pm .053$ & $-0.217$ & \multicolumn{1}{c}{---} \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.396$ & \multicolumn{1}{c}{---} \\
+\multirow{2}{*}{Breast Cancer}
+  & Single Best ($M{=}200$)$^\dagger$ & $.317 \pm .053$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.613$ & \multicolumn{1}{c}{---} \\
 \addlinespace
 \midrule
 \addlinespace
@@ -1298,12 +1295,11 @@ SB($M{=}200$) and DASH sourced directly from \texttt{demo\_benchmark\_6.ipynb}.}
 \end{table}
 
 The Breast Cancer improvement is the largest across all experiments.
-Even the standard Single Best ($N_{\text{trials}}{=}30$) achieves only
-$0.534$ stability; the training-budget-matched variant ($M{=}200$) is
-worse still at $0.317$, because Breast Cancer's extreme collinearity
+The training-budget-matched Single Best ($M{=}200$) achieves only
+$0.317$ stability, because Breast Cancer's extreme collinearity
 (21 pairs with $|r| > 0.9$) makes model selection itself unstable---with
 200 hyperparameter configurations, the ``best'' model varies wildly across
-repetitions. Both baselines indicate that feature rankings are highly
+repetitions, and feature rankings are highly
 unstable across runs. The
 radius/perimeter/area triad creates extreme SHAP instability: a
 feature's importance can swing from first to fifth across runs. \dash{}
