@@ -88,7 +88,8 @@ N issues found (X CRITICAL, Y HIGH, Z MEDIUM, W LOW)
 **Output file:** `docs/audit/AUDIT_DATE-preprint.md`
 
 **Task:**
-- Read `paper/draft_v7_preprint.tex` and extract every numeric claim:
+- First, find the highest-versioned preprint: `ls paper/draft_v*.tex 2>/dev/null | sort -V | tail -1`. Use that file for all claims extraction below. If no such file exists, report MEDIUM: 'No preprint draft found in paper/'.
+- Read that preprint file and extract every numeric claim:
   - Stability values (e.g., "0.977")
   - Model counts (M=, K=)
   - Experiment parameters (N_REPS=)
@@ -138,7 +139,7 @@ N issues found (X CRITICAL, Y HIGH, Z MEDIUM, W LOW)
 - Scan `docs/` and `paper/` directories for sensitive information:
   - In docs/ and paper/: flag any non-author institution names mentioned outside affiliation sections, any named reviewers, any references to unpublished competitor work. Flag as HIGH (could identify proprietary information)
 - Check git history for `.pkl` files:
-  - Run `git log --all --name-only | grep '\.pkl'`
+  - Run `git log --all --diff-filter=A --name-only --pretty=format: | grep -E '\.pkl$'`
   - Any .pkl files in history are CRITICAL (binary data accidentally committed)
 
 **Output format:**
