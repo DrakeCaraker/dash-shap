@@ -7,6 +7,7 @@ targeted by cell_id in NotebookEdit operations.
 Usage:
     python scripts/check_notebook_ids.py
 """
+
 import json
 import sys
 from pathlib import Path
