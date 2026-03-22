@@ -110,6 +110,7 @@ from dash_shap.evaluation import (
     anova_decomposition,
 )
 from dash_shap.utils.io import save_json
+from dash_shap.utils.thread_budget import compute_thread_budget
 from dash_shap.utils.checkpoint import (
     save_checkpoint,
     load_checkpoint,
@@ -480,7 +481,7 @@ def _collect_rep(md, imp, true_imp, grps, rmse_val, model_obj):
 ###############################################################################
 
 
-def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
+def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner, *, nthread=1):
     """Run all reps for a single rho level. Returns (rho, rho_results, fsi_list, grps).
 
     Designed to be called in parallel across rho levels via joblib.
@@ -520,6 +521,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
             delta=DELTA,
             selection_method="maxmin",
             n_jobs=n_jobs_inner,
+            nthread=nthread,
             seed=rep_seed,
             verbose=False,
         )
@@ -534,7 +536,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
 
         # --- SingleBest(M=200): reuse DASH population ---
         t_m = time.time()
-        sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
         sb200.fit_from_population(
             dash_pipeline.models_,
             dash_pipeline.val_scores_,
@@ -555,6 +557,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
             epsilon=EPSILON,
             delta=DELTA,
             n_jobs=n_jobs_inner,
+            nthread=nthread,
             seed=rep_seed,
             verbose=False,
         )
@@ -586,7 +589,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
 
         # --- Single Best (n_trials=30): independent ---
         t_m = time.time()
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
         sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         imp = sb.global_importance_
         preds = sb.model_.predict(Xte)
@@ -602,6 +605,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
             colsample_bytree=0.2,
             seed=rep_seed,
             tune=False,
+            nthread=nthread,
         )
         lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         imp = lsm.global_importance_
@@ -618,6 +622,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
             colsample_bytree=0.2,
             seed=rep_seed,
             tune=True,
+            nthread=nthread,
         )
         lsm_t.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         imp = lsm_t.global_importance_
@@ -632,6 +637,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
             N=K,
             task="regression",
             n_jobs=n_jobs_inner,
+            nthread=nthread,
             seed=rep_seed,
         )
         sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
@@ -775,16 +781,16 @@ def experiment_linear_sweep(resume=False, cleanup=False):
     if pending_rhos:
         # Determine parallelism: run rho levels concurrently, subdivide cores
         n_rho = len(pending_rhos)
-        try:
-            total_cores = len(os.sched_getaffinity(0))
-        except AttributeError:
-            total_cores = os.cpu_count() or 1
-        # Each rho level gets a share of cores for inner parallelism
-        n_jobs_inner = max(1, total_cores // n_rho)
-        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
+        budget = compute_thread_budget(n_outer=n_rho)
+        n_jobs_inner = budget.n_inner
+        nthread = budget.nthread
+        log(
+            f"  Running {n_rho} rho levels in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per level, nthread={nthread})"
+        )
 
         results_list = Parallel(n_jobs=n_rho, backend="loky")(
-            delayed(_run_single_rho)(rho, sweep_methods, feature_names, n_jobs_inner) for rho in pending_rhos
+            delayed(_run_single_rho)(rho, sweep_methods, feature_names, n_jobs_inner, nthread=nthread)
+            for rho in pending_rhos
         )
 
         for rho, rho_results, fsi_list, grps_last in results_list:
@@ -937,6 +943,7 @@ def experiment_overlapping(resume=False, cleanup=False):
         for n in method_names
     }
     feature_names = make_feature_names()
+    seq_budget = compute_thread_budget(n_outer=1)
 
     start_rep = 0
     if resume:
@@ -957,7 +964,9 @@ def experiment_overlapping(resume=False, cleanup=False):
             N=5000, rho=0.9, seed=rep_seed, structure="overlapping"
         )
 
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
+        sb = SingleBestBaseline(
+            n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=seq_budget.n_inner, nthread=seq_budget.nthread
+        )
         sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         results["Single Best"]["imp_runs"].append(sb.global_importance_)
         r, _ = dgp_agreement(sb.global_importance_, true_imp)
@@ -973,7 +982,8 @@ def experiment_overlapping(resume=False, cleanup=False):
             epsilon=EPSILON,
             delta=DELTA,
             selection_method="maxmin",
-            n_jobs=-1,
+            n_jobs=seq_budget.n_inner,
+            nthread=seq_budget.nthread,
             seed=rep_seed,
             verbose=False,
         )
@@ -1064,7 +1074,7 @@ def experiment_overlapping(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_single_rho_nonlinear(rho, nl_methods, feature_names, n_jobs_inner):
+def _run_single_rho_nonlinear(rho, nl_methods, feature_names, n_jobs_inner, *, nthread=1):
     """Run all methods × reps for a single rho level of the nonlinear sweep."""
     log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
     rho_results = {}
@@ -1077,7 +1087,7 @@ def _run_single_rho_nonlinear(rho, nl_methods, feature_names, n_jobs_inner):
             )
 
             if name == "Single Best":
-                m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+                m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
                 m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                 imp = m.global_importance_
                 preds = m.model_.predict(Xte)
@@ -1088,6 +1098,7 @@ def _run_single_rho_nonlinear(rho, nl_methods, feature_names, n_jobs_inner):
                     colsample_bytree=0.2,
                     seed=rep_seed,
                     tune=(name == "LSM (Tuned)"),
+                    nthread=nthread,
                 )
                 m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
                 imp = m.global_importance_
@@ -1097,6 +1108,7 @@ def _run_single_rho_nonlinear(rho, nl_methods, feature_names, n_jobs_inner):
                     N=K,
                     task="regression",
                     n_jobs=n_jobs_inner,
+                    nthread=nthread,
                     seed=rep_seed,
                 )
                 m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
@@ -1119,6 +1131,7 @@ def _run_single_rho_nonlinear(rho, nl_methods, feature_names, n_jobs_inner):
                     delta=DELTA,
                     selection_method="maxmin",
                     n_jobs=n_jobs_inner,
+                    nthread=nthread,
                     seed=rep_seed,
                     verbose=False,
                 )
@@ -1203,15 +1216,16 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
 
     if pending_rhos:
         n_rho = len(pending_rhos)
-        try:
-            total_cores = len(os.sched_getaffinity(0))
-        except AttributeError:
-            total_cores = os.cpu_count() or 1
-        n_jobs_inner = max(1, total_cores // n_rho)
-        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
+        budget = compute_thread_budget(n_outer=n_rho)
+        n_jobs_inner = budget.n_inner
+        nthread = budget.nthread
+        log(
+            f"  Running {n_rho} rho levels in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per level, nthread={nthread})"
+        )
 
         results_list = Parallel(n_jobs=n_rho, backend="loky")(
-            delayed(_run_single_rho_nonlinear)(rho, nl_methods, feature_names, n_jobs_inner) for rho in pending_rhos
+            delayed(_run_single_rho_nonlinear)(rho, nl_methods, feature_names, n_jobs_inner, nthread=nthread)
+            for rho in pending_rhos
         )
         for rho, rho_results in results_list:
             nl_sweep[rho] = rho_results
@@ -1244,7 +1258,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_table2_method(name, feature_names, n_jobs_inner, resume):
+def _run_table2_method(name, feature_names, n_jobs_inner, resume, *, nthread=1):
     """Run all reps for a single method in the table2 baselines experiment."""
     ckpt_name = f"table2_{_sanitize_ckpt_name(name)}"
     if resume and _has(ckpt_name):
@@ -1276,12 +1290,13 @@ def _run_table2_method(name, feature_names, n_jobs_inner, resume):
             m = EnsembleSHAPBaseline(
                 n_estimators=PAPER_CONFIG["N_ESTIMATORS_ESHAP"],
                 task="regression",
+                nthread=nthread,
                 seed=rep_seed,
             )
             m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
             imp = m.global_importance_
         elif name == "Stochastic Retrain":
-            m = StochasticRetrainBaseline(N=K, task="regression", n_jobs=n_jobs_inner, seed=rep_seed)
+            m = StochasticRetrainBaseline(N=K, task="regression", n_jobs=n_jobs_inner, nthread=nthread, seed=rep_seed)
             m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
             imp = m.global_importance_
         elif name == "Random Forest":
@@ -1316,6 +1331,7 @@ def _run_table2_method(name, feature_names, n_jobs_inner, resume):
                 delta=DELTA,
                 selection_method="dedup",
                 n_jobs=n_jobs_inner,
+                nthread=nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -1387,15 +1403,16 @@ def experiment_table2_baselines(resume=False, cleanup=False):
     feature_names = make_feature_names()
 
     n_methods = len(table2_methods)
-    try:
-        total_cores = len(os.sched_getaffinity(0))
-    except AttributeError:
-        total_cores = os.cpu_count() or 1
-    n_jobs_inner = max(1, total_cores // n_methods)
-    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
+    budget = compute_thread_budget(n_outer=n_methods)
+    n_jobs_inner = budget.n_inner
+    nthread = budget.nthread
+    log(
+        f"  Running {n_methods} methods in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per method, nthread={nthread})"
+    )
 
     results_list = Parallel(n_jobs=n_methods, backend="loky")(
-        delayed(_run_table2_method)(name, feature_names, n_jobs_inner, resume) for name in table2_methods
+        delayed(_run_table2_method)(name, feature_names, n_jobs_inner, resume, nthread=nthread)
+        for name in table2_methods
     )
     table2_results = {name: result for name, result in results_list}
 
@@ -1415,7 +1432,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_cal_method(name, X_pool, X_test, y_pool, y_test, cal_names, n_jobs_inner, resume):
+def _run_cal_method(name, X_pool, X_test, y_pool, y_test, cal_names, n_jobs_inner, resume, *, nthread=1):
     """Run all reps for a single method in the California Housing experiment."""
     ckpt_name = f"california_{_sanitize_ckpt_name(name)}"
     if resume and _has(ckpt_name):
@@ -1449,7 +1466,7 @@ def _run_cal_method(name, X_pool, X_test, y_pool, y_test, cal_names, n_jobs_inne
         Xte_r = scaler_r.transform(X_test)
 
         if name == "Single Best":
-            m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+            m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
             m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
             imp = m.global_importance_
             rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
@@ -1461,7 +1478,7 @@ def _run_cal_method(name, X_pool, X_test, y_pool, y_test, cal_names, n_jobs_inne
             rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
             abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
         elif name == "Stochastic Retrain":
-            m = StochasticRetrainBaseline(N=K, task="regression", n_jobs=n_jobs_inner, seed=rep_seed)
+            m = StochasticRetrainBaseline(N=K, task="regression", n_jobs=n_jobs_inner, nthread=nthread, seed=rep_seed)
             m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
             imp = m.global_importance_
             preds = m.get_consensus_ensemble_predictions(Xte_r)
@@ -1475,6 +1492,7 @@ def _run_cal_method(name, X_pool, X_test, y_pool, y_test, cal_names, n_jobs_inne
                 delta=DELTA,
                 epsilon_mode=REAL_EPSILON_MODE,
                 n_jobs=n_jobs_inner,
+                nthread=nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -1492,6 +1510,7 @@ def _run_cal_method(name, X_pool, X_test, y_pool, y_test, cal_names, n_jobs_inne
                 epsilon_mode=REAL_EPSILON_MODE,
                 selection_method="maxmin",
                 n_jobs=n_jobs_inner,
+                nthread=nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -1581,15 +1600,17 @@ def experiment_real_california(resume=False, cleanup=False):
     cal_methods = ["Single Best", "Random Forest", "Stochastic Retrain", "Random Selection", "DASH (MaxMin)"]
 
     n_methods = len(cal_methods)
-    try:
-        total_cores = len(os.sched_getaffinity(0))
-    except AttributeError:
-        total_cores = os.cpu_count() or 1
-    n_jobs_inner = max(1, total_cores // n_methods)
-    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
+    budget = compute_thread_budget(n_outer=n_methods)
+    n_jobs_inner = budget.n_inner
+    nthread = budget.nthread
+    log(
+        f"  Running {n_methods} methods in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per method, nthread={nthread})"
+    )
 
     results_list = Parallel(n_jobs=n_methods, backend="loky")(
-        delayed(_run_cal_method)(name, X_cal_pool, X_cal_test, y_cal_pool, y_cal_test, cal_names, n_jobs_inner, resume)
+        delayed(_run_cal_method)(
+            name, X_cal_pool, X_cal_test, y_cal_pool, y_cal_test, cal_names, n_jobs_inner, resume, nthread=nthread
+        )
         for name in cal_methods
     )
     cal_results = {name: result for name, result in results_list}
@@ -1616,7 +1637,7 @@ def experiment_real_california(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_bc_method(name, X_pool, X_test, y_pool, y_test, bc_names, n_jobs_inner, resume):
+def _run_bc_method(name, X_pool, X_test, y_pool, y_test, bc_names, n_jobs_inner, resume, *, nthread=1):
     """Run all reps for a single method in the Breast Cancer experiment."""
     ckpt_name = f"breast_cancer_{_sanitize_ckpt_name(name)}"
     if resume and _has(ckpt_name):
@@ -1649,7 +1670,9 @@ def _run_bc_method(name, X_pool, X_test, y_pool, y_test, bc_names, n_jobs_inner,
         Xte_r = scaler_r.transform(X_test)
 
         if name == "Single Best":
-            m = SingleBestBaseline(n_trials=N_TRIALS_SB, task="binary", seed=rep_seed, n_jobs=n_jobs_inner)
+            m = SingleBestBaseline(
+                n_trials=N_TRIALS_SB, task="binary", seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread
+            )
             m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
             imp = m.global_importance_
             abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
@@ -1659,7 +1682,7 @@ def _run_bc_method(name, X_pool, X_test, y_pool, y_test, bc_names, n_jobs_inner,
             imp = m.global_importance_
             abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
         elif name == "Stochastic Retrain":
-            m = StochasticRetrainBaseline(N=K, task="binary", n_jobs=n_jobs_inner, seed=rep_seed)
+            m = StochasticRetrainBaseline(N=K, task="binary", n_jobs=n_jobs_inner, nthread=nthread, seed=rep_seed)
             m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
             imp = m.global_importance_
             abl = feature_ablation_score(m.models_[0], Xte_r, y_test, imp)
@@ -1672,6 +1695,7 @@ def _run_bc_method(name, X_pool, X_test, y_pool, y_test, bc_names, n_jobs_inner,
                 epsilon_mode=REAL_EPSILON_MODE,
                 task="binary",
                 n_jobs=n_jobs_inner,
+                nthread=nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -1688,6 +1712,7 @@ def _run_bc_method(name, X_pool, X_test, y_pool, y_test, bc_names, n_jobs_inner,
                 selection_method="maxmin",
                 task="binary",
                 n_jobs=n_jobs_inner,
+                nthread=nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -1765,15 +1790,17 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
     bc_methods = ["Single Best", "Random Forest", "Stochastic Retrain", "Random Selection", "DASH (MaxMin)"]
 
     n_methods = len(bc_methods)
-    try:
-        total_cores = len(os.sched_getaffinity(0))
-    except AttributeError:
-        total_cores = os.cpu_count() or 1
-    n_jobs_inner = max(1, total_cores // n_methods)
-    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
+    budget = compute_thread_budget(n_outer=n_methods)
+    n_jobs_inner = budget.n_inner
+    nthread = budget.nthread
+    log(
+        f"  Running {n_methods} methods in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per method, nthread={nthread})"
+    )
 
     results_list = Parallel(n_jobs=n_methods, backend="loky")(
-        delayed(_run_bc_method)(name, X_bc_pool, X_bc_test, y_bc_pool, y_bc_test, bc_names, n_jobs_inner, resume)
+        delayed(_run_bc_method)(
+            name, X_bc_pool, X_bc_test, y_bc_pool, y_bc_test, bc_names, n_jobs_inner, resume, nthread=nthread
+        )
         for name in bc_methods
     )
     bc_results = {name: result for name, result in results_list}
@@ -1800,7 +1827,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n_jobs_inner, resume):
+def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n_jobs_inner, resume, *, nthread=1):
     """Run all reps for a single method in the Superconductor experiment."""
     ckpt_name = f"superconductor_{_sanitize_ckpt_name(name)}"
     if resume and _has(ckpt_name):
@@ -1834,7 +1861,7 @@ def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n
         Xte_r = scaler_r.transform(X_test)
 
         if name == "Single Best":
-            m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+            m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
             m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
             imp = m.global_importance_
             rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
@@ -1845,6 +1872,7 @@ def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n
                 T_per_model=PAPER_CONFIG["T_PER_MODEL"],
                 colsample_bytree=0.2,
                 seed=rep_seed,
+                nthread=nthread,
             )
             m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
             imp = m.global_importance_
@@ -1857,7 +1885,9 @@ def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n
             rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
             abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
         elif name == "Stochastic Retrain":
-            m = StochasticRetrainBaseline(N=sc_k, task="regression", n_jobs=n_jobs_inner, seed=rep_seed)
+            m = StochasticRetrainBaseline(
+                N=sc_k, task="regression", n_jobs=n_jobs_inner, nthread=nthread, seed=rep_seed
+            )
             m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
             imp = m.global_importance_
             preds = m.get_consensus_ensemble_predictions(Xte_r)
@@ -1871,6 +1901,7 @@ def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n
                 delta=DELTA,
                 epsilon_mode=REAL_EPSILON_MODE,
                 n_jobs=n_jobs_inner,
+                nthread=nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -1888,6 +1919,7 @@ def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n
                 epsilon_mode=REAL_EPSILON_MODE,
                 selection_method="maxmin",
                 n_jobs=n_jobs_inner,
+                nthread=nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -1983,16 +2015,26 @@ def experiment_real_superconductor(resume=False, cleanup=False):
     ]
 
     n_methods = len(sc_methods)
-    try:
-        total_cores = len(os.sched_getaffinity(0))
-    except AttributeError:
-        total_cores = os.cpu_count() or 1
-    n_jobs_inner = max(1, total_cores // n_methods)
-    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
+    budget = compute_thread_budget(n_outer=n_methods)
+    n_jobs_inner = budget.n_inner
+    nthread = budget.nthread
+    log(
+        f"  Running {n_methods} methods in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per method, nthread={nthread})"
+    )
 
     results_list = Parallel(n_jobs=n_methods, backend="loky")(
         delayed(_run_sc_method)(
-            name, X_sc_pool, X_sc_test, y_sc_pool, y_sc_test, sc_names, SC_M, SC_K, n_jobs_inner, resume
+            name,
+            X_sc_pool,
+            X_sc_test,
+            y_sc_pool,
+            y_sc_test,
+            sc_names,
+            SC_M,
+            SC_K,
+            n_jobs_inner,
+            resume,
+            nthread=nthread,
         )
         for name in sc_methods
     )
@@ -2044,6 +2086,7 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
         }
         for eps in EPS_VALUES
     }
+    seq_budget = compute_thread_budget(n_outer=1)
 
     # Try to resume from latest batch checkpoint
     start_rep = 0
@@ -2073,7 +2116,8 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
             yv,
             M=EPS_M,
             task="regression",
-            n_jobs=-1,
+            n_jobs=seq_budget.n_inner,
+            nthread=seq_budget.nthread,
             seed=rep_seed,
             verbose=False,
         )
@@ -2141,7 +2185,7 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_ablation_rho(abl_rho, ablations, abl_defaults, n_jobs_inner):
+def _run_ablation_rho(abl_rho, ablations, abl_defaults, n_jobs_inner, *, nthread=1):
     """Run all ablation sweeps for a single rho level."""
     ABL_N_REPS = N_REPS
     log(f"\n{'=' * 60}")
@@ -2172,6 +2216,7 @@ def _run_ablation_rho(abl_rho, ablations, abl_defaults, n_jobs_inner):
                     delta=p["delta"],
                     selection_method="maxmin",
                     n_jobs=n_jobs_inner,
+                    nthread=nthread,
                     seed=rep_seed,
                     verbose=False,
                 )
@@ -2249,15 +2294,16 @@ def experiment_ablation(resume=False, cleanup=False):
 
     if pending_rhos:
         n_rho = len(pending_rhos)
-        try:
-            total_cores = len(os.sched_getaffinity(0))
-        except AttributeError:
-            total_cores = os.cpu_count() or 1
-        n_jobs_inner = max(1, total_cores // n_rho)
-        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
+        budget = compute_thread_budget(n_outer=n_rho)
+        n_jobs_inner = budget.n_inner
+        nthread = budget.nthread
+        log(
+            f"  Running {n_rho} rho levels in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per level, nthread={nthread})"
+        )
 
         results_list = Parallel(n_jobs=n_rho, backend="loky")(
-            delayed(_run_ablation_rho)(rho, ablations, ABL_DEFAULTS, n_jobs_inner) for rho in pending_rhos
+            delayed(_run_ablation_rho)(rho, ablations, ABL_DEFAULTS, n_jobs_inner, nthread=nthread)
+            for rho in pending_rhos
         )
         for rho, rho_results in results_list:
             abl_results[rho] = rho_results
@@ -2300,6 +2346,7 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
 
     methods = ["Single Best", "DASH (MaxMin)"]
     results = {cond: {m: [] for m in methods} for cond in conditions}
+    seq_budget = compute_thread_budget(n_outer=1)
 
     start_rep = 0
     if resume:
@@ -2328,7 +2375,9 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
             )
 
             # Single Best
-            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=-1)
+            sb = SingleBestBaseline(
+                n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=seq_budget.n_inner, nthread=seq_budget.nthread
+            )
             sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=model_seed)
             results[cond]["Single Best"].append(sb.global_importance_)
 
@@ -2339,7 +2388,8 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
                 epsilon=EPSILON,
                 delta=DELTA,
                 selection_method="maxmin",
-                n_jobs=-1,
+                n_jobs=seq_budget.n_inner,
+                nthread=seq_budget.nthread,
                 seed=model_seed,
                 verbose=False,
             )
@@ -2400,7 +2450,7 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup):
+def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup, *, nthread=1):
     """Run all reps for a single rho level of the asymmetric DGP experiment."""
     feature_names_asym = ["f0", "f1"]
     log(f"\n  rho={rho}")
@@ -2412,11 +2462,11 @@ def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup
             N=5000, rho=rho, seed=rep_seed
         )
 
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
         sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         rho_imps["Single Best"].append(sb.global_importance_)
 
-        sr = StochasticRetrainBaseline(K=K, seed=rep_seed, n_jobs=n_jobs_inner)
+        sr = StochasticRetrainBaseline(K=K, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
         sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
         rho_imps["Stochastic Retrain"].append(sr.global_importance_)
 
@@ -2427,13 +2477,14 @@ def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup
             delta=DELTA,
             selection_method="maxmin",
             n_jobs=n_jobs_inner,
+            nthread=nthread,
             seed=rep_seed,
             verbose=False,
         )
         dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names_asym)
         rho_imps["DASH (MaxMin)"].append(dm.global_importance_)
 
-        lsm = LargeSingleModelBaseline(seed=rep_seed, n_jobs=n_jobs_inner)
+        lsm = LargeSingleModelBaseline(seed=rep_seed, nthread=nthread)
         lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
         rho_imps["Large Single Model"].append(lsm.global_importance_)
 
@@ -2526,15 +2577,16 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False):
 
     if pending_rhos:
         n_rho = len(pending_rhos)
-        try:
-            total_cores = len(os.sched_getaffinity(0))
-        except AttributeError:
-            total_cores = os.cpu_count() or 1
-        n_jobs_inner = max(1, total_cores // n_rho)
-        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
+        budget = compute_thread_budget(n_outer=n_rho)
+        n_jobs_inner = budget.n_inner
+        nthread = budget.nthread
+        log(
+            f"  Running {n_rho} rho levels in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per level, nthread={nthread})"
+        )
 
         results_list = Parallel(n_jobs=n_rho, backend="loky")(
-            delayed(_run_asymmetric_rho)(rho, method_names, N_ASYM_REPS, n_jobs_inner, cleanup) for rho in pending_rhos
+            delayed(_run_asymmetric_rho)(rho, method_names, N_ASYM_REPS, n_jobs_inner, cleanup, nthread=nthread)
+            for rho in pending_rhos
         )
         for rho, rho_summary in results_list:
             all_results[rho] = rho_summary
@@ -2551,7 +2603,7 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False):
 ###############################################################################
 
 
-def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inner):
+def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inner, *, nthread=1):
     """Run all model seeds for a single data seed in the crossed ANOVA design."""
     VD_RHO = 0.9
     log(f"  Data seed {di + 1}/7 (seed={data_seed})")
@@ -2560,7 +2612,7 @@ def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inn
     )
     cell_results = {}
     for mi, model_seed in enumerate(model_seeds):
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=n_jobs_inner)
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=n_jobs_inner, nthread=nthread)
         sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=model_seed)
         cell_results[("Single Best", di, mi)] = sb.global_importance_
 
@@ -2571,6 +2623,7 @@ def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inn
             delta=DELTA,
             selection_method="maxmin",
             n_jobs=n_jobs_inner,
+            nthread=nthread,
             seed=model_seed,
             verbose=False,
         )
@@ -2620,16 +2673,16 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
 
     if pending_dis:
         n_pending = len(pending_dis)
-        try:
-            total_cores = len(os.sched_getaffinity(0))
-        except AttributeError:
-            total_cores = os.cpu_count() or 1
-        n_jobs_inner = max(1, total_cores // n_pending)
-        log(f"  Running {n_pending} data seeds in parallel ({total_cores} cores, {n_jobs_inner} per seed)")
+        budget = compute_thread_budget(n_outer=n_pending)
+        n_jobs_inner = budget.n_inner
+        nthread = budget.nthread
+        log(
+            f"  Running {n_pending} data seeds in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per seed, nthread={nthread})"
+        )
         log(f"  Running {R}×{R}={R * R} cells...")
 
         results_list = Parallel(n_jobs=n_pending, backend="loky")(
-            delayed(_run_crossed_data_seed)(di, data_seed, model_seeds, feature_names, n_jobs_inner)
+            delayed(_run_crossed_data_seed)(di, data_seed, model_seeds, feature_names, n_jobs_inner, nthread=nthread)
             for di, data_seed in pending_dis
         )
 
@@ -2860,6 +2913,7 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
     B_VALUES = [50, 100, 200, 500]
     feature_names = make_feature_names()
     results = {}
+    seq_budget = compute_thread_budget(n_outer=1)
 
     for B in B_VALUES:
         ckpt_name = f"background_B_{B}"
@@ -2881,7 +2935,8 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
                 epsilon=EPSILON,
                 delta=DELTA,
                 selection_method="maxmin",
-                n_jobs=-1,
+                n_jobs=seq_budget.n_inner,
+                nthread=seq_budget.nthread,
                 background_size=B,
                 seed=rep_seed,
                 verbose=False,
@@ -2969,6 +3024,7 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
 
     methods_to_run = ["Single Best", "Large Single Model", "DASH (MaxMin)"]
     method_importances = {m: [] for m in methods_to_run}
+    seq_budget = compute_thread_budget(n_outer=1)
 
     start_rep = 0
     if resume:
@@ -2988,7 +3044,9 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
         )
 
         # Single Best
-        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
+        sb = SingleBestBaseline(
+            n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=seq_budget.n_inner, nthread=seq_budget.nthread
+        )
         sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         method_importances["Single Best"].append(sb.global_importance_[group_features])
 
@@ -2998,6 +3056,7 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
             T_per_model=PAPER_CONFIG["T_PER_MODEL"],
             colsample_bytree=0.2,
             seed=rep_seed,
+            nthread=seq_budget.nthread,
         )
         lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         method_importances["Large Single Model"].append(lsm.global_importance_[group_features])
@@ -3009,7 +3068,8 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
             epsilon=EPSILON,
             delta=DELTA,
             selection_method="maxmin",
-            n_jobs=-1,
+            n_jobs=seq_budget.n_inner,
+            nthread=seq_budget.nthread,
             seed=rep_seed,
             verbose=False,
         )
@@ -3318,6 +3378,7 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
 
     rho = 0.9
     rng_seed = SEED
+    seq_budget = compute_thread_budget(n_outer=1)
 
     log(f"  Generating synthetic data: N=2000, P=20, rho={rho}")
     Xtr, ytr, Xv, yv, Xexp, _, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(N=2000, rho=rho, seed=rng_seed)
@@ -3330,7 +3391,8 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
         delta=DELTA,
         seed=rng_seed,
         verbose=False,
-        n_jobs=-1,
+        n_jobs=seq_budget.n_inner,
+        nthread=seq_budget.nthread,
     )
     pipe.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
     result = pipe.result_

@@ -28,6 +28,7 @@ class LargeSingleModelBaseline:
         task="regression",
         seed=42,
         tune=False,
+        nthread=None,
     ):
         self.K = K
         self.T_per_model = T_per_model
@@ -35,11 +36,13 @@ class LargeSingleModelBaseline:
         self.task = task
         self.seed = seed
         self.tune = tune
+        self.nthread = nthread
         self.model_ = None
         self.global_importance_ = None
         self.best_params_ = None
 
     def _build_model(self, n_estimators, max_depth, learning_rate):
+        thread_kw = {"nthread": self.nthread} if self.nthread is not None else {}
         if self.task == "regression":
             return xgb.XGBRegressor(
                 n_estimators=n_estimators,
@@ -50,6 +53,7 @@ class LargeSingleModelBaseline:
                 eval_metric="rmse",
                 random_state=self.seed,
                 verbosity=0,
+                **thread_kw,
             )
         else:
             return xgb.XGBClassifier(
@@ -62,6 +66,7 @@ class LargeSingleModelBaseline:
                 use_label_encoder=False,
                 random_state=self.seed,
                 verbosity=0,
+                **thread_kw,
             )
 
     def fit(self, X_train, y_train, X_val, y_val, X_ref=None, seed=None):
