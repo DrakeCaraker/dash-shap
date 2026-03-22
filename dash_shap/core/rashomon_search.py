@@ -115,7 +115,7 @@ def decode_config(encoded: np.ndarray, search_space: "dict | None" = None) -> di
             config[key] = sorted_vals[0]
         else:
             # Map [0, 1] → index, snap to nearest
-            idx = round(encoded[i] * (n - 1))
+            idx = int(np.round(encoded[i] * (n - 1)))
             idx = max(0, min(n - 1, idx))
             val = sorted_vals[idx]
             # Preserve original types
