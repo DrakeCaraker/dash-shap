@@ -1,3 +1,11 @@
+# =============================================================================
+# DEPRECATED: This file is superseded by run_experiments_parallel.py, which
+# produces identical results 3-5x faster via population sharing and parallel SHAP.
+# run_experiments_parallel.py is the sole actively maintained entry point.
+#
+# This file is retained for historical reference (provenance for results generated
+# before the parallel runner was introduced). Do not extend or rely on it.
+# =============================================================================
 #!/usr/bin/env python3
 """
 DASH Experimental Validation — Complete Runner
