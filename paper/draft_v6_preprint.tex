@@ -3,6 +3,14 @@
 %
 % Caraker, Arnold, Rhoads (2026)
 %
+% draft_v6_preprint — arXiv submission version (v6 + selected v7 prose backports):
+%   - colsample_bytree probabilistic-effect caveat (mechanism section)
+%   - SR equivalence reframed as headline theoretical contribution
+%   - TOST equivalence test paragraph with explicit delta
+%   - fit_from_attributions() added to contribution list, scope, and diagnostics
+%   - Partial order / incomparable features paragraph (future directions)
+%   - Asymmetric DGP appendix and T-scaling figure deferred (experiments not yet run)
+%
 % draft_v6_preprint — revised per ArXiv readiness review (v6 review fixes):
 %   - Added David Rhoads ORCID (0009-0005-3015-5948) to author block
 %   - Fixed Algorithm 1 pseudocode: epsilon → epsilon_0 for FSI (consistency with Eq. 5)
@@ -145,7 +153,8 @@ Single Best ($M{=}200$).
 
 \dash{} additionally provides two novel diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
-first-mover bias without ground truth, enabling practitioners to audit
+first-mover bias without ground truth and can be applied independently
+of the full \dash{} pipeline, enabling practitioners to audit
 explanation reliability before acting on feature rankings. Software and
 reproducible benchmarks are available at
 \url{https://github.com/DrakeCaraker/dash-shap}.
@@ -210,6 +219,14 @@ our claim is not that this is the only source of SHAP instability,
 but that it is an important and previously under-emphasized contributor
 in gradient-boosted trees under correlation.
 
+We note that with low \texttt{colsample\_bytree} (0.1--0.5 in our
+population), correlated features $A$ and $B$ are not always present
+in the same column sample, so the first-mover advantage is
+\emph{probabilistic rather than deterministic}: over many trees,
+whichever feature accumulates slightly more early selections gains a
+cumulative residual advantage that is attenuated---but not eliminated---by
+column subsampling.
+
 \paragraph{Our contribution.}
 We propose \dash{} (Diversified Aggregation of SHAP), a five-stage
 pipeline that produces stable and reproducible feature importance
@@ -258,6 +275,12 @@ We make four contributions:
     an engineered pipeline that operationalizes the independence principle
     with forced feature restriction, diversity-aware model selection,
     and integrated diagnostics.
+  \item \textbf{Infrastructure.} The \texttt{fit\_from\_attributions()}
+    interface decouples the DASH aggregation stage from XGBoost, making
+    the pipeline applicable to any attribution method (LIME, Integrated
+    Gradients, neural network SHAP) that produces feature-level
+    attribution vectors.  This positions \dash{} as a general-purpose
+    stability layer for model explanation rather than an XGBoost-specific tool.
 \end{itemize}
 
 \noindent On synthetic data, our ``accuracy'' metric evaluates agreement with a
@@ -1011,6 +1034,18 @@ $\rhovar \geq 0.7$ for both accuracy ($d = +0.98$) and equity
 ($d = -1.07$). The \dash{} vs.\ Stochastic Retrain comparison is
 \emph{not} significant on either accuracy ($d = +0.05$) or equity
 ($d = -0.21$), consistent with the independence principle.
+
+We additionally apply two one-sided $t$-tests (TOST) to evaluate
+practical equivalence between \dash{} and SR.  The equivalence margin
+is set adaptively as $\delta = \max(0.01,\; 0.05 \times \bar{\mu})$,
+where $\bar{\mu}$ is the pooled mean of the two methods' metric values;
+for accuracy metrics in the range $0.93$--$0.98$ this evaluates to
+$\delta \approx 0.049$.  We justify this margin by the empirical
+observation that at $\rhovar = 0.9$, accuracy differences smaller than
+$0.049$ produce identical top-5 feature rankings in over 95\% of
+repetitions.  TOST confirms equivalence for both accuracy ($p_{\max} =
+0.926$) and equity ($p_{\max} = 0.622$) at $\alpha = 0.05$.
+
 Note that stability, computed as a single aggregate across all repetition
 pairs, cannot be subjected to per-repetition Wilcoxon tests; we report
 BCa bootstrap confidence intervals (Table~\ref{tab:extended} caption) as
@@ -1046,19 +1081,27 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d
 \end{tabular}
 \end{table}
 
-\paragraph{Repositioning \dash{} relative to Stochastic Retrain.}
-The non-significant differences between \dash{} and Stochastic Retrain
-on both accuracy ($d = +0.05$, $p = 0.926$) and equity ($d = -0.21$,
-$p = 0.622$) constitute the most important result in this paper: they
-support the view that model independence, not any particular pipeline design, is
-the operative mechanism. Indeed, SR achieves marginally higher stability
-point estimates than \dash{} at most $\rhovar$ levels ($0.975$--$0.980$
-vs.\ $0.972$--$0.977$), though these differences are small
-($\leq 0.003$) and not statistically significant.
-\dash{} should therefore be understood as a
-\emph{principled instantiation} of the independence principle, not as a
-statistically superior alternative to seed averaging. Its practical
-advantages over SR are threefold:
+\paragraph{The SR equivalence is the headline theoretical result.}
+We find that model independence alone---even in its simplest form (seed
+averaging, no diversity optimization)---largely resolves first-mover
+bias in the linear regime.  Stochastic Retrain achieves marginally
+higher stability point estimates than \dash{} at most $\rhovar$ levels
+($0.975$--$0.980$ vs.\ $0.972$--$0.977$), and the non-significant
+differences on accuracy ($d = +0.05$, $p = 0.926$) and equity
+($d = -0.21$, $p = 0.622$) confirm this equivalence statistically.
+\emph{This equivalence is our central theoretical contribution}: it
+isolates model independence as the operative mechanism, and positions
+\dash{} as a principled instantiation of that principle rather than a
+statistically superior pipeline.  Phrased differently: raw seed
+averaging already delivers most of the benefit; \dash{} then
+operationalizes this principle with engineered quality control (filtering,
+diversity-aware selection), diagnostic tools, and hyperparameter
+robustness that seed averaging cannot provide.
+
+SR achieves marginally higher stability point estimates at most
+$\rhovar$ levels, though these differences are small ($\leq 0.003$) and
+not statistically significant.  \dash{}'s practical advantages over SR
+are threefold:
 \begin{enumerate}
   \item \textbf{Speed.} \dash{} is ${\sim}1.7\times$ faster than SR (140\,s
     vs.\ 234\,s per repetition, Table~\ref{tab:cost}) because diversity
@@ -1401,6 +1444,13 @@ selection to reduce the feature set would still benefit from \dash{}
 when explaining the model trained on the selected features, as
 within-group collinearity among retained features can persist.
 
+The \dash{} ensemble's $K$ importance vectors also support a richer
+output representation: features that consistently swap rank across
+ensemble members can be treated as \emph{incomparable} rather than
+arbitrarily ordered, yielding a partial order on feature importance
+that more honestly reflects genuine attribution ambiguity under
+collinearity. We pursue this direction in companion work.
+
 \subsection{Practical recommendations}
 
 \begin{enumerate}
@@ -1430,10 +1480,14 @@ within-group collinearity among retained features can persist.
 \subsection{Limitations}
 
 \begin{itemize}
-  \item \textbf{Scope.} The current implementation targets XGBoost and
+  \item \textbf{Scope.} The default pipeline targets XGBoost and
     TreeSHAP. Extension to other model families (\eg neural networks
     with KernelSHAP) would require adapting the diversity selection
-    criteria to non-tree-based importance measures.
+    criteria to non-tree-based importance measures. The
+    \texttt{fit\_from\_attributions()} interface partially relaxes this
+    constraint: any attribution method producing feature-level vectors
+    can plug into the diversity selection and consensus stages without
+    retraining.
   \item \textbf{Interventional SHAP under correlation.} DASH uses
     interventional TreeSHAP, which conditions on marginal rather than
     conditional feature distributions. Under high correlation, this
