@@ -78,6 +78,7 @@ def greedy_maxmin_selection(
     K=20,
     delta=0.1,
     verbose=True,
+    min_k=2,
 ):
     """Select up to K models maximizing minimum pairwise diversity."""
     # Pre-compute normalized vectors and pairwise cosine similarity matrix
@@ -99,7 +100,7 @@ def greedy_maxmin_selection(
             if min_dist > best_min_dist:
                 best_min_dist = min_dist
                 best_candidate = c
-        if best_min_dist < delta:
+        if best_min_dist < delta and len(selected) >= min_k:
             if verbose:
                 print(
                     f"  Diversity threshold reached at K={len(selected)} (min_dist={best_min_dist:.4f} < delta={delta})"
