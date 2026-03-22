@@ -28,6 +28,7 @@ class RandomSelectionBaseline:
         search_space=None,
         background_size=100,
         n_jobs=-1,
+        nthread=None,
         seed=42,
         verbose=True,
     ):
@@ -39,6 +40,7 @@ class RandomSelectionBaseline:
         self.search_space = search_space or DEFAULT_SEARCH_SPACE
         self.background_size = background_size
         self.n_jobs = n_jobs
+        self.nthread = nthread
         self.seed = seed
         self.verbose = verbose
 
@@ -71,6 +73,7 @@ class RandomSelectionBaseline:
             n_jobs=self.n_jobs,
             seed=self.seed,
             verbose=self.verbose,
+            nthread=self.nthread,
         )
         self.timing_["stage1_training"] = time.time() - t0
 

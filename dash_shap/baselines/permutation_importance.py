@@ -9,11 +9,13 @@ __all__ = ["PermutationImportanceBaseline"]
 
 
 class PermutationImportanceBaseline:
-    def __init__(self, n_trials=100, task="regression", seed=42, n_repeats=10):
+    def __init__(self, n_trials=100, task="regression", seed=42, n_repeats=10, nthread=None, n_jobs=None):
         self.n_trials = n_trials
         self.task = task
         self.seed = seed
         self.n_repeats = n_repeats
+        self.nthread = nthread
+        self.n_jobs = n_jobs
         self.model_ = None
         self.global_importance_ = None
         self.fsi_ = None
@@ -50,6 +52,7 @@ class PermutationImportanceBaseline:
                 y_val,
                 task=self.task,
                 seed=self.seed + i,
+                nthread=self.nthread,
             )
             if score > best_score:
                 best_score, best_model = score, model
@@ -63,7 +66,7 @@ class PermutationImportanceBaseline:
             y_ref,
             n_repeats=self.n_repeats,
             random_state=seed if seed is not None else self.seed,
-            n_jobs=-1,
+            n_jobs=self.n_jobs,
         )
         self.global_importance_ = np.maximum(result.importances_mean, 0)
         # FSI is undefined for single-model baselines.

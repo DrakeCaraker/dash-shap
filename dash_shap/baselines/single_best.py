@@ -11,11 +11,12 @@ __all__ = ["SingleBestBaseline"]
 
 
 class SingleBestBaseline:
-    def __init__(self, n_trials=100, task="regression", seed=42, n_jobs=1):
+    def __init__(self, n_trials=100, task="regression", seed=42, n_jobs=1, nthread=None):
         self.n_trials = n_trials
         self.task = task
         self.seed = seed
         self.n_jobs = n_jobs
+        self.nthread = nthread
         self.model_ = None
         self.global_importance_ = None
 
@@ -66,6 +67,7 @@ class SingleBestBaseline:
                     y_val,
                     task=self.task,
                     seed=self.seed + i,
+                    nthread=self.nthread,
                 )
                 if score > best_score:
                     best_score, best_model = score, model
@@ -79,6 +81,7 @@ class SingleBestBaseline:
                     y_val,
                     task=self.task,
                     seed=self.seed + i,
+                    nthread=self.nthread,
                 )
                 for i, config in enumerate(configs)
             )

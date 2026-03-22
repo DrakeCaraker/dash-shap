@@ -9,6 +9,11 @@ from dash_shap.utils.checkpoint import (
     clear_checkpoint,
     clear_checkpoints_by_prefix,
 )
+from dash_shap.utils.thread_budget import (
+    get_available_cores,
+    compute_thread_budget,
+    ThreadBudget,
+)
 
 __all__ = [
     "compute_global_importance",
@@ -18,4 +23,7 @@ __all__ = [
     "has_checkpoint",
     "clear_checkpoint",
     "clear_checkpoints_by_prefix",
+    "get_available_cores",
+    "compute_thread_budget",
+    "ThreadBudget",
 ]
