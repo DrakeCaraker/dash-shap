@@ -10,10 +10,11 @@ __all__ = ["EnsembleSHAPBaseline"]
 
 
 class EnsembleSHAPBaseline:
-    def __init__(self, n_estimators=2000, task="regression", seed=42):
+    def __init__(self, n_estimators=2000, task="regression", seed=42, nthread=None):
         self.n_estimators = n_estimators
         self.task = task
         self.seed = seed
+        self.nthread = nthread
         self.model_ = None
         self.global_importance_ = None
         self.fsi_ = None
@@ -29,6 +30,7 @@ class EnsembleSHAPBaseline:
         if X_ref is None:
             X_ref = X_val
 
+        thread_kw = {"nthread": self.nthread} if self.nthread is not None else {}
         if self.task == "regression":
             self.model_ = xgb.XGBRegressor(
                 n_estimators=self.n_estimators,
@@ -40,6 +42,7 @@ class EnsembleSHAPBaseline:
                 eval_metric="rmse",
                 random_state=self.seed,
                 verbosity=0,
+                **thread_kw,
             )
         else:
             self.model_ = xgb.XGBClassifier(
@@ -53,6 +56,7 @@ class EnsembleSHAPBaseline:
                 use_label_encoder=False,
                 random_state=self.seed,
                 verbosity=0,
+                **thread_kw,
             )
 
         self.model_.fit(

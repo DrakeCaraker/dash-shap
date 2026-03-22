@@ -36,6 +36,7 @@ class DASHPipeline:
         preliminary_importance_method="gain",
         background_size=100,
         n_jobs=-1,
+        nthread=None,
         seed=42,
         verbose=True,
         # Surrogate search parameters (only used when selection_method="surrogate")
@@ -144,6 +145,7 @@ class DASHPipeline:
         self.preliminary_importance_method = preliminary_importance_method
         self.background_size = background_size
         self.n_jobs = n_jobs
+        self.nthread = nthread
         self.seed = seed
         self.verbose = verbose
         self.surrogate_batch_size = surrogate_batch_size
@@ -297,6 +299,7 @@ class DASHPipeline:
                 n_jobs=self.n_jobs,
                 seed=self.seed,
                 verbose=self.verbose,
+                nthread=self.nthread,
             )
             self.timing_["stage1_training"] = time.time() - t0
 
