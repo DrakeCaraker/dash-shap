@@ -37,8 +37,8 @@ __pycache__/
 *.pyc
 .worktrees/
 
-# Private strategy documents (never commit)
-docs/private/
+# Private strategy documents — encrypted via git-crypt (tracked but not readable without GPG key)
+# docs/private/ is intentionally NOT gitignored — files there are encrypted at rest
 docs/TMLR_cover_letter_draft.md
 
 # Unpublished research strategy — do not commit
