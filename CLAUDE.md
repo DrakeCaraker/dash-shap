@@ -173,6 +173,9 @@ California Housing: DASH stability=0.982 vs Single Best=0.967 (+0.015)
 - `/paper-context` — load full research context (EXPERIMENT_GUIDE, BENCHMARK_RESULTS, ROADMAP) for writing tasks
 - `/sync-check` — verify PAPER_CONFIG consistency across `run_experiments.py`, notebooks 6 & 7, and CLAUDE.md
 - `/experiment-summary` — format results into markdown + LaTeX tables with provenance and regression checks
+- `/ci-fix` — autonomous CI fix loop: runs ruff/mypy/pytest incrementally, fixes failures by type, loops until green (max 5 iterations)
+- `/audit` — parallel four-dimension repo audit (notebooks, preprint parity, sensitive data, release readiness) → merged report in `docs/audit/`
+- `/safe-refactor <target>` — test-gated refactoring: writes characterization tests, applies one change at a time, auto-rollbacks on failure
 
 ### Hooks
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
