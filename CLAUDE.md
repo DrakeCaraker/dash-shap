@@ -178,4 +178,4 @@ California Housing: DASH stability=0.982 vs Single Best=0.967 (+0.015)
 
 ## Research Program
 
-Paper 1 of 5 (see ROADMAP.md). Key claim: independence between models in the DASH population cancels path-dependent noise in feature attributions. See EXPERIMENT_GUIDE.md for full methodology and method descriptions.
+Key claim: independence between models in the DASH population cancels path-dependent noise in feature attributions. See EXPERIMENT_GUIDE.md for full methodology and method descriptions.
