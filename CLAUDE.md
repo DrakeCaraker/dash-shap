@@ -27,8 +27,8 @@ paper/            LaTeX source
 ## Key Entry Points
 
 - `dash_shap.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
-- `run_experiments.py` — CLI experiment runner (10 experiments, plotting, JSON output)
-- `run_experiments_parallel.py` — **performance-optimized fork** (identical results, ~3-5x faster via population sharing + parallel SHAP)
+- `run_experiments.py` — CLI experiment runner (deprecated — use parallel runner; retained for historical provenance)
+- `run_experiments_parallel.py` — **sole actively maintained entry point** (18 experiments, ~3-5x faster via population sharing + parallel SHAP)
 - `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook
 - `notebooks/archive/demo_benchmark_7.ipynb` — **archived, superseded by parallel version**
 - `notebooks/demo_benchmark_7_parallel.ipynb` — **canonical (TMLR)** interactive benchmark notebook (uses `run_experiments_parallel`)
@@ -86,9 +86,9 @@ make fmt                                       # ruff format
 make typecheck                                 # mypy
 make coverage                                  # pytest with 70% coverage floor
 make rebase                                    # rebase on origin/main
-python run_experiments.py                      # all 10 experiments (original)
-python run_experiments.py --experiments linear_sweep  # one experiment
-python run_experiments_parallel.py             # all experiments (optimized, ~3-5x faster)
+python run_experiments.py                      # DEPRECATED — use parallel runner
+python run_experiments.py --experiments linear_sweep  # DEPRECATED — use parallel runner
+python run_experiments_parallel.py             # all 18 experiments (sole maintained runner)
 python run_experiments_parallel.py --experiments linear_sweep
 python scripts/check_notebook_ids.py          # flag unnamed code cells before editing sessions
 ```

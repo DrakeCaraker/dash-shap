@@ -141,52 +141,28 @@ jobs:
       - name: Install dependencies
         run: |
           pip install nbformat pyyaml
-      - name: Check PAPER_CONFIG consistency
+          pip install -e .
+      - name: Verify config module has required keys
         run: |
           python -c "
-          import re, json, sys, nbformat
-
-          # Extract config from run_experiments.py
-          with open('run_experiments.py') as f:
-              content = f.read()
-
-          configs = {}
-
-          def parse_config(text):
-              return {
-                  'M': int(re.search(r'\"M\":\s*(\d+)', text).group(1)),
-                  'K': int(re.search(r'\"K\":\s*(\d+)', text).group(1)),
-                  'N_REPS': int(re.search(r'\"N_REPS\":\s*(\d+)', text).group(1)),
-                  'EPSILON': float(re.search(r'\"EPSILON\":\s*([\d.]+)', text).group(1)),
-                  'DELTA': float(re.search(r'\"DELTA\":\s*([\d.]+)', text).group(1)),
-                  'SEED': int(re.search(r'SEED\s*=\s*(\d+)', text).group(1)),
-              }
-
-          configs['run_experiments.py'] = parse_config(content)
-
-          # Extract from run_experiments_parallel.py
-          with open('run_experiments_parallel.py') as f:
-              content_p = f.read()
-          configs['run_experiments_parallel.py'] = parse_config(content_p)
-
-          # Compare
-          ref = configs['run_experiments.py']
-          errors = 0
-          for source, vals in configs.items():
-              if source == 'run_experiments.py':
-                  continue
-              for key in ref:
-                  if vals.get(key) != ref[key]:
-                      print(f'::error::MISMATCH {key}: run_experiments.py={ref[key]}, {source}={vals.get(key)}')
-                      errors += 1
-
-          if errors == 0:
-              print('PAPER_CONFIG is consistent across experiment runners.')
-              # Print summary
-              for k, v in ref.items():
-                  print(f'  {k} = {v}')
-          sys.exit(errors)
+          from dash_shap.config import PAPER_CONFIG
+          required = {'M', 'K', 'N_REPS', 'EPSILON', 'DELTA', 'N_TRIALS_SB'}
+          missing = required - set(PAPER_CONFIG)
+          assert not missing, f'Missing keys in dash_shap.config.PAPER_CONFIG: {missing}'
+          print('OK: dash_shap.config.PAPER_CONFIG has all required keys')
+          for k, v in PAPER_CONFIG.items():
+              print(f'  {k} = {v}')
           "
+      - name: Verify no local PAPER_CONFIG in parallel runner
+        run: |
+          if grep -n "^PAPER_CONFIG\s*=" run_experiments_parallel.py; then
+            echo "::error::run_experiments_parallel.py defines PAPER_CONFIG locally — should import from dash_shap.config"
+            exit 1
+          fi
+          echo "OK: no local PAPER_CONFIG definition in parallel runner"
+      - name: Check sequential runner has deprecation header
+        run: |
+          grep -q "DEPRECATED" run_experiments.py && echo "OK: deprecation header present" || (echo "::error::run_experiments.py is missing deprecation header" && exit 1)
 
   file-guards:
     runs-on: ubuntu-latest
