@@ -105,7 +105,7 @@ class ImportanceStabilityPlot:
 
         if groups is not None:
             unique_groups = np.unique(groups)
-            cmap = plt.cm.get_cmap("tab10", len(unique_groups))
+            cmap = plt.colormaps.get_cmap("tab10").resampled(len(unique_groups))
             for i, g in enumerate(unique_groups):
                 mask = groups == g
                 ax.scatter(
@@ -151,19 +151,96 @@ class ImportanceStabilityPlot:
         ax.axvline(importance_threshold, color="gray", linestyle="--", alpha=0.5)
         ax.axhline(fsi_threshold, color="gray", linestyle="--", alpha=0.5)
 
+        # Quadrant background shading and corner labels
+        xlim = ax.get_xlim()
+        ylim = ax.get_ylim()
+        ax.fill_betweenx(
+            [ylim[0], fsi_threshold],
+            xlim[0],
+            importance_threshold,
+            alpha=0.04,
+            color="#95a5a6",
+            zorder=0,
+        )  # Q-III gray
+        ax.fill_betweenx(
+            [fsi_threshold, ylim[1]],
+            xlim[0],
+            importance_threshold,
+            alpha=0.04,
+            color="#f39c12",
+            zorder=0,
+        )  # Q-IV orange
+        ax.fill_betweenx(
+            [ylim[0], fsi_threshold],
+            importance_threshold,
+            xlim[1],
+            alpha=0.04,
+            color="#2ecc71",
+            zorder=0,
+        )  # Q-I green
+        ax.fill_betweenx(
+            [fsi_threshold, ylim[1]],
+            importance_threshold,
+            xlim[1],
+            alpha=0.04,
+            color="#e74c3c",
+            zorder=0,
+        )  # Q-II red
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        xp = 0.015 * (xlim[1] - xlim[0])
+        yp = 0.025 * (ylim[1] - ylim[0])
+        ax.text(
+            importance_threshold + xp,
+            ylim[0] + yp,
+            "Q-I: Robust",
+            fontsize=7,
+            color="#1a8a47",
+            va="bottom",
+            alpha=0.8,
+        )
+        ax.text(
+            importance_threshold + xp,
+            fsi_threshold + yp,
+            "Q-II: Collinear",
+            fontsize=7,
+            color="#a93226",
+            va="bottom",
+            alpha=0.8,
+        )
+        ax.text(
+            xlim[0] + xp,
+            ylim[0] + yp,
+            "Q-III: Unimportant",
+            fontsize=7,
+            color="#5d6d7e",
+            va="bottom",
+            alpha=0.8,
+        )
+        ax.text(
+            xlim[0] + xp,
+            fsi_threshold + yp,
+            "Q-IV: Fragile",
+            fontsize=7,
+            color="#b7770d",
+            va="bottom",
+            alpha=0.8,
+        )
+
         top_k_idx = np.argsort(global_importance)[-annotate_top_k:][::-1]
         for j in top_k_idx:
             ax.annotate(
                 feature_names[j],
                 (global_importance[j], fsi[j]),
                 fontsize=8,
-                alpha=0.8,
-                xytext=(5, 5),
+                alpha=0.85,
+                xytext=(8, 8),
                 textcoords="offset points",
+                arrowprops=dict(arrowstyle="-", color="gray", alpha=0.4, lw=0.7),
             )
 
-        ax.set_xlabel(r"Consensus Importance $\bar{I}_j$", fontsize=12)
-        ax.set_ylabel(r"Feature Stability Index (FSI$_j$)", fontsize=12)
+        ax.set_xlabel("Consensus Importance (mean |SHAP|)", fontsize=12)
+        ax.set_ylabel("Feature Stability Index (FSI)", fontsize=12)
         ax.set_title(title.replace("\u2014", "-").replace("\u2013", "-"), fontsize=14)
         ax.legend(loc="upper left", fontsize=9)
         fig.tight_layout()
