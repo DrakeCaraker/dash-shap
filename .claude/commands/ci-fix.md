@@ -42,7 +42,7 @@ Once all 4 steps pass in a single iteration (loop goes green), run the final cov
 ### Ruff Format Failures
 
 1. Run `ruff format .` (safe and complete)
-2. Note: The PostToolUse hook usually pre-empts format failures, so this should resolve quickly
+2. Note: The PostToolUse `ruff-format-on-write.sh` hook auto-formats `.py` files after every Edit/Write, so format failures are rare in practice.
 3. Re-run `make fmt-check` to verify
 
 ### Mypy Type Failures
@@ -79,7 +79,7 @@ For each mypy error:
 
 ## When Green
 
-Once all 5 checks pass in a single iteration:
+Once all 4 loop checks pass in a single iteration (ruff lint, ruff format, mypy, pytest fast), then coverage passes in the final one-time check:
 
 1. Report: "CI green ✓ (N iterations)"
 2. Offer to run `/commit` if the user wants to commit the fixes
