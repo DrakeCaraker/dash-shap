@@ -53,8 +53,11 @@ class TestGreedyMaxMinSelection:
     def test_delta_stops_early(self):
         vecs = self._make_vectors()
         scores = self._make_scores()
-        # Very high delta should stop after first model
+        # Very high delta stops at min_k (default 2)
         selected = greedy_maxmin_selection(vecs, scores, K=5, delta=2.0, verbose=False)
+        assert len(selected) == 2
+        # With min_k=1, stops after first model
+        selected = greedy_maxmin_selection(vecs, scores, K=5, delta=2.0, verbose=False, min_k=1)
         assert len(selected) == 1
 
     def test_single_model(self):
