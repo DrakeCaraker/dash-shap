@@ -30,15 +30,15 @@ paper/            LaTeX source
 - `run_experiments.py` — CLI experiment runner (10 experiments, plotting, JSON output)
 - `run_experiments_parallel.py` — **performance-optimized fork** (identical results, ~3-5x faster via population sharing + parallel SHAP)
 - `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook
-- `notebooks/demo_benchmark_7.ipynb` — **in development (TMLR)** interactive benchmark notebook
-- `notebooks/demo_benchmark_7_parallel.ipynb` — **parallel fork** of notebook 7 (uses `run_experiments_parallel`)
+- `notebooks/archive/demo_benchmark_7.ipynb` — **archived, superseded by parallel version**
+- `notebooks/demo_benchmark_7_parallel.ipynb` — **canonical (TMLR)** interactive benchmark notebook (uses `run_experiments_parallel`)
 - `notebooks/explore_experiment_results.ipynb` — interactive viewer for experiment output (works with both runners)
 
 ## Experiment Synchronization
 
 - `run_experiments.py` is the canonical **non-interactive** experimental pipeline
 - `run_experiments_parallel.py` is the **performance-optimized fork** — produces identical JSON output via population sharing and parallel SHAP
-- `notebooks/demo_benchmark_7.ipynb` is the canonical **interactive** experimental pipeline — both must produce the same results
+- `notebooks/demo_benchmark_7_parallel.ipynb` is the canonical **interactive** experimental pipeline — both must produce the same results
 - `notebooks/explore_experiment_results.ipynb` visualizes experiment output interactively — works with both runners
 
 ## Canonical Configuration (PAPER_CONFIG)
@@ -68,7 +68,7 @@ epsilon_mode = 'relative'
 - **Lazy imports** via `__getattr__` in all `__init__.py` files
 - **4-way data split** in synthetic generators: X_train, X_val, X_explain (SHAP background), X_test (RMSE eval)
 - **Checkpoint pattern** in notebooks: `save_checkpoint(name, data)` / `load_checkpoint(name)` writes `.pkl` to `checkpoints/`
-- **Notebook naming**: `demo_benchmark_{N}.ipynb` — **6 is authoritative for ArXiv**; **7 is authoritative for TMLR (in development, not yet run)**
+- **Notebook naming**: `demo_benchmark_{N}.ipynb` — **6 is authoritative for ArXiv**; **7_parallel is authoritative for TMLR**; 7 is archived in `notebooks/archive/`
 - **Current paper draft**: `paper/draft_v7_preprint.tex` (TMLR submission target; v6 was ArXiv-ready)
 - **Tests**: `pytest` from repo root. No GPU required.
 - **Parallelism** via `joblib` (n_jobs parameter on DASHPipeline)
@@ -90,6 +90,7 @@ python run_experiments.py                      # all 10 experiments (original)
 python run_experiments.py --experiments linear_sweep  # one experiment
 python run_experiments_parallel.py             # all experiments (optimized, ~3-5x faster)
 python run_experiments_parallel.py --experiments linear_sweep
+python scripts/check_notebook_ids.py          # flag unnamed code cells before editing sessions
 ```
 
 ## Parallel Optimizations
