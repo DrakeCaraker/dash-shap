@@ -49,6 +49,28 @@ Full results: **[Benchmark Results](docs/BENCHMARK_RESULTS.md)** | Methodology: 
 
 ---
 
+## Learning Path
+
+**New to DASH or to feature importance under collinearity?**
+
+| Step | Resource | What You'll Learn |
+|---|---|---|
+| 1 | [Getting Started](docs/GETTING_STARTED.md) | Concept-first introduction: the problem, the mechanism, how DASH solves it |
+| 2 | [Quickstart Notebook](notebooks/quickstart.ipynb) | 3-minute end-to-end demo on synthetic data: fit, IS plot, FSI summary |
+| 3 | [Tutorial 1: The Problem](notebooks/tutorial_01_the_problem.ipynb) | See SHAP ranking instability on Breast Cancer before DASH is introduced |
+| 4 | [Tutorial 2: How DASH Works](notebooks/tutorial_02_dash_walkthrough.ipynb) | 5-stage walkthrough on Breast Cancer — inspect intermediate outputs at each stage |
+| 5 | [Tutorial 3: Reading Results](notebooks/tutorial_03_interpreting_outputs.ipynb) | IS plot, FSI, local disagreement maps — quadrant action guide with clinical feature names |
+| 6 | [Tutorial 4: Parameter Exploration](notebooks/tutorial_04_simulation.ipynb) | Sweep ρ, M, K, epsilon; understand why the Breast Cancer +0.614 result happens |
+
+**Already familiar with SHAP?**
+
+- [API Reference](docs/API_REFERENCE.md) — complete parameter and method documentation
+- [Diagnostics Guide](docs/DIAGNOSTICS.md) — deep-dive on IS plots, FSI thresholds, disagreement maps
+- [Experiment Guide](EXPERIMENT_GUIDE.md) — full paper methodology, 9-method comparison
+- [FAQ](FAQ.md) — usage, troubleshooting, and parameter guidance
+
+---
+
 ## When to Use DASH
 
 ### Detecting the problem
@@ -237,14 +259,13 @@ dash-shap/
 │   └── utils/          # I/O and SHAP helpers
 ├── notebooks/          # Interactive benchmarks (demo_benchmark_6 is canonical)
 ├── examples/           # Standalone usage examples (quickstart.py, extensions_quickstart.py)
-├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md, EXTENSIONS.md
+├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md
 ├── tests/              # pytest suite
 ├── paper/              # LaTeX source
 ├── run_experiments.py  # CLI experiment runner
 ├── EXPERIMENT_GUIDE.md # Full methodology and method descriptions
 ├── FAQ.md              # Common questions and answers
-├── CONTRIBUTING.md     # How to contribute and add extensions
-└── ROADMAP.md          # Five-paper research program
+└── CONTRIBUTING.md     # How to contribute and add extensions
 ```
 
 ---
@@ -268,6 +289,3 @@ dash-shap/
 
 [MIT](LICENSE)
 
-## Research Roadmap
-
-DASH is Paper 1 of a five-paper research program extending from gradient boosting to neural networks, impossibility results, and explanation-aware model selection. See **[ROADMAP.md](ROADMAP.md)**.

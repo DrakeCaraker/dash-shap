@@ -147,6 +147,22 @@ REAL_EPSILON_MODE = "relative"
 OUT = "results"
 CKPT_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), OUT, "checkpoints")
 
+# Checkpoint wrappers — bake in CKPT_DIR and PAPER_CONFIG so all call sites
+# can use _save/_load/_has without repeating checkpoint_dir and config args.
+_CKPT_CONFIG = PAPER_CONFIG  # canonical; frozen at import time
+
+
+def _save(name: str, **data) -> None:
+    save_checkpoint(name, checkpoint_dir=CKPT_DIR, config=_CKPT_CONFIG, **data)
+
+
+def _load(name: str):
+    return load_checkpoint(name, checkpoint_dir=CKPT_DIR, config=_CKPT_CONFIG)
+
+
+def _has(name: str) -> bool:
+    return has_checkpoint(name, checkpoint_dir=CKPT_DIR)
+
 
 def make_feature_names(n_groups=10, group_size=5):
     """Generate feature names matching the DGP structure (m6 fix)."""
@@ -478,11 +494,243 @@ def _collect_rep(md, imp, true_imp, grps, rmse_val, model_obj):
 ###############################################################################
 
 
+def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner):
+    """Run all reps for a single rho level. Returns (rho, rho_results, fsi_list, grps).
+
+    Designed to be called in parallel across rho levels via joblib.
+    n_jobs_inner controls parallelism within each method (SHAP, etc.).
+    """
+    log(f"\n--- ρ = {rho} ---")
+
+    method_data = {
+        name: {
+            "acc_runs": [],
+            "eq_runs": [],
+            "imp_runs": [],
+            "rmse_runs": [],
+            "gacc_runs": [],
+            "gmse_runs": [],
+            "keff_runs": [],
+            "t_accum": 0.0,
+        }
+        for name in sweep_methods
+    }
+    fsi_list = []
+    grps_last = None
+
+    for rep in range(N_REPS):
+        rep_seed = SEED + rep
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+            N=5000, rho=rho, seed=rep_seed
+        )
+        grps_last = grps
+
+        # --- DASH (MaxMin): trains the M=200 population ---
+        t_m = time.time()
+        dash_pipeline = DASHPipeline(
+            M=M,
+            K=K,
+            epsilon=EPSILON,
+            delta=DELTA,
+            selection_method="maxmin",
+            n_jobs=n_jobs_inner,
+            seed=rep_seed,
+            verbose=False,
+        )
+        dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        imp = dash_pipeline.global_importance_
+        preds = dash_pipeline.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["DASH (MaxMin)"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["DASH (MaxMin)"], imp, true_imp, grps, rmse_val, dash_pipeline)
+        if hasattr(dash_pipeline, "fsi_") and dash_pipeline.fsi_ is not None:
+            fsi_list.append(dash_pipeline.fsi_.copy())
+
+        # --- SingleBest(M=200): reuse DASH population ---
+        t_m = time.time()
+        sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb200.fit_from_population(
+            dash_pipeline.models_,
+            dash_pipeline.val_scores_,
+            Xexp,
+            seed=rep_seed,
+        )
+        imp = sb200.global_importance_
+        preds = sb200.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Single Best (M=200)"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Single Best (M=200)"], imp, true_imp, grps, rmse_val, sb200)
+
+        # --- RandomSelection: reuse DASH population ---
+        t_m = time.time()
+        rs = RandomSelectionBaseline(
+            M=M,
+            K=K,
+            epsilon=EPSILON,
+            delta=DELTA,
+            n_jobs=n_jobs_inner,
+            seed=rep_seed,
+            verbose=False,
+        )
+        rs.fit_from_population(
+            dash_pipeline.models_,
+            dash_pipeline.val_scores_,
+            Xexp,
+            feature_names=feature_names,
+        )
+        imp = rs.global_importance_
+        preds = rs.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Random Selection"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Random Selection"], imp, true_imp, grps, rmse_val, rs)
+
+        # --- Naive Top-N: reuse DASH population ---
+        t_m = time.time()
+        naive = NaiveAveragingBaseline(N=K, task="regression")
+        naive.fit_from_population(
+            dash_pipeline.models_,
+            dash_pipeline.val_scores_,
+            Xexp,
+        )
+        imp = naive.global_importance_
+        preds = naive.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Naive Top-N"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Naive Top-N"], imp, true_imp, grps, rmse_val, naive)
+
+        # --- Single Best (n_trials=30): independent ---
+        t_m = time.time()
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = sb.global_importance_
+        preds = sb.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Single Best"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Single Best"], imp, true_imp, grps, rmse_val, sb)
+
+        # --- Large Single Model ---
+        t_m = time.time()
+        lsm = LargeSingleModelBaseline(
+            K=K,
+            T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+            colsample_bytree=0.2,
+            seed=rep_seed,
+            tune=False,
+        )
+        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = lsm.global_importance_
+        preds = lsm.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Large Single Model"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Large Single Model"], imp, true_imp, grps, rmse_val, lsm)
+
+        # --- LSM (Tuned) ---
+        t_m = time.time()
+        lsm_t = LargeSingleModelBaseline(
+            K=K,
+            T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+            colsample_bytree=0.2,
+            seed=rep_seed,
+            tune=True,
+        )
+        lsm_t.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = lsm_t.global_importance_
+        preds = lsm_t.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["LSM (Tuned)"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["LSM (Tuned)"], imp, true_imp, grps, rmse_val, lsm_t)
+
+        # --- Stochastic Retrain ---
+        t_m = time.time()
+        sr = StochasticRetrainBaseline(
+            N=K,
+            task="regression",
+            n_jobs=n_jobs_inner,
+            seed=rep_seed,
+        )
+        sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = sr.global_importance_
+        preds = sr.get_consensus_ensemble_predictions(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Stochastic Retrain"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Stochastic Retrain"], imp, true_imp, grps, rmse_val, sr)
+
+        # --- Random Forest ---
+        t_m = time.time()
+        rf = RandomForestBaseline(
+            n_estimators=500,
+            task="regression",
+            seed=rep_seed,
+        )
+        rf.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        imp = rf.global_importance_
+        preds = rf.model_.predict(Xte)
+        rmse_val = rmse_score(yte, preds)
+        method_data["Random Forest"]["t_accum"] += time.time() - t_m
+        _collect_rep(method_data["Random Forest"], imp, true_imp, grps, rmse_val, rf)
+
+    # Aggregate results per method
+    rho_results = {}
+    for name in sweep_methods:
+        md = method_data[name]
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md["imp_runs"])
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(md["imp_runs"], k=5)
+        n_reps = len(md["acc_runs"])
+        rho_results[name] = {
+            "stability": stab,
+            "stability_se": stab_se,
+            "stability_ci_lo": stab_ci_lo,
+            "stability_ci_hi": stab_ci_hi,
+            "topk5_stability": topk5,
+            "topk5_se": topk5_se,
+            "topk5_ci_lo": topk5_ci_lo,
+            "topk5_ci_hi": topk5_ci_hi,
+            "k_eff_mean": float(np.mean(md["keff_runs"])) if md["keff_runs"] else None,
+            "k_eff_std": float(np.std(md["keff_runs"], ddof=1)) if len(md["keff_runs"]) > 1 else None,
+            "accuracy_mean": np.mean(md["acc_runs"]),
+            "accuracy_se": np.std(md["acc_runs"], ddof=1) / np.sqrt(n_reps),
+            "accuracy_std": np.std(md["acc_runs"], ddof=1),
+            "group_accuracy_mean": np.mean(md["gacc_runs"]),
+            "group_accuracy_std": np.std(md["gacc_runs"], ddof=1),
+            "group_mse_mean": np.mean(md["gmse_runs"]),
+            "group_mse_std": np.std(md["gmse_runs"], ddof=1),
+            "equity_mean": np.mean(md["eq_runs"]),
+            "equity_se": np.std(md["eq_runs"], ddof=1) / np.sqrt(n_reps),
+            "equity_std": np.std(md["eq_runs"], ddof=1),
+            "rmse_mean": np.mean(md["rmse_runs"]),
+            "rmse_std": np.std(md["rmse_runs"], ddof=1),
+            "elapsed_s": md["t_accum"],
+            # Save per-rep arrays for significance tests
+            "acc_runs": np.array(md["acc_runs"]),
+            "eq_runs": np.array(md["eq_runs"]),
+            "rmse_runs": np.array(md["rmse_runs"]),
+            "imp_runs": md["imp_runs"],
+        }
+        log(
+            f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
+            f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
+            f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
+            f"({md['t_accum']:.1f}s)"
+        )
+
+    # Checkpoint per-rho results
+    save_checkpoint(
+        f"linear_sweep_rho_{rho}",
+        checkpoint_dir=CKPT_DIR,
+        rho_results=rho_results,
+        fsi_list=fsi_list,
+        grps=grps_last,
+    )
+
+    return rho, rho_results, fsi_list, grps_last
+
+
 def experiment_linear_sweep(resume=False, cleanup=False):
     """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Parallel-optimized: rep-outer loop with population sharing between
     DASH, RandomSelection, SingleBest(M=200), and NaiveTop-N.
+    Rho levels run in parallel via joblib when multiple cores are available.
 
     Matches notebook Section 4.  Uses four-way split: X_explain for SHAP
     (X_ref), X_test exclusively for RMSE (A4 fix).  Reports BCa bootstrap
@@ -498,6 +746,8 @@ def experiment_linear_sweep(resume=False, cleanup=False):
     Includes LSM (Tuned) — a tuned variant of the Large Single Model that
     searches over max_depth and learning_rate, making the comparison fair.
     """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("=" * 70)
@@ -521,228 +771,42 @@ def experiment_linear_sweep(resume=False, cleanup=False):
     fsi_by_rho = {}  # FSI validation: collect DASH FSI per rho (reviewer #7)
     grps_by_rho = {}  # Groups array per rho (deterministic, saved once)
 
+    # Separate resumed vs pending rho levels
+    pending_rhos = []
     for rho in rho_levels:
         ckpt_name = f"linear_sweep_rho_{rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for ρ={rho}")
-            sweep_results[rho] = load_checkpoint(ckpt_name, CKPT_DIR)["rho_results"]
-            continue
+            ckpt_data = load_checkpoint(ckpt_name, CKPT_DIR)
+            sweep_results[rho] = ckpt_data["rho_results"]
+            if "fsi_list" in ckpt_data:
+                fsi_by_rho[rho] = ckpt_data["fsi_list"]
+            if "grps" in ckpt_data:
+                grps_by_rho[rho] = ckpt_data["grps"]
+        else:
+            pending_rhos.append(rho)
 
-        log(f"\n--- ρ = {rho} ---")
+    if pending_rhos:
+        # Determine parallelism: run rho levels concurrently, subdivide cores
+        n_rho = len(pending_rhos)
+        try:
+            total_cores = len(os.sched_getaffinity(0))
+        except AttributeError:
+            total_cores = os.cpu_count() or 1
+        # Each rho level gets a share of cores for inner parallelism
+        n_jobs_inner = max(1, total_cores // n_rho)
+        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
 
-        # Per-method accumulators (same structure as original)
-        method_data = {
-            name: {
-                "acc_runs": [],
-                "eq_runs": [],
-                "imp_runs": [],
-                "rmse_runs": [],
-                "gacc_runs": [],
-                "gmse_runs": [],
-                "keff_runs": [],
-                "t_accum": 0.0,
-            }
-            for name in sweep_methods
-        }
+        results_list = Parallel(n_jobs=n_rho, backend="loky")(
+            delayed(_run_single_rho)(rho, sweep_methods, feature_names, n_jobs_inner) for rho in pending_rhos
+        )
 
-        # Rep-outer loop: share population between DASH, RandomSelection,
-        # SingleBest(M=200), and NaiveTop-N
-        for rep in range(N_REPS):
-            rep_seed = SEED + rep
-            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-                N=5000, rho=rho, seed=rep_seed
-            )
-
-            # --- DASH (MaxMin): trains the M=200 population ---
-            t_m = time.time()
-            dash_pipeline = DASHPipeline(
-                M=M,
-                K=K,
-                epsilon=EPSILON,
-                delta=DELTA,
-                selection_method="maxmin",
-                n_jobs=-1,
-                seed=rep_seed,
-                verbose=False,
-            )
-            dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-            imp = dash_pipeline.global_importance_
-            preds = dash_pipeline.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["DASH (MaxMin)"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["DASH (MaxMin)"], imp, true_imp, grps, rmse_val, dash_pipeline)
-            # FSI validation (reviewer #7): collect per-rep FSI from DASH
-            if hasattr(dash_pipeline, "fsi_") and dash_pipeline.fsi_ is not None:
-                fsi_by_rho.setdefault(rho, []).append(dash_pipeline.fsi_.copy())
-            grps_by_rho[rho] = grps  # deterministic per rho, save last
-
-            # --- SingleBest(M=200): reuse DASH population ---
-            t_m = time.time()
-            sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=-1)
-            sb200.fit_from_population(
-                dash_pipeline.models_,
-                dash_pipeline.val_scores_,
-                Xexp,
-                seed=rep_seed,
-            )
-            imp = sb200.global_importance_
-            preds = sb200.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Single Best (M=200)"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Single Best (M=200)"], imp, true_imp, grps, rmse_val, sb200)
-
-            # --- RandomSelection: reuse DASH population ---
-            t_m = time.time()
-            rs = RandomSelectionBaseline(
-                M=M,
-                K=K,
-                epsilon=EPSILON,
-                delta=DELTA,
-                n_jobs=-1,
-                seed=rep_seed,
-                verbose=False,
-            )
-            rs.fit_from_population(
-                dash_pipeline.models_,
-                dash_pipeline.val_scores_,
-                Xexp,
-                feature_names=feature_names,
-            )
-            imp = rs.global_importance_
-            preds = rs.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Random Selection"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Random Selection"], imp, true_imp, grps, rmse_val, rs)
-
-            # --- Naive Top-N: reuse DASH population ---
-            t_m = time.time()
-            naive = NaiveAveragingBaseline(N=K, task="regression")
-            naive.fit_from_population(
-                dash_pipeline.models_,
-                dash_pipeline.val_scores_,
-                Xexp,
-            )
-            imp = naive.global_importance_
-            preds = naive.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Naive Top-N"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Naive Top-N"], imp, true_imp, grps, rmse_val, naive)
-
-            # --- Single Best (n_trials=30): independent ---
-            t_m = time.time()
-            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
-            sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = sb.global_importance_
-            preds = sb.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Single Best"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Single Best"], imp, true_imp, grps, rmse_val, sb)
-
-            # --- Large Single Model ---
-            t_m = time.time()
-            lsm = LargeSingleModelBaseline(
-                K=K,
-                T_per_model=PAPER_CONFIG["T_PER_MODEL"],
-                colsample_bytree=0.2,
-                seed=rep_seed,
-                tune=False,
-            )
-            lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = lsm.global_importance_
-            preds = lsm.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Large Single Model"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Large Single Model"], imp, true_imp, grps, rmse_val, lsm)
-
-            # --- LSM (Tuned) ---
-            t_m = time.time()
-            lsm_t = LargeSingleModelBaseline(
-                K=K,
-                T_per_model=PAPER_CONFIG["T_PER_MODEL"],
-                colsample_bytree=0.2,
-                seed=rep_seed,
-                tune=True,
-            )
-            lsm_t.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = lsm_t.global_importance_
-            preds = lsm_t.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["LSM (Tuned)"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["LSM (Tuned)"], imp, true_imp, grps, rmse_val, lsm_t)
-
-            # --- Stochastic Retrain ---
-            t_m = time.time()
-            sr = StochasticRetrainBaseline(
-                N=K,
-                task="regression",
-                n_jobs=-1,
-                seed=rep_seed,
-            )
-            sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = sr.global_importance_
-            preds = sr.get_consensus_ensemble_predictions(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Stochastic Retrain"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Stochastic Retrain"], imp, true_imp, grps, rmse_val, sr)
-
-            # --- Random Forest ---
-            t_m = time.time()
-            rf = RandomForestBaseline(
-                n_estimators=500,
-                task="regression",
-                seed=rep_seed,
-            )
-            rf.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            imp = rf.global_importance_
-            preds = rf.model_.predict(Xte)
-            rmse_val = rmse_score(yte, preds)
-            method_data["Random Forest"]["t_accum"] += time.time() - t_m
-            _collect_rep(method_data["Random Forest"], imp, true_imp, grps, rmse_val, rf)
-
-        # Aggregate results per method (identical output format)
-        for name in sweep_methods:
-            md = method_data[name]
-            stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md["imp_runs"])
-            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(md["imp_runs"], k=5)
-            n_reps = len(md["acc_runs"])
-            sweep_results[rho][name] = {
-                "stability": stab,
-                "stability_se": stab_se,
-                "stability_ci_lo": stab_ci_lo,
-                "stability_ci_hi": stab_ci_hi,
-                "topk5_stability": topk5,
-                "topk5_se": topk5_se,
-                "topk5_ci_lo": topk5_ci_lo,
-                "topk5_ci_hi": topk5_ci_hi,
-                "k_eff_mean": float(np.mean(md["keff_runs"])) if md["keff_runs"] else None,
-                "k_eff_std": float(np.std(md["keff_runs"], ddof=1)) if len(md["keff_runs"]) > 1 else None,
-                "accuracy_mean": np.mean(md["acc_runs"]),
-                "accuracy_se": np.std(md["acc_runs"], ddof=1) / np.sqrt(n_reps),
-                "accuracy_std": np.std(md["acc_runs"], ddof=1),
-                "group_accuracy_mean": np.mean(md["gacc_runs"]),
-                "group_accuracy_std": np.std(md["gacc_runs"], ddof=1),
-                "group_mse_mean": np.mean(md["gmse_runs"]),
-                "group_mse_std": np.std(md["gmse_runs"], ddof=1),
-                "equity_mean": np.mean(md["eq_runs"]),
-                "equity_se": np.std(md["eq_runs"], ddof=1) / np.sqrt(n_reps),
-                "equity_std": np.std(md["eq_runs"], ddof=1),
-                "rmse_mean": np.mean(md["rmse_runs"]),
-                "rmse_std": np.std(md["rmse_runs"], ddof=1),
-                "elapsed_s": md["t_accum"],
-                # Save per-rep arrays for significance tests
-                "acc_runs": np.array(md["acc_runs"]),
-                "eq_runs": np.array(md["eq_runs"]),
-                "rmse_runs": np.array(md["rmse_runs"]),
-                "imp_runs": md["imp_runs"],
-            }
-            log(
-                f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
-                f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
-                f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
-                f"({md['t_accum']:.1f}s)"
-            )
-
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=sweep_results[rho])
+        for rho, rho_results, fsi_list, grps_last in results_list:
+            sweep_results[rho] = rho_results
+            if fsi_list:
+                fsi_by_rho[rho] = fsi_list
+            if grps_last is not None:
+                grps_by_rho[rho] = grps_last
 
     # FSI collinearity validation (reviewer #7): show FSI rises with rho
     log("\n  FSI Collinearity Validation (DASH):")
@@ -851,6 +915,8 @@ def experiment_linear_sweep(resume=False, cleanup=False):
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     sweep_results.pop("_equity_tests", None)  # remove string key before return
+    sweep_results.pop("_stability_tests", None)  # remove string key before return
+    sweep_results.pop("_fsi_validation", None)  # remove string key before return
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
 
@@ -890,8 +956,8 @@ def experiment_overlapping(resume=False, cleanup=False):
     if resume:
         for batch_end in range(N_REPS, 0, -10):
             ckpt_name = f"overlapping_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 results = cached["results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -961,9 +1027,7 @@ def experiment_overlapping(resume=False, cleanup=False):
         results["DASH (Cluster)"]["rmse_runs"].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
-                f"overlapping_batch_{rep + 1}", checkpoint_dir=CKPT_DIR, results=results, completed_reps=rep + 1
-            )
+            _save(f"overlapping_batch_{rep + 1}", results=results, completed_reps=rep + 1)
 
     log(
         f"\n  {'Method':<20} {'Stability':>10} {'Top-5':>8} {'DGP Agree':>10} {'Grp Acc':>10} {'Grp MSE':>10} {'Equity':>10} {'RMSE':>10}"
@@ -1014,6 +1078,104 @@ def experiment_overlapping(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_single_rho_nonlinear(rho, nl_methods, feature_names, n_jobs_inner):
+    """Run all methods × reps for a single rho level of the nonlinear sweep."""
+    log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
+    rho_results = {}
+    for name in nl_methods:
+        eq_runs, imp_runs, rmse_runs, keff_runs = [], [], [], []
+        for rep in range(N_REPS):
+            rep_seed = SEED + rep
+            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = generate_synthetic_nonlinear(
+                N=5000, rho=rho, seed=rep_seed
+            )
+
+            if name == "Single Best":
+                m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+                imp = m.global_importance_
+                preds = m.model_.predict(Xte)
+            elif name in ("Large Single Model", "LSM (Tuned)"):
+                m = LargeSingleModelBaseline(
+                    K=K,
+                    T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+                    colsample_bytree=0.2,
+                    seed=rep_seed,
+                    tune=(name == "LSM (Tuned)"),
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+                imp = m.global_importance_
+                preds = m.model_.predict(Xte)
+            elif name == "Stochastic Retrain":
+                m = StochasticRetrainBaseline(
+                    N=K,
+                    task="regression",
+                    n_jobs=n_jobs_inner,
+                    seed=rep_seed,
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte)
+            elif name == "Random Forest":
+                m = RandomForestBaseline(
+                    n_estimators=500,
+                    task="regression",
+                    seed=rep_seed,
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+                imp = m.global_importance_
+                preds = m.model_.predict(Xte)
+            else:  # DASH MaxMin
+                m = DASHPipeline(
+                    M=M,
+                    K=K,
+                    epsilon=EPSILON,
+                    delta=DELTA,
+                    selection_method="maxmin",
+                    n_jobs=n_jobs_inner,
+                    seed=rep_seed,
+                    verbose=False,
+                )
+                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+                imp = m.global_importance_
+                preds = m.get_consensus_ensemble_predictions(Xte)
+
+            rmse_val = rmse_score(yte, preds)
+            eq_runs.append(within_group_equity(imp, grps))
+            imp_runs.append(imp)
+            rmse_runs.append(rmse_val)
+            if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
+                keff_runs.append(len(m.selected_indices_))
+
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
+        rho_results[name] = {
+            "stability": stab,
+            "stability_se": stab_se,
+            "stability_ci_lo": stab_ci_lo,
+            "stability_ci_hi": stab_ci_hi,
+            "topk5_stability": topk5,
+            "topk5_se": topk5_se,
+            "topk5_ci_lo": topk5_ci_lo,
+            "topk5_ci_hi": topk5_ci_hi,
+            "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
+            "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
+            "equity_mean": np.mean(eq_runs),
+            "equity_std": np.std(eq_runs, ddof=1),
+            "eq_runs": np.array(eq_runs),
+            "rmse_mean": float(np.mean(rmse_runs)),
+            "rmse_std": float(np.std(rmse_runs, ddof=1)),
+            "rmse_runs": np.array(rmse_runs),
+        }
+        log(
+            f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  eq={np.mean(eq_runs):.4f}  "
+            f"RMSE={np.mean(rmse_runs):.4f}"
+        )
+
+    _save(f"nonlinear_sweep_rho_{rho}", rho_results=rho_results)
+    return rho, rho_results
+
+
 def experiment_nonlinear_sweep(resume=False, cleanup=False):
     """Nonlinear DGP sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
@@ -1021,7 +1183,10 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
     NOTE: true_importance for the nonlinear DGP is an approximate ordinal
     ranking, not exact analytic SHAP.  See generate_synthetic_nonlinear().
     Includes LSM (Tuned) for fair comparison.
+    Rho levels run in parallel via joblib.
     """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -1040,105 +1205,30 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
     nl_sweep = {rho: {} for rho in nl_rho_levels}
     feature_names = make_feature_names()
 
+    # Separate resumed vs pending rho levels
+    pending_rhos = []
     for rho in nl_rho_levels:
         ckpt_name = f"nonlinear_sweep_rho_{rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for NL ρ={rho}")
-            nl_sweep[rho] = load_checkpoint(ckpt_name, CKPT_DIR)["rho_results"]
-            continue
+            nl_sweep[rho] = _load(ckpt_name)["rho_results"]
+        else:
+            pending_rhos.append(rho)
 
-        log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
-        for name in nl_methods:
-            eq_runs, imp_runs, rmse_runs, keff_runs = [], [], [], []
-            for rep in range(N_REPS):
-                rep_seed = SEED + rep
-                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = generate_synthetic_nonlinear(
-                    N=5000, rho=rho, seed=rep_seed
-                )
+    if pending_rhos:
+        n_rho = len(pending_rhos)
+        try:
+            total_cores = len(os.sched_getaffinity(0))
+        except AttributeError:
+            total_cores = os.cpu_count() or 1
+        n_jobs_inner = max(1, total_cores // n_rho)
+        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
 
-                if name == "Single Best":
-                    m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
-                    imp = m.global_importance_
-                    preds = m.model_.predict(Xte)
-                elif name in ("Large Single Model", "LSM (Tuned)"):
-                    m = LargeSingleModelBaseline(
-                        K=K,
-                        T_per_model=PAPER_CONFIG["T_PER_MODEL"],
-                        colsample_bytree=0.2,
-                        seed=rep_seed,
-                        tune=(name == "LSM (Tuned)"),
-                    )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
-                    imp = m.global_importance_
-                    preds = m.model_.predict(Xte)
-                elif name == "Stochastic Retrain":
-                    m = StochasticRetrainBaseline(
-                        N=K,
-                        task="regression",
-                        n_jobs=-1,
-                        seed=rep_seed,
-                    )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
-                    imp = m.global_importance_
-                    preds = m.get_consensus_ensemble_predictions(Xte)
-                elif name == "Random Forest":
-                    m = RandomForestBaseline(
-                        n_estimators=500,
-                        task="regression",
-                        seed=rep_seed,
-                    )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-                    imp = m.global_importance_
-                    preds = m.model_.predict(Xte)
-                else:  # DASH MaxMin
-                    m = DASHPipeline(
-                        M=M,
-                        K=K,
-                        epsilon=EPSILON,
-                        delta=DELTA,
-                        selection_method="maxmin",
-                        n_jobs=-1,
-                        seed=rep_seed,
-                        verbose=False,
-                    )
-                    m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-                    imp = m.global_importance_
-                    preds = m.get_consensus_ensemble_predictions(Xte)
-
-                rmse_val = rmse_score(yte, preds)
-                eq_runs.append(within_group_equity(imp, grps))
-                imp_runs.append(imp)
-                rmse_runs.append(rmse_val)
-                if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
-                    keff_runs.append(len(m.selected_indices_))
-
-            stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
-            topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
-            nl_sweep[rho][name] = {
-                "stability": stab,
-                "stability_se": stab_se,
-                "stability_ci_lo": stab_ci_lo,
-                "stability_ci_hi": stab_ci_hi,
-                "topk5_stability": topk5,
-                "topk5_se": topk5_se,
-                "topk5_ci_lo": topk5_ci_lo,
-                "topk5_ci_hi": topk5_ci_hi,
-                "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
-                "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
-                "equity_mean": np.mean(eq_runs),
-                "equity_std": np.std(eq_runs, ddof=1),
-                "eq_runs": np.array(eq_runs),
-                "rmse_mean": float(np.mean(rmse_runs)),
-                "rmse_std": float(np.std(rmse_runs, ddof=1)),
-                "rmse_runs": np.array(rmse_runs),
-            }
-            log(
-                f"  {name:<20} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  eq={np.mean(eq_runs):.4f}  "
-                f"RMSE={np.mean(rmse_runs):.4f}"
-            )
-
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=nl_sweep[rho])
+        results_list = Parallel(n_jobs=n_rho, backend="loky")(
+            delayed(_run_single_rho_nonlinear)(rho, nl_methods, feature_names, n_jobs_inner) for rho in pending_rhos
+        )
+        for rho, rho_results in results_list:
+            nl_sweep[rho] = rho_results
 
     # Safety desideratum check: flag rho levels where DASH < SB
     log("\n  Safety desideratum check (nonlinear DGP):")
@@ -1168,8 +1258,131 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_table2_method(name, feature_names, n_jobs_inner, resume):
+    """Run all reps for a single method in the table2 baselines experiment."""
+    ckpt_name = f"table2_{_sanitize_ckpt_name(name)}"
+    if resume and _has(ckpt_name):
+        log(f"  Resuming: loaded checkpoint for {name}")
+        return name, _load(ckpt_name)["method_results"]
+
+    imp_runs, acc_runs, eq_runs = [], [], []
+    start_rep = 0
+    if resume:
+        batch_prefix = f"table2_{_sanitize_ckpt_name(name)}_batch_"
+        for batch_end in range(N_REPS, 0, -10):
+            batch_name = f"{batch_prefix}{batch_end}"
+            if _has(batch_name):
+                cached = _load(batch_name)
+                imp_runs = cached["imp_runs"]
+                acc_runs = cached["acc_runs"]
+                eq_runs = cached["eq_runs"]
+                start_rep = cached["completed_reps"]
+                log(f"    Resuming {name} from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
+        rep_seed = SEED + rep
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+            N=5000, rho=0.9, seed=rep_seed
+        )
+
+        if name == "Ensemble SHAP":
+            m = EnsembleSHAPBaseline(
+                n_estimators=PAPER_CONFIG["N_ESTIMATORS_ESHAP"],
+                task="regression",
+                seed=rep_seed,
+            )
+            m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+            imp = m.global_importance_
+        elif name == "Stochastic Retrain":
+            m = StochasticRetrainBaseline(N=K, task="regression", n_jobs=n_jobs_inner, seed=rep_seed)
+            m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+            imp = m.global_importance_
+        elif name == "Random Forest":
+            m = RandomForestBaseline(
+                n_estimators=500,
+                task="regression",
+                seed=rep_seed,
+            )
+            m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+            imp = m.global_importance_
+        elif name == "Permutation Importance":
+            m = PermutationImportanceBaseline(
+                n_trials=N_TRIALS_SB,
+                task="regression",
+                seed=rep_seed,
+            )
+            m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, y_ref=yexp)
+            imp = m.global_importance_
+        elif name == "LightGBM Single Best":
+            m = LightGBMSingleBestBaseline(
+                n_estimators=500,
+                task="regression",
+                seed=rep_seed,
+            )
+            m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+            imp = m.global_importance_
+        else:  # DASH (Dedup)
+            dm = DASHPipeline(
+                M=M,
+                K=K,
+                epsilon=EPSILON,
+                delta=DELTA,
+                selection_method="dedup",
+                n_jobs=n_jobs_inner,
+                seed=rep_seed,
+                verbose=False,
+            )
+            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+            imp = dm.global_importance_
+
+        r, _ = dgp_agreement(imp, true_imp)
+        acc_runs.append(r)
+        eq_runs.append(within_group_equity(imp, grps))
+        imp_runs.append(imp)
+        if (rep + 1) % 10 == 0:
+            _save(
+                f"table2_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
+                imp_runs=imp_runs,
+                acc_runs=acc_runs,
+                eq_runs=eq_runs,
+                completed_reps=rep + 1,
+            )
+
+    stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+    topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
+    method_results = {
+        "stability": stab,
+        "stability_se": stab_se,
+        "stability_ci_lo": stab_ci_lo,
+        "stability_ci_hi": stab_ci_hi,
+        "topk5_stability": topk5,
+        "topk5_se": topk5_se,
+        "topk5_ci_lo": topk5_ci_lo,
+        "topk5_ci_hi": topk5_ci_hi,
+        "accuracy_mean": np.mean(acc_runs),
+        "accuracy_std": np.std(acc_runs, ddof=1),
+        "equity_mean": np.mean(eq_runs),
+        "equity_std": np.std(eq_runs, ddof=1),
+        "acc_runs": np.array(acc_runs),
+        "eq_runs": np.array(eq_runs),
+    }
+    log(
+        f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
+        f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
+    )
+    _save(ckpt_name, method_results=method_results)
+    clear_checkpoints_by_prefix(f"table2_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+    return name, method_results
+
+
 def experiment_table2_baselines(resume=False, cleanup=False):
-    """Extended baselines at rho=0.9: Ensemble SHAP, Stochastic Retrain, DASH (Dedup)."""
+    """Extended baselines at rho=0.9: Ensemble SHAP, Stochastic Retrain, DASH (Dedup).
+
+    Methods run in parallel via joblib.
+    """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -1185,125 +1398,20 @@ def experiment_table2_baselines(resume=False, cleanup=False):
     ]
     if _HAS_LIGHTGBM:
         table2_methods.append("LightGBM Single Best")
-    table2_results = {}
     feature_names = make_feature_names()
 
-    for name in table2_methods:
-        ckpt_name = f"table2_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
-            log(f"  Resuming: loaded checkpoint for {name}")
-            table2_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
-            continue
+    n_methods = len(table2_methods)
+    try:
+        total_cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        total_cores = os.cpu_count() or 1
+    n_jobs_inner = max(1, total_cores // n_methods)
+    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
 
-        imp_runs, acc_runs, eq_runs = [], [], []
-        start_rep = 0
-        if resume:
-            batch_prefix = f"table2_{_sanitize_ckpt_name(name)}_batch_"
-            for batch_end in range(N_REPS, 0, -10):
-                batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
-                    imp_runs = cached["imp_runs"]
-                    acc_runs = cached["acc_runs"]
-                    eq_runs = cached["eq_runs"]
-                    start_rep = cached["completed_reps"]
-                    log(f"    Resuming {name} from rep {start_rep}")
-                    break
-
-        for rep in range(start_rep, N_REPS):
-            rep_seed = SEED + rep
-            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-                N=5000, rho=0.9, seed=rep_seed
-            )
-
-            if name == "Ensemble SHAP":
-                m = EnsembleSHAPBaseline(
-                    n_estimators=PAPER_CONFIG["N_ESTIMATORS_ESHAP"],
-                    task="regression",
-                    seed=rep_seed,
-                )
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
-                imp = m.global_importance_
-            elif name == "Stochastic Retrain":
-                m = StochasticRetrainBaseline(N=K, task="regression", n_jobs=-1, seed=rep_seed)
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
-                imp = m.global_importance_
-            elif name == "Random Forest":
-                m = RandomForestBaseline(
-                    n_estimators=500,
-                    task="regression",
-                    seed=rep_seed,
-                )
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-                imp = m.global_importance_
-            elif name == "Permutation Importance":
-                m = PermutationImportanceBaseline(
-                    n_trials=N_TRIALS_SB,
-                    task="regression",
-                    seed=rep_seed,
-                )
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, y_ref=yexp)
-                imp = m.global_importance_
-            elif name == "LightGBM Single Best":
-                m = LightGBMSingleBestBaseline(
-                    n_estimators=500,
-                    task="regression",
-                    seed=rep_seed,
-                )
-                m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-                imp = m.global_importance_
-            else:  # DASH (Dedup)
-                dm = DASHPipeline(
-                    M=M,
-                    K=K,
-                    epsilon=EPSILON,
-                    delta=DELTA,
-                    selection_method="dedup",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                    verbose=False,
-                )
-                dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-                imp = dm.global_importance_
-
-            r, _ = dgp_agreement(imp, true_imp)
-            acc_runs.append(r)
-            eq_runs.append(within_group_equity(imp, grps))
-            imp_runs.append(imp)
-            if (rep + 1) % 10 == 0:
-                save_checkpoint(
-                    f"table2_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
-                    imp_runs=imp_runs,
-                    acc_runs=acc_runs,
-                    eq_runs=eq_runs,
-                    completed_reps=rep + 1,
-                )
-
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
-        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
-        table2_results[name] = {
-            "stability": stab,
-            "stability_se": stab_se,
-            "stability_ci_lo": stab_ci_lo,
-            "stability_ci_hi": stab_ci_hi,
-            "topk5_stability": topk5,
-            "topk5_se": topk5_se,
-            "topk5_ci_lo": topk5_ci_lo,
-            "topk5_ci_hi": topk5_ci_hi,
-            "accuracy_mean": np.mean(acc_runs),
-            "accuracy_std": np.std(acc_runs, ddof=1),
-            "equity_mean": np.mean(eq_runs),
-            "equity_std": np.std(eq_runs, ddof=1),
-            "acc_runs": np.array(acc_runs),
-            "eq_runs": np.array(eq_runs),
-        }
-        log(
-            f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
-            f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
-        )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=table2_results[name])
-        clear_checkpoints_by_prefix(f"table2_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+    results_list = Parallel(n_jobs=n_methods, backend="loky")(
+        delayed(_run_table2_method)(name, feature_names, n_jobs_inner, resume) for name in table2_methods
+    )
+    table2_results = {name: result for name, result in results_list}
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
     log(f"  Saved: {OUT}/tables/table2_baselines.json")
@@ -1321,8 +1429,145 @@ def experiment_table2_baselines(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_cal_method(name, X_pool, X_test, y_pool, y_test, cal_names, n_jobs_inner, resume):
+    """Run all reps for a single method in the California Housing experiment."""
+    ckpt_name = f"california_{_sanitize_ckpt_name(name)}"
+    if resume and _has(ckpt_name):
+        log(f"  Resuming: loaded checkpoint for {name}")
+        return name, _load(ckpt_name)["method_results"]
+
+    imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
+    start_rep = 0
+    if resume:
+        batch_prefix = f"california_{_sanitize_ckpt_name(name)}_batch_"
+        for batch_end in range(N_REPS, 0, -10):
+            batch_name = f"{batch_prefix}{batch_end}"
+            if _has(batch_name):
+                cached = _load(batch_name)
+                imp_runs = cached["imp_runs"]
+                rmse_runs = cached["rmse_runs"]
+                ablation_runs = cached["ablation_runs"]
+                keff_runs = cached["keff_runs"]
+                start_rep = cached["completed_reps"]
+                log(f"    Resuming {name} from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
+        rep_seed = SEED + rep
+        Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(X_pool, y_pool, test_size=0.2, random_state=rep_seed)
+        Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed)
+        scaler_r = StandardScaler().fit(Xtr_r)
+        Xtr_r = scaler_r.transform(Xtr_r)
+        Xv_r = scaler_r.transform(Xv_r)
+        Xexp_r = scaler_r.transform(Xexp_r)
+        Xte_r = scaler_r.transform(X_test)
+
+        if name == "Single Best":
+            m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+            abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+        elif name == "Random Forest":
+            m = RandomForestBaseline(n_estimators=500, task="regression", seed=rep_seed)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+            abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+        elif name == "Stochastic Retrain":
+            m = StochasticRetrainBaseline(N=K, task="regression", n_jobs=n_jobs_inner, seed=rep_seed)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            preds = m.get_consensus_ensemble_predictions(Xte_r)
+            rmse_val = rmse_score(y_test, preds)
+            abl = feature_ablation_score(m.models_[0], Xte_r, y_test, imp)
+        elif name == "Random Selection":
+            m = RandomSelectionBaseline(
+                M=M,
+                K=K,
+                epsilon=REAL_EPSILON,
+                delta=DELTA,
+                epsilon_mode=REAL_EPSILON_MODE,
+                n_jobs=n_jobs_inner,
+                seed=rep_seed,
+                verbose=False,
+            )
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+            imp = m.global_importance_
+            preds = m.get_consensus_ensemble_predictions(Xte_r)
+            rmse_val = rmse_score(y_test, preds)
+            abl = feature_ablation_score(m.models_[m.selected_indices_[0]], Xte_r, y_test, imp)
+        else:  # DASH (MaxMin)
+            m = DASHPipeline(
+                M=M,
+                K=K,
+                epsilon=REAL_EPSILON,
+                delta=DELTA,
+                epsilon_mode=REAL_EPSILON_MODE,
+                selection_method="maxmin",
+                n_jobs=n_jobs_inner,
+                seed=rep_seed,
+                verbose=False,
+            )
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=cal_names)
+            imp = m.global_importance_
+            preds = m.get_consensus_ensemble_predictions(Xte_r)
+            rmse_val = rmse_score(y_test, preds)
+            abl = feature_ablation_score(m.selected_models_[0], Xte_r, y_test, imp)
+
+        imp_runs.append(imp)
+        rmse_runs.append(rmse_val)
+        ablation_runs.append(abl)
+        if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
+            keff_runs.append(len(m.selected_indices_))
+        if (rep + 1) % 10 == 0:
+            _save(
+                f"california_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
+                imp_runs=imp_runs,
+                rmse_runs=rmse_runs,
+                ablation_runs=ablation_runs,
+                keff_runs=keff_runs,
+                completed_reps=rep + 1,
+            )
+
+    stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+    topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
+    method_results = {
+        "stability": stab,
+        "stability_se": stab_se,
+        "stability_ci_lo": stab_ci_lo,
+        "stability_ci_hi": stab_ci_hi,
+        "topk5_stability": topk5,
+        "topk5_se": topk5_se,
+        "topk5_ci_lo": topk5_ci_lo,
+        "topk5_ci_hi": topk5_ci_hi,
+        "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
+        "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
+        "rmse_mean": np.mean(rmse_runs),
+        "rmse_std": np.std(rmse_runs, ddof=1),
+        "ablation_mean": np.mean(ablation_runs),
+        "ablation_std": np.std(ablation_runs, ddof=1),
+        "rmse_runs": np.array(rmse_runs),
+        "ablation_runs": np.array(ablation_runs),
+        "imp_runs": imp_runs,
+    }
+    log(
+        f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
+        f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
+        f"ablation={np.mean(ablation_runs):.4f}"
+    )
+    _save(ckpt_name, method_results=method_results)
+    clear_checkpoints_by_prefix(f"california_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+    return name, method_results
+
+
 def experiment_real_california(resume=False, cleanup=False):
-    """California Housing benchmark with scale-appropriate epsilon."""
+    """California Housing benchmark with scale-appropriate epsilon.
+
+    Methods run in parallel via joblib.
+    """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -1348,178 +1593,29 @@ def experiment_real_california(resume=False, cleanup=False):
     )
 
     cal_methods = ["Single Best", "Random Forest", "Stochastic Retrain", "Random Selection", "DASH (MaxMin)"]
-    cal_results = {}
 
-    for name in cal_methods:
-        ckpt_name = f"california_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
-            log(f"  Resuming: loaded checkpoint for {name}")
-            cal_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
-            continue
+    n_methods = len(cal_methods)
+    try:
+        total_cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        total_cores = os.cpu_count() or 1
+    n_jobs_inner = max(1, total_cores // n_methods)
+    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
 
-        imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
-        start_rep = 0
-        if resume:
-            batch_prefix = f"california_{_sanitize_ckpt_name(name)}_batch_"
-            for batch_end in range(N_REPS, 0, -10):
-                batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
-                    imp_runs = cached["imp_runs"]
-                    rmse_runs = cached["rmse_runs"]
-                    ablation_runs = cached["ablation_runs"]
-                    keff_runs = cached["keff_runs"]
-                    start_rep = cached["completed_reps"]
-                    log(f"    Resuming {name} from rep {start_rep}")
-                    break
-
-        for rep in range(start_rep, N_REPS):
-            rep_seed = SEED + rep
-
-            # D2: Re-split and re-fit scaler per rep
-            # A4: Three-way split from pool — explain set separate from test
-            Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
-                X_cal_pool,
-                y_cal_pool,
-                test_size=0.2,
-                random_state=rep_seed,
-            )
-            Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
-                Xtr_r,
-                ytr_r,
-                test_size=0.12,
-                random_state=rep_seed,
-            )
-            scaler_r = StandardScaler().fit(Xtr_r)
-            Xtr_r = scaler_r.transform(Xtr_r)
-            Xv_r = scaler_r.transform(Xv_r)
-            Xexp_r = scaler_r.transform(Xexp_r)
-            Xte_r = scaler_r.transform(X_cal_test)
-
-            if name == "Single Best":
-                m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_cal_test, imp)
-            elif name == "Random Forest":
-                m = RandomForestBaseline(
-                    n_estimators=500,
-                    task="regression",
-                    seed=rep_seed,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                rmse_val = rmse_score(y_cal_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_cal_test, imp)
-            elif name == "Stochastic Retrain":
-                m = StochasticRetrainBaseline(
-                    N=K,
-                    task="regression",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                preds = m.get_consensus_ensemble_predictions(Xte_r)
-                rmse_val = rmse_score(y_cal_test, preds)
-                proxy_model = m.models_[0]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
-            elif name == "Random Selection":
-                m = RandomSelectionBaseline(
-                    M=M,
-                    K=K,
-                    epsilon=REAL_EPSILON,
-                    delta=DELTA,
-                    epsilon_mode=REAL_EPSILON_MODE,
-                    n_jobs=-1,
-                    seed=rep_seed,
-                    verbose=False,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
-                imp = m.global_importance_
-                preds = m.get_consensus_ensemble_predictions(Xte_r)
-                rmse_val = rmse_score(y_cal_test, preds)
-                proxy_model = m.models_[m.selected_indices_[0]]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
-            else:
-                m = DASHPipeline(
-                    M=M,
-                    K=K,
-                    epsilon=REAL_EPSILON,
-                    delta=DELTA,
-                    epsilon_mode=REAL_EPSILON_MODE,
-                    selection_method="maxmin",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                    verbose=False,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=cal_names)
-                imp = m.global_importance_
-                preds = m.get_consensus_ensemble_predictions(Xte_r)
-                rmse_val = rmse_score(y_cal_test, preds)
-                proxy_model = m.selected_models_[0]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_cal_test, imp)
-
-            imp_runs.append(imp)
-            rmse_runs.append(rmse_val)
-            ablation_runs.append(abl)
-            if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
-                keff_runs.append(len(m.selected_indices_))
-            if (rep + 1) % 10 == 0:
-                save_checkpoint(
-                    f"california_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
-                    imp_runs=imp_runs,
-                    rmse_runs=rmse_runs,
-                    ablation_runs=ablation_runs,
-                    keff_runs=keff_runs,
-                    completed_reps=rep + 1,
-                )
-
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
-        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
-        cal_results[name] = {
-            "stability": stab,
-            "stability_se": stab_se,
-            "stability_ci_lo": stab_ci_lo,
-            "stability_ci_hi": stab_ci_hi,
-            "topk5_stability": topk5,
-            "topk5_se": topk5_se,
-            "topk5_ci_lo": topk5_ci_lo,
-            "topk5_ci_hi": topk5_ci_hi,
-            "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
-            "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
-            "rmse_mean": np.mean(rmse_runs),
-            "rmse_std": np.std(rmse_runs, ddof=1),
-            "ablation_mean": np.mean(ablation_runs),
-            "ablation_std": np.std(ablation_runs, ddof=1),
-            "rmse_runs": np.array(rmse_runs),
-            "ablation_runs": np.array(ablation_runs),
-            "imp_runs": imp_runs,
-        }
-        log(
-            f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
-            f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
-            f"ablation={np.mean(ablation_runs):.4f}"
-        )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=cal_results[name])
-        clear_checkpoints_by_prefix(f"california_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+    results_list = Parallel(n_jobs=n_methods, backend="loky")(
+        delayed(_run_cal_method)(name, X_cal_pool, X_cal_test, y_cal_pool, y_cal_test, cal_names, n_jobs_inner, resume)
+        for name in cal_methods
+    )
+    cal_results = {name: result for name, result in results_list}
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
     _log_pairwise_significance(cal_results, "DASH (MaxMin)", cal_methods, "California Housing")
 
-    # IS plot from last DASH run (only if DASH was freshly computed, not loaded from checkpoint)
-    try:
-        fig = m.plot_importance_stability(title="IS Plot — California Housing", annotate_top_k=8)
-        fig.savefig(f"{OUT}/figures/is_plot_california.png", dpi=150, bbox_inches="tight")
-        fig.savefig(f"{OUT}/figures/is_plot_california.pdf", bbox_inches="tight")
-        plt.close(fig)
-        log("  Saved: figures/is_plot_california.png/pdf")
-    except (NameError, AttributeError):
-        log("  Skipped IS plot (DASH loaded from checkpoint)")
+    # IS plot skipped when methods run in parallel (model object not available)
+    log("  Skipped IS plot (methods ran in parallel)")
 
     save_json(cal_results, f"{OUT}/tables/california_housing.json")
+    cal_results.pop("_significance", None)  # remove metadata key before return
 
     if cleanup:
         clear_checkpoints_by_prefix("california_", CKPT_DIR)
@@ -1534,8 +1630,129 @@ def experiment_real_california(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_bc_method(name, X_pool, X_test, y_pool, y_test, bc_names, n_jobs_inner, resume):
+    """Run all reps for a single method in the Breast Cancer experiment."""
+    ckpt_name = f"breast_cancer_{_sanitize_ckpt_name(name)}"
+    if resume and _has(ckpt_name):
+        log(f"  Resuming: loaded checkpoint for {name}")
+        return name, _load(ckpt_name)["method_results"]
+
+    imp_runs, ablation_runs, keff_runs = [], [], []
+    start_rep = 0
+    if resume:
+        batch_prefix = f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_"
+        for batch_end in range(N_REPS, 0, -10):
+            batch_name = f"{batch_prefix}{batch_end}"
+            if _has(batch_name):
+                cached = _load(batch_name)
+                imp_runs = cached["imp_runs"]
+                ablation_runs = cached["ablation_runs"]
+                keff_runs = cached["keff_runs"]
+                start_rep = cached["completed_reps"]
+                log(f"    Resuming {name} from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
+        rep_seed = SEED + rep
+        Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(X_pool, y_pool, test_size=0.2, random_state=rep_seed)
+        Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed)
+        scaler_r = StandardScaler().fit(Xtr_r)
+        Xtr_r = scaler_r.transform(Xtr_r)
+        Xv_r = scaler_r.transform(Xv_r)
+        Xexp_r = scaler_r.transform(Xexp_r)
+        Xte_r = scaler_r.transform(X_test)
+
+        if name == "Single Best":
+            m = SingleBestBaseline(n_trials=N_TRIALS_SB, task="binary", seed=rep_seed, n_jobs=n_jobs_inner)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+            imp = m.global_importance_
+            abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+        elif name == "Random Forest":
+            m = RandomForestBaseline(n_estimators=500, task="binary", seed=rep_seed)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+        elif name == "Stochastic Retrain":
+            m = StochasticRetrainBaseline(N=K, task="binary", n_jobs=n_jobs_inner, seed=rep_seed)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            abl = feature_ablation_score(m.models_[0], Xte_r, y_test, imp)
+        elif name == "Random Selection":
+            m = RandomSelectionBaseline(
+                M=M,
+                K=K,
+                epsilon=REAL_EPSILON,
+                delta=DELTA,
+                epsilon_mode=REAL_EPSILON_MODE,
+                task="binary",
+                n_jobs=n_jobs_inner,
+                seed=rep_seed,
+                verbose=False,
+            )
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+            imp = m.global_importance_
+            abl = feature_ablation_score(m.models_[m.selected_indices_[0]], Xte_r, y_test, imp)
+        else:  # DASH (MaxMin)
+            m = DASHPipeline(
+                M=M,
+                K=K,
+                epsilon=REAL_EPSILON,
+                delta=DELTA,
+                epsilon_mode=REAL_EPSILON_MODE,
+                selection_method="maxmin",
+                task="binary",
+                n_jobs=n_jobs_inner,
+                seed=rep_seed,
+                verbose=False,
+            )
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=bc_names)
+            imp = m.global_importance_
+            abl = feature_ablation_score(m.selected_models_[0], Xte_r, y_test, imp)
+
+        imp_runs.append(imp)
+        ablation_runs.append(abl)
+        if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
+            keff_runs.append(len(m.selected_indices_))
+        if (rep + 1) % 10 == 0:
+            _save(
+                f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
+                imp_runs=imp_runs,
+                ablation_runs=ablation_runs,
+                keff_runs=keff_runs,
+                completed_reps=rep + 1,
+            )
+
+    stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+    topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
+    method_results = {
+        "stability": stab,
+        "stability_se": stab_se,
+        "stability_ci_lo": stab_ci_lo,
+        "stability_ci_hi": stab_ci_hi,
+        "topk5_stability": topk5,
+        "topk5_se": topk5_se,
+        "topk5_ci_lo": topk5_ci_lo,
+        "topk5_ci_hi": topk5_ci_hi,
+        "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
+        "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
+        "ablation_mean": np.mean(ablation_runs),
+        "ablation_std": np.std(ablation_runs, ddof=1),
+        "ablation_runs": np.array(ablation_runs),
+        "imp_runs": imp_runs,
+    }
+    log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  ablation={np.mean(ablation_runs):.4f}")
+    _save(ckpt_name, method_results=method_results)
+    clear_checkpoints_by_prefix(f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+    return name, method_results
+
+
 def experiment_real_breast_cancer(resume=False, cleanup=False):
-    """Breast Cancer benchmark (binary classification, N_REPS=20)."""
+    """Breast Cancer benchmark (binary classification, N_REPS=20).
+
+    Methods run in parallel via joblib.
+    """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -1552,7 +1769,6 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
     n_high = (np.sum(corr > 0.9) - len(bc_names)) // 2
     log(f"  {len(bc_names)} features, {n_high} pairs with |r|>0.9")
 
-    # Hold out test set from raw data, re-split and re-scale per rep (D2 fix)
     X_bc_pool, X_bc_test, y_bc_pool, y_bc_test = train_test_split(
         X_bc,
         y_bc,
@@ -1561,173 +1777,29 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
     )
 
     bc_methods = ["Single Best", "Random Forest", "Stochastic Retrain", "Random Selection", "DASH (MaxMin)"]
-    bc_results = {}
 
-    for name in bc_methods:
-        ckpt_name = f"breast_cancer_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
-            log(f"  Resuming: loaded checkpoint for {name}")
-            bc_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
-            continue
+    n_methods = len(bc_methods)
+    try:
+        total_cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        total_cores = os.cpu_count() or 1
+    n_jobs_inner = max(1, total_cores // n_methods)
+    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
 
-        imp_runs, ablation_runs, keff_runs = [], [], []
-        start_rep = 0
-        if resume:
-            batch_prefix = f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_"
-            for batch_end in range(N_REPS, 0, -10):
-                batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
-                    imp_runs = cached["imp_runs"]
-                    ablation_runs = cached["ablation_runs"]
-                    keff_runs = cached["keff_runs"]
-                    start_rep = cached["completed_reps"]
-                    log(f"    Resuming {name} from rep {start_rep}")
-                    break
-
-        for rep in range(start_rep, N_REPS):
-            rep_seed = SEED + rep
-
-            # D2: Re-split and re-fit scaler per rep (avoids scaler leakage)
-            Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
-                X_bc_pool,
-                y_bc_pool,
-                test_size=0.2,
-                random_state=rep_seed,
-            )
-            # A4: Separate explain set from train
-            Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
-                Xtr_r,
-                ytr_r,
-                test_size=0.12,
-                random_state=rep_seed,
-            )
-            scaler_r = StandardScaler().fit(Xtr_r)
-            Xtr_r = scaler_r.transform(Xtr_r)
-            Xv_r = scaler_r.transform(Xv_r)
-            Xexp_r = scaler_r.transform(Xexp_r)
-            Xte_r = scaler_r.transform(X_bc_test)
-
-            if name == "Single Best":
-                m = SingleBestBaseline(n_trials=N_TRIALS_SB, task="binary", seed=rep_seed, n_jobs=-1)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
-                imp = m.global_importance_
-                abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
-            elif name == "Random Forest":
-                m = RandomForestBaseline(
-                    n_estimators=500,
-                    task="binary",
-                    seed=rep_seed,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                abl = feature_ablation_score(m.model_, Xte_r, y_bc_test, imp)
-            elif name == "Stochastic Retrain":
-                m = StochasticRetrainBaseline(
-                    N=K,
-                    task="binary",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                proxy_model = m.models_[0]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
-            elif name == "Random Selection":
-                m = RandomSelectionBaseline(
-                    M=M,
-                    K=K,
-                    epsilon=REAL_EPSILON,
-                    delta=DELTA,
-                    epsilon_mode=REAL_EPSILON_MODE,
-                    task="binary",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                    verbose=False,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
-                imp = m.global_importance_
-                proxy_model = m.models_[m.selected_indices_[0]]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
-            else:
-                m = DASHPipeline(
-                    M=M,
-                    K=K,
-                    epsilon=REAL_EPSILON,
-                    delta=DELTA,
-                    epsilon_mode=REAL_EPSILON_MODE,
-                    selection_method="maxmin",
-                    task="binary",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                    verbose=False,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=bc_names)
-                imp = m.global_importance_
-                proxy_model = m.selected_models_[0]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_bc_test, imp)
-
-            imp_runs.append(imp)
-            ablation_runs.append(abl)
-            if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
-                keff_runs.append(len(m.selected_indices_))
-            if (rep + 1) % 10 == 0:
-                save_checkpoint(
-                    f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
-                    imp_runs=imp_runs,
-                    ablation_runs=ablation_runs,
-                    keff_runs=keff_runs,
-                    completed_reps=rep + 1,
-                )
-
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
-        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
-        bc_results[name] = {
-            "stability": stab,
-            "stability_se": stab_se,
-            "stability_ci_lo": stab_ci_lo,
-            "stability_ci_hi": stab_ci_hi,
-            "topk5_stability": topk5,
-            "topk5_se": topk5_se,
-            "topk5_ci_lo": topk5_ci_lo,
-            "topk5_ci_hi": topk5_ci_hi,
-            "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
-            "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
-            "ablation_mean": np.mean(ablation_runs),
-            "ablation_std": np.std(ablation_runs, ddof=1),
-            "ablation_runs": np.array(ablation_runs),
-            "imp_runs": imp_runs,
-        }
-        log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  ablation={np.mean(ablation_runs):.4f}")
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=bc_results[name])
-        clear_checkpoints_by_prefix(f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+    results_list = Parallel(n_jobs=n_methods, backend="loky")(
+        delayed(_run_bc_method)(name, X_bc_pool, X_bc_test, y_bc_pool, y_bc_test, bc_names, n_jobs_inner, resume)
+        for name in bc_methods
+    )
+    bc_results = {name: result for name, result in results_list}
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(bc_results, "DASH (MaxMin)", bc_methods, "Breast Cancer")
 
-    # IS plot and disagreement map from last DASH run (only if freshly computed)
-    try:
-        fig = m.plot_importance_stability(title="IS Plot — Breast Cancer", annotate_top_k=8)
-        fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.png", dpi=150, bbox_inches="tight")
-        fig.savefig(f"{OUT}/figures/is_plot_breast_cancer.pdf", bbox_inches="tight")
-        plt.close(fig)
-
-        var_obs = np.mean(m.variance_matrix_, axis=1)
-        fig = local_disagreement_map(
-            m.all_shap_matrices_,
-            np.argmax(var_obs),
-            feature_names=bc_names,
-            top_k=12,
-        )
-        fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.png", dpi=150, bbox_inches="tight")
-        fig.savefig(f"{OUT}/figures/disagreement_breast_cancer.pdf", bbox_inches="tight")
-        plt.close(fig)
-        log("  Saved: is_plot_breast_cancer.png/pdf, disagreement_breast_cancer.png/pdf")
-    except (NameError, AttributeError):
-        log("  Skipped IS plot and disagreement map (DASH loaded from checkpoint)")
+    # IS plot skipped when methods run in parallel (model object not available)
+    log("  Skipped IS plot and disagreement map (methods ran in parallel)")
 
     save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
+    bc_results.pop("_significance", None)  # remove metadata key before return
 
     if cleanup:
         clear_checkpoints_by_prefix("breast_cancer_", CKPT_DIR)
@@ -1742,8 +1814,156 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_sc_method(name, X_pool, X_test, y_pool, y_test, sc_names, sc_m, sc_k, n_jobs_inner, resume):
+    """Run all reps for a single method in the Superconductor experiment."""
+    ckpt_name = f"superconductor_{_sanitize_ckpt_name(name)}"
+    if resume and _has(ckpt_name):
+        log(f"  Resuming: loaded checkpoint for {name}")
+        return name, _load(ckpt_name)["method_results"]
+
+    imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
+    start_rep = 0
+    if resume:
+        batch_prefix = f"superconductor_{_sanitize_ckpt_name(name)}_batch_"
+        for batch_end in range(N_REPS, 0, -10):
+            batch_name = f"{batch_prefix}{batch_end}"
+            if _has(batch_name):
+                cached = _load(batch_name)
+                imp_runs = cached["imp_runs"]
+                rmse_runs = cached["rmse_runs"]
+                ablation_runs = cached["ablation_runs"]
+                keff_runs = cached["keff_runs"]
+                start_rep = cached["completed_reps"]
+                log(f"    Resuming {name} from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
+        rep_seed = SEED + rep
+        Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(X_pool, y_pool, test_size=0.2, random_state=rep_seed)
+        Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(Xtr_r, ytr_r, test_size=0.12, random_state=rep_seed)
+        scaler_r = StandardScaler().fit(Xtr_r)
+        Xtr_r = scaler_r.transform(Xtr_r)
+        Xv_r = scaler_r.transform(Xv_r)
+        Xexp_r = scaler_r.transform(Xexp_r)
+        Xte_r = scaler_r.transform(X_test)
+
+        if name == "Single Best":
+            m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+            abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+        elif name == "Large Single Model":
+            m = LargeSingleModelBaseline(
+                K=sc_k,
+                T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+                colsample_bytree=0.2,
+                seed=rep_seed,
+            )
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+            abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+        elif name == "Random Forest":
+            m = RandomForestBaseline(n_estimators=500, task="regression", seed=rep_seed)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+            abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+        elif name == "Stochastic Retrain":
+            m = StochasticRetrainBaseline(N=sc_k, task="regression", n_jobs=n_jobs_inner, seed=rep_seed)
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+            imp = m.global_importance_
+            preds = m.get_consensus_ensemble_predictions(Xte_r)
+            rmse_val = rmse_score(y_test, preds)
+            abl = feature_ablation_score(m.models_[0], Xte_r, y_test, imp)
+        elif name == "Random Selection":
+            m = RandomSelectionBaseline(
+                M=sc_m,
+                K=sc_k,
+                epsilon=REAL_EPSILON,
+                delta=DELTA,
+                epsilon_mode=REAL_EPSILON_MODE,
+                n_jobs=n_jobs_inner,
+                seed=rep_seed,
+                verbose=False,
+            )
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+            imp = m.global_importance_
+            preds = m.get_consensus_ensemble_predictions(Xte_r)
+            rmse_val = rmse_score(y_test, preds)
+            abl = feature_ablation_score(m.models_[m.selected_indices_[0]], Xte_r, y_test, imp)
+        else:  # DASH (MaxMin)
+            m = DASHPipeline(
+                M=sc_m,
+                K=sc_k,
+                epsilon=REAL_EPSILON,
+                delta=DELTA,
+                epsilon_mode=REAL_EPSILON_MODE,
+                selection_method="maxmin",
+                n_jobs=n_jobs_inner,
+                seed=rep_seed,
+                verbose=False,
+            )
+            m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=sc_names)
+            imp = m.global_importance_
+            preds = m.get_consensus_ensemble_predictions(Xte_r)
+            rmse_val = rmse_score(y_test, preds)
+            abl = feature_ablation_score(m.selected_models_[0], Xte_r, y_test, imp)
+
+        imp_runs.append(imp)
+        rmse_runs.append(rmse_val)
+        ablation_runs.append(abl)
+        if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
+            keff_runs.append(len(m.selected_indices_))
+        if (rep + 1) % 10 == 0:
+            _save(
+                f"superconductor_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
+                imp_runs=imp_runs,
+                rmse_runs=rmse_runs,
+                ablation_runs=ablation_runs,
+                keff_runs=keff_runs,
+                completed_reps=rep + 1,
+            )
+
+    stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
+    topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
+    method_results = {
+        "stability": stab,
+        "stability_se": stab_se,
+        "stability_ci_lo": stab_ci_lo,
+        "stability_ci_hi": stab_ci_hi,
+        "topk5_stability": topk5,
+        "topk5_se": topk5_se,
+        "topk5_ci_lo": topk5_ci_lo,
+        "topk5_ci_hi": topk5_ci_hi,
+        "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
+        "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
+        "rmse_mean": np.mean(rmse_runs),
+        "rmse_std": np.std(rmse_runs, ddof=1),
+        "ablation_mean": np.mean(ablation_runs),
+        "ablation_std": np.std(ablation_runs, ddof=1),
+        "rmse_runs": np.array(rmse_runs),
+        "ablation_runs": np.array(ablation_runs),
+        "imp_runs": imp_runs,
+    }
+    log(
+        f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
+        f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
+        f"ablation={np.mean(ablation_runs):.4f}"
+    )
+    _save(ckpt_name, method_results=method_results)
+    clear_checkpoints_by_prefix(f"superconductor_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+    return name, method_results
+
+
 def experiment_real_superconductor(resume=False, cleanup=False):
-    """Superconductor UCI benchmark with scale-appropriate epsilon."""
+    """Superconductor UCI benchmark with scale-appropriate epsilon.
+
+    Methods run in parallel via joblib.
+    """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -1765,7 +1985,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
         random_state=SEED,
     )
 
-    SC_M = 200  # Lighter compute for real-world dataset
+    SC_M = 200
     SC_K = 30
     sc_methods = [
         "Single Best",
@@ -1775,178 +1995,28 @@ def experiment_real_superconductor(resume=False, cleanup=False):
         "Random Selection",
         "DASH (MaxMin)",
     ]
-    sc_results = {}
 
-    for name in sc_methods:
-        ckpt_name = f"superconductor_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
-            log(f"  Resuming: loaded checkpoint for {name}")
-            sc_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
-            continue
+    n_methods = len(sc_methods)
+    try:
+        total_cores = len(os.sched_getaffinity(0))
+    except AttributeError:
+        total_cores = os.cpu_count() or 1
+    n_jobs_inner = max(1, total_cores // n_methods)
+    log(f"  Running {n_methods} methods in parallel ({total_cores} cores, {n_jobs_inner} per method)")
 
-        imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
-        start_rep = 0
-        if resume:
-            batch_prefix = f"superconductor_{_sanitize_ckpt_name(name)}_batch_"
-            for batch_end in range(N_REPS, 0, -10):
-                batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
-                    imp_runs = cached["imp_runs"]
-                    rmse_runs = cached["rmse_runs"]
-                    ablation_runs = cached["ablation_runs"]
-                    keff_runs = cached["keff_runs"]
-                    start_rep = cached["completed_reps"]
-                    log(f"    Resuming {name} from rep {start_rep}")
-                    break
-
-        for rep in range(start_rep, N_REPS):
-            rep_seed = SEED + rep
-
-            # A4: Separate explain set from test
-            Xtr_r, Xv_r, ytr_r, yv_r = train_test_split(
-                X_sc_pool,
-                y_sc_pool,
-                test_size=0.2,
-                random_state=rep_seed,
-            )
-            Xtr_r, Xexp_r, ytr_r, yexp_r = train_test_split(
-                Xtr_r,
-                ytr_r,
-                test_size=0.12,
-                random_state=rep_seed,
-            )
-            scaler_r = StandardScaler().fit(Xtr_r)
-            Xtr_r = scaler_r.transform(Xtr_r)
-            Xv_r = scaler_r.transform(Xv_r)
-            Xexp_r = scaler_r.transform(Xexp_r)
-            Xte_r = scaler_r.transform(X_sc_test)
-
-            if name == "Single Best":
-                m = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
-            elif name == "Large Single Model":
-                m = LargeSingleModelBaseline(
-                    K=SC_K,
-                    T_per_model=PAPER_CONFIG["T_PER_MODEL"],
-                    colsample_bytree=0.2,
-                    seed=rep_seed,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
-            elif name == "Random Forest":
-                m = RandomForestBaseline(
-                    n_estimators=500,
-                    task="regression",
-                    seed=rep_seed,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                rmse_val = rmse_score(y_sc_test, m.model_.predict(Xte_r))
-                abl = feature_ablation_score(m.model_, Xte_r, y_sc_test, imp)
-            elif name == "Stochastic Retrain":
-                m = StochasticRetrainBaseline(
-                    N=SC_K,
-                    task="regression",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
-                imp = m.global_importance_
-                preds = m.get_consensus_ensemble_predictions(Xte_r)
-                rmse_val = rmse_score(y_sc_test, preds)
-                proxy_model = m.models_[0]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
-            elif name == "Random Selection":
-                m = RandomSelectionBaseline(
-                    M=SC_M,
-                    K=SC_K,
-                    epsilon=REAL_EPSILON,
-                    delta=DELTA,
-                    epsilon_mode=REAL_EPSILON_MODE,
-                    n_jobs=-1,
-                    seed=rep_seed,
-                    verbose=False,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
-                imp = m.global_importance_
-                preds = m.get_consensus_ensemble_predictions(Xte_r)
-                rmse_val = rmse_score(y_sc_test, preds)
-                proxy_model = m.models_[m.selected_indices_[0]]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
-            else:
-                m = DASHPipeline(
-                    M=SC_M,
-                    K=SC_K,
-                    epsilon=REAL_EPSILON,
-                    delta=DELTA,
-                    epsilon_mode=REAL_EPSILON_MODE,
-                    selection_method="maxmin",
-                    n_jobs=-1,
-                    seed=rep_seed,
-                    verbose=False,
-                )
-                m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, feature_names=sc_names)
-                imp = m.global_importance_
-                preds = m.get_consensus_ensemble_predictions(Xte_r)
-                rmse_val = rmse_score(y_sc_test, preds)
-                proxy_model = m.selected_models_[0]
-                abl = feature_ablation_score(proxy_model, Xte_r, y_sc_test, imp)
-
-            imp_runs.append(imp)
-            rmse_runs.append(rmse_val)
-            ablation_runs.append(abl)
-            if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
-                keff_runs.append(len(m.selected_indices_))
-            if (rep + 1) % 10 == 0:
-                save_checkpoint(
-                    f"superconductor_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
-                    imp_runs=imp_runs,
-                    rmse_runs=rmse_runs,
-                    ablation_runs=ablation_runs,
-                    keff_runs=keff_runs,
-                    completed_reps=rep + 1,
-                )
-
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
-        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
-        sc_results[name] = {
-            "stability": stab,
-            "stability_se": stab_se,
-            "stability_ci_lo": stab_ci_lo,
-            "stability_ci_hi": stab_ci_hi,
-            "topk5_stability": topk5,
-            "topk5_se": topk5_se,
-            "topk5_ci_lo": topk5_ci_lo,
-            "topk5_ci_hi": topk5_ci_hi,
-            "k_eff_mean": float(np.mean(keff_runs)) if keff_runs else None,
-            "k_eff_std": float(np.std(keff_runs, ddof=1)) if len(keff_runs) > 1 else None,
-            "rmse_mean": np.mean(rmse_runs),
-            "rmse_std": np.std(rmse_runs, ddof=1),
-            "ablation_mean": np.mean(ablation_runs),
-            "ablation_std": np.std(ablation_runs, ddof=1),
-            "rmse_runs": np.array(rmse_runs),
-            "ablation_runs": np.array(ablation_runs),
-            "imp_runs": imp_runs,
-        }
-        log(
-            f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
-            f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
-            f"ablation={np.mean(ablation_runs):.4f}"
+    results_list = Parallel(n_jobs=n_methods, backend="loky")(
+        delayed(_run_sc_method)(
+            name, X_sc_pool, X_sc_test, y_sc_pool, y_sc_test, sc_names, SC_M, SC_K, n_jobs_inner, resume
         )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=sc_results[name])
-        clear_checkpoints_by_prefix(f"superconductor_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
+        for name in sc_methods
+    )
+    sc_results = {name: result for name, result in results_list}
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(sc_results, "DASH (MaxMin)", sc_methods, "Superconductor")
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
+    sc_results.pop("_significance", None)  # remove metadata key before return
 
     if cleanup:
         clear_checkpoints_by_prefix("superconductor_", CKPT_DIR)
@@ -1994,8 +2064,8 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
     if resume:
         for batch_end in range(N_REPS, 0, -10):
             ckpt_name = f"epsilon_sens_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 eps_results = cached["eps_results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -2047,9 +2117,8 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
             eps_results[eps]["imp_runs"].append(imp)
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
+            _save(
                 f"epsilon_sens_batch_{rep + 1}",
-                checkpoint_dir=CKPT_DIR,
                 eps_results=eps_results,
                 completed_reps=rep + 1,
             )
@@ -2086,15 +2155,91 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_ablation_rho(abl_rho, ablations, abl_defaults, n_jobs_inner):
+    """Run all ablation sweeps for a single rho level."""
+    ABL_N_REPS = N_REPS
+    log(f"\n{'=' * 60}")
+    log(f"Ablation at ρ = {abl_rho}")
+    log(f"{'=' * 60}")
+    rho_results = {}
+    for param_name, values in ablations.items():
+        log(f"\n--- Ablation: {param_name} ---")
+        rho_results[param_name] = {}
+        for val in values:
+            p = abl_defaults.copy()
+            p[param_name] = val
+            log(
+                f"  {param_name}={val}  ",
+            )
+
+            imp_runs, acc_runs = [], []
+            for rep in range(ABL_N_REPS):
+                rep_seed = SEED + rep
+                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+                    N=5000, rho=abl_rho, seed=rep_seed
+                )
+
+                dm = DASHPipeline(
+                    M=p["M"],
+                    K=p["K"],
+                    epsilon=p["eps"],
+                    delta=p["delta"],
+                    selection_method="maxmin",
+                    n_jobs=n_jobs_inner,
+                    seed=rep_seed,
+                    verbose=False,
+                )
+                try:
+                    dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
+                except ValueError:
+                    continue
+                imp = dm.global_importance_
+                r, _ = dgp_agreement(imp, true_imp)
+                acc_runs.append(r)
+                imp_runs.append(imp)
+
+            if len(imp_runs) >= 2:
+                stab = importance_stability(imp_runs)
+                topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
+                rho_results[param_name][val] = {
+                    "stability": stab,
+                    "topk5_stability": topk5,
+                    "topk5_se": topk5_se,
+                    "topk5_ci_lo": topk5_ci_lo,
+                    "topk5_ci_hi": topk5_ci_hi,
+                    "accuracy_mean": np.mean(acc_runs),
+                    "accuracy_std": np.std(acc_runs, ddof=1),
+                    "n_successful": len(imp_runs),
+                }
+                log(
+                    f"    stab={stab:.4f}  topk5={topk5:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)"
+                )
+            else:
+                rho_results[param_name][val] = {
+                    "stability": float("nan"),
+                    "accuracy_mean": float("nan"),
+                    "accuracy_std": float("nan"),
+                    "n_successful": len(imp_runs),
+                }
+                log(f"    SKIPPED — only {len(imp_runs)}/{ABL_N_REPS} reps passed filter")
+
+    _save(f"ablation_rho_{abl_rho}", rho_results=rho_results)
+    return abl_rho, rho_results
+
+
 def experiment_ablation(resume=False, cleanup=False):
-    """Ablation studies: one parameter at a time, across multiple rho levels."""
+    """Ablation studies: one parameter at a time, across multiple rho levels.
+
+    Rho levels run in parallel via joblib.
+    """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: Ablation Studies")
     log("=" * 70)
 
-    ABL_N_REPS = N_REPS  # Match main sweep for comparable stability estimates
     ABL_DEFAULTS = {"M": M, "K": K, "eps": EPSILON, "delta": DELTA}
     ABL_RHOS = [0.0, 0.9, 0.95]
 
@@ -2107,79 +2252,29 @@ def experiment_ablation(resume=False, cleanup=False):
 
     abl_results = {rho: {} for rho in ABL_RHOS}
 
+    pending_rhos = []
     for abl_rho in ABL_RHOS:
         ckpt_name = f"ablation_rho_{abl_rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for ρ={abl_rho}")
-            abl_results[abl_rho] = load_checkpoint(ckpt_name, CKPT_DIR)["rho_results"]
-            continue
+            abl_results[abl_rho] = _load(ckpt_name)["rho_results"]
+        else:
+            pending_rhos.append(abl_rho)
 
-        log(f"\n{'=' * 60}")
-        log(f"Ablation at ρ = {abl_rho}")
-        log(f"{'=' * 60}")
-        for param_name, values in ablations.items():
-            log(f"\n--- Ablation: {param_name} ---")
-            abl_results[abl_rho][param_name] = {}
-            for val in values:
-                p = ABL_DEFAULTS.copy()
-                p[param_name] = val
-                log(
-                    f"  {param_name}={val}  ",
-                )
+    if pending_rhos:
+        n_rho = len(pending_rhos)
+        try:
+            total_cores = len(os.sched_getaffinity(0))
+        except AttributeError:
+            total_cores = os.cpu_count() or 1
+        n_jobs_inner = max(1, total_cores // n_rho)
+        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
 
-                imp_runs, acc_runs = [], []
-                for rep in range(ABL_N_REPS):
-                    rep_seed = SEED + rep
-                    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-                        N=5000, rho=abl_rho, seed=rep_seed
-                    )
-
-                    dm = DASHPipeline(
-                        M=p["M"],
-                        K=p["K"],
-                        epsilon=p["eps"],
-                        delta=p["delta"],
-                        selection_method="maxmin",
-                        n_jobs=-1,
-                        seed=rep_seed,
-                        verbose=False,
-                    )
-                    try:
-                        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
-                    except ValueError:
-                        # Too few models passed filter (e.g. eps too tight)
-                        continue
-                    imp = dm.global_importance_
-                    r, _ = dgp_agreement(imp, true_imp)
-                    acc_runs.append(r)
-                    imp_runs.append(imp)
-
-                if len(imp_runs) >= 2:
-                    stab = importance_stability(imp_runs)
-                    topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
-                    abl_results[abl_rho][param_name][val] = {
-                        "stability": stab,
-                        "topk5_stability": topk5,
-                        "topk5_se": topk5_se,
-                        "topk5_ci_lo": topk5_ci_lo,
-                        "topk5_ci_hi": topk5_ci_hi,
-                        "accuracy_mean": np.mean(acc_runs),
-                        "accuracy_std": np.std(acc_runs, ddof=1),
-                        "n_successful": len(imp_runs),
-                    }
-                    log(
-                        f"    stab={stab:.4f}  topk5={topk5:.4f}  acc={np.mean(acc_runs):.4f}  ({len(imp_runs)}/{ABL_N_REPS} reps)"
-                    )
-                else:
-                    abl_results[abl_rho][param_name][val] = {
-                        "stability": float("nan"),
-                        "accuracy_mean": float("nan"),
-                        "accuracy_std": float("nan"),
-                        "n_successful": len(imp_runs),
-                    }
-                    log(f"    SKIPPED — only {len(imp_runs)}/{ABL_N_REPS} reps passed filter")
-
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=abl_results[abl_rho])
+        results_list = Parallel(n_jobs=n_rho, backend="loky")(
+            delayed(_run_ablation_rho)(rho, ablations, ABL_DEFAULTS, n_jobs_inner) for rho in pending_rhos
+        )
+        for rho, rho_results in results_list:
+            abl_results[rho] = rho_results
 
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
@@ -2224,8 +2319,8 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
     if resume:
         for batch_end in range(N_REPS, 0, -10):
             ckpt_name = f"variance_decomp_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 results = cached["results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -2266,9 +2361,7 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
             results[cond]["DASH (MaxMin)"].append(dm.global_importance_)
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
-                f"variance_decomp_batch_{rep + 1}", checkpoint_dir=CKPT_DIR, results=results, completed_reps=rep + 1
-            )
+            _save(f"variance_decomp_batch_{rep + 1}", results=results, completed_reps=rep + 1)
 
     # Compute stability for each condition × method
     log(f"\n  {'Condition':<16} {'Method':<20} {'Stability':>10} {'Top-5':>8}")
@@ -2321,13 +2414,86 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup):
+    """Run all reps for a single rho level of the asymmetric DGP experiment."""
+    feature_names_asym = ["f0", "f1"]
+    log(f"\n  rho={rho}")
+    rho_imps = {m: [] for m in method_names}
+
+    for rep in range(n_asym_reps):
+        rep_seed = SEED + rep
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, true_imp, _ = generate_synthetic_asymmetric(
+            N=5000, rho=rho, seed=rep_seed
+        )
+
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=n_jobs_inner)
+        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+        rho_imps["Single Best"].append(sb.global_importance_)
+
+        sr = StochasticRetrainBaseline(K=K, seed=rep_seed, n_jobs=n_jobs_inner)
+        sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+        rho_imps["Stochastic Retrain"].append(sr.global_importance_)
+
+        dm = DASHPipeline(
+            M=M,
+            K=K,
+            epsilon=EPSILON,
+            delta=DELTA,
+            selection_method="maxmin",
+            n_jobs=n_jobs_inner,
+            seed=rep_seed,
+            verbose=False,
+        )
+        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names_asym)
+        rho_imps["DASH (MaxMin)"].append(dm.global_importance_)
+
+        lsm = LargeSingleModelBaseline(seed=rep_seed, n_jobs=n_jobs_inner)
+        lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+        rho_imps["Large Single Model"].append(lsm.global_importance_)
+
+    ckpt_name = f"asym_dgp_rho{rho}"
+    if do_cleanup:
+        clear_checkpoints_by_prefix(f"asym_dgp_rho{rho}", CKPT_DIR)
+    else:
+        _save(ckpt_name, rho_imps=rho_imps, completed_reps=n_asym_reps)
+
+    # Compute metrics
+    true_imp_fixed = np.array([1.0, 0.0])
+    rho_summary = {}
+    log(f"  {'Method':<22} {'Stab':>8} {'Bias(f0)':>10} {'Leak(f1)':>10}")
+    log("  " + "=" * 55)
+    for m_name, imp_list in rho_imps.items():
+        if not imp_list:
+            continue
+        stab = importance_stability(imp_list)
+        imp_arr = np.array(imp_list)
+        row_sums = imp_arr.sum(axis=1, keepdims=True)
+        row_sums = np.where(row_sums == 0, 1.0, row_sums)
+        imp_norm = imp_arr / row_sums
+        mean_imp = imp_norm.mean(axis=0)
+        bias_f0 = float(abs(mean_imp[0] - true_imp_fixed[0]))
+        leak_f1 = float(mean_imp[1])
+        rho_summary[m_name] = {
+            "stability": stab,
+            "bias_f0": bias_f0,
+            "passive_leak_f1": leak_f1,
+            "mean_importance": mean_imp.tolist(),
+        }
+        log(f"  {m_name:<22} {stab:>8.4f} {bias_f0:>10.4f} {leak_f1:>10.4f}")
+
+    return rho, rho_summary
+
+
 def experiment_asymmetric_dgp(resume=False, cleanup=False):
     """Asymmetric causal DGP: f0 is causal, f1 is a passive correlate.
 
     Tests whether DASH over-equalizes when one feature has all the signal.
     Sweeps rho in {0.5, 0.7, 0.9, 0.95}; measures stability, attribution
     bias for f0, and passive leak to f1.
+    Rho levels run in parallel via joblib.
     """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -2336,96 +2502,56 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False):
 
     RHO_LEVELS = [0.5, 0.7, 0.9, 0.95]
     N_ASYM_REPS = 20
-    feature_names_asym = ["f0", "f1"]
-
-    methods = {
-        "Single Best": lambda seed: SingleBestBaseline(n_trials=N_TRIALS_SB, seed=seed, n_jobs=-1),
-        "Stochastic Retrain": lambda seed: StochasticRetrainBaseline(K=K, seed=seed, n_jobs=-1),
-        "DASH (MaxMin)": None,  # handled separately
-        "Large Single Model": lambda seed: LargeSingleModelBaseline(seed=seed, n_jobs=-1),
-    }
+    method_names = ["Single Best", "Stochastic Retrain", "DASH (MaxMin)", "Large Single Model"]
 
     all_results = {}
 
+    # Separate resumed vs pending rho levels
+    pending_rhos = []
     for rho in RHO_LEVELS:
-        log(f"\n  rho={rho}")
-        rho_imps = {m: [] for m in methods}
-
-        start_rep = 0
         ckpt_name = f"asym_dgp_rho{rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
-            cached = load_checkpoint(ckpt_name, CKPT_DIR)
+        if resume and _has(ckpt_name):
+            cached = _load(ckpt_name)
             rho_imps = cached["rho_imps"]
-            start_rep = cached["completed_reps"]
-            log(f"  Resuming from rep {start_rep}")
-
-        for rep in range(start_rep, N_ASYM_REPS):
-            rep_seed = SEED + rep
-            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, true_imp, _ = generate_synthetic_asymmetric(
-                N=5000, rho=rho, seed=rep_seed
-            )
-
-            # Single Best
-            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=-1)
-            sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-            rho_imps["Single Best"].append(sb.global_importance_)
-
-            # Stochastic Retrain
-            sr = StochasticRetrainBaseline(K=K, seed=rep_seed, n_jobs=-1)
-            sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
-            rho_imps["Stochastic Retrain"].append(sr.global_importance_)
-
-            # DASH (MaxMin) — needs small epsilon for 2-feature problem
-            dm = DASHPipeline(
-                M=M,
-                K=K,
-                epsilon=EPSILON,
-                delta=DELTA,
-                selection_method="maxmin",
-                n_jobs=-1,
-                seed=rep_seed,
-                verbose=False,
-            )
-            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names_asym)
-            rho_imps["DASH (MaxMin)"].append(dm.global_importance_)
-
-            # Large Single Model
-            lsm = LargeSingleModelBaseline(seed=rep_seed, n_jobs=-1)
-            lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
-            rho_imps["Large Single Model"].append(lsm.global_importance_)
-
-        if cleanup:
-            clear_checkpoints_by_prefix(f"asym_dgp_rho{rho}", CKPT_DIR)
+            # Compute summary from loaded data
+            true_imp_fixed = np.array([1.0, 0.0])
+            rho_summary = {}
+            for m_name, imp_list in rho_imps.items():
+                if not imp_list:
+                    continue
+                stab = importance_stability(imp_list)
+                imp_arr = np.array(imp_list)
+                row_sums = imp_arr.sum(axis=1, keepdims=True)
+                row_sums = np.where(row_sums == 0, 1.0, row_sums)
+                imp_norm = imp_arr / row_sums
+                mean_imp = imp_norm.mean(axis=0)
+                bias_f0 = float(abs(mean_imp[0] - true_imp_fixed[0]))
+                leak_f1 = float(mean_imp[1])
+                rho_summary[m_name] = {
+                    "stability": stab,
+                    "bias_f0": bias_f0,
+                    "passive_leak_f1": leak_f1,
+                    "mean_importance": mean_imp.tolist(),
+                }
+            all_results[rho] = rho_summary
+            log(f"  Resuming: loaded checkpoint for ρ={rho}")
         else:
-            save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_imps=rho_imps, completed_reps=N_ASYM_REPS)
+            pending_rhos.append(rho)
 
-        # Compute metrics for each method
-        # true_imp = [1.0, 0.0] — f0 is causal, f1 is passive
-        true_imp_fixed = np.array([1.0, 0.0])
-        rho_summary = {}
-        log(f"  {'Method':<22} {'Stab':>8} {'Bias(f0)':>10} {'Leak(f1)':>10}")
-        log("  " + "=" * 55)
-        for m_name, imp_list in rho_imps.items():
-            if not imp_list:
-                continue
-            stab = importance_stability(imp_list)
-            # Normalize each importance vector to sum to 1 before computing bias
-            imp_arr = np.array(imp_list)
-            row_sums = imp_arr.sum(axis=1, keepdims=True)
-            row_sums = np.where(row_sums == 0, 1.0, row_sums)
-            imp_norm = imp_arr / row_sums
-            mean_imp = imp_norm.mean(axis=0)
-            bias_f0 = float(abs(mean_imp[0] - true_imp_fixed[0]))
-            leak_f1 = float(mean_imp[1])
-            rho_summary[m_name] = {
-                "stability": stab,
-                "bias_f0": bias_f0,
-                "passive_leak_f1": leak_f1,
-                "mean_importance": mean_imp.tolist(),
-            }
-            log(f"  {m_name:<22} {stab:>8.4f} {bias_f0:>10.4f} {leak_f1:>10.4f}")
+    if pending_rhos:
+        n_rho = len(pending_rhos)
+        try:
+            total_cores = len(os.sched_getaffinity(0))
+        except AttributeError:
+            total_cores = os.cpu_count() or 1
+        n_jobs_inner = max(1, total_cores // n_rho)
+        log(f"  Running {n_rho} rho levels in parallel ({total_cores} cores, {n_jobs_inner} per level)")
 
-        all_results[rho] = rho_summary
+        results_list = Parallel(n_jobs=n_rho, backend="loky")(
+            delayed(_run_asymmetric_rho)(rho, method_names, N_ASYM_REPS, n_jobs_inner, cleanup) for rho in pending_rhos
+        )
+        for rho, rho_summary in results_list:
+            all_results[rho] = rho_summary
 
     save_json(all_results, f"{OUT}/tables/asymmetric_dgp.json")
 
@@ -2439,13 +2565,45 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inner):
+    """Run all model seeds for a single data seed in the crossed ANOVA design."""
+    VD_RHO = 0.9
+    log(f"  Data seed {di + 1}/7 (seed={data_seed})")
+    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+        N=5000, rho=VD_RHO, seed=data_seed
+    )
+    cell_results = {}
+    for mi, model_seed in enumerate(model_seeds):
+        sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=n_jobs_inner)
+        sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=model_seed)
+        cell_results[("Single Best", di, mi)] = sb.global_importance_
+
+        dm = DASHPipeline(
+            M=M,
+            K=K,
+            epsilon=EPSILON,
+            delta=DELTA,
+            selection_method="maxmin",
+            n_jobs=n_jobs_inner,
+            seed=model_seed,
+            verbose=False,
+        )
+        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        cell_results[("DASH (MaxMin)", di, mi)] = dm.global_importance_
+
+    return di, cell_results
+
+
 def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
     """Crossed R×R variance decomposition: exact ANOVA replacing 1-stability proxy.
 
     Uses a fully crossed 7×7 design (7 data seeds × 7 model seeds = 49 cells)
     and two-way ANOVA to decompose importance variance into data-sampling,
     model-selection, and residual components.
+    Data seeds run in parallel via joblib.
     """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -2453,7 +2611,6 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
     log("=" * 70)
 
     R = 7  # 7×7 = 49 cells
-    VD_RHO = 0.9
     feature_names = make_feature_names()
     data_seeds = [SEED + i for i in range(R)]
     model_seeds = [SEED + 1000 + i for i in range(R)]
@@ -2461,31 +2618,43 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
     methods = ["Single Best", "DASH (MaxMin)"]
     importances = {m: {} for m in methods}
 
-    log(f"  Running {R}×{R}={R * R} cells...")
-    for di, data_seed in enumerate(data_seeds):
-        log(f"  Data seed {di + 1}/{R} (seed={data_seed})")
-        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-            N=5000, rho=VD_RHO, seed=data_seed
-        )
-        for mi, model_seed in enumerate(model_seeds):
-            # Single Best
-            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=-1)
-            sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=model_seed)
-            importances["Single Best"][(di, mi)] = sb.global_importance_
+    # Resume: find latest completed data-seed checkpoint
+    start_di = 0
+    if resume:
+        for di_check in range(R - 1, -1, -1):
+            ckpt_name = f"variance_decomp_crossed_di_{di_check}"
+            if has_checkpoint(ckpt_name, CKPT_DIR):
+                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+                importances = cached["importances"]
+                start_di = di_check + 1
+                log(f"  Resuming: loaded checkpoint through data seed {di_check + 1}/{R}")
+                break
 
-            # DASH (MaxMin)
-            dm = DASHPipeline(
-                M=M,
-                K=K,
-                epsilon=EPSILON,
-                delta=DELTA,
-                selection_method="maxmin",
-                n_jobs=-1,
-                seed=model_seed,
-                verbose=False,
+    pending_dis = [(di, ds) for di, ds in enumerate(data_seeds) if di >= start_di]
+
+    if pending_dis:
+        n_pending = len(pending_dis)
+        try:
+            total_cores = len(os.sched_getaffinity(0))
+        except AttributeError:
+            total_cores = os.cpu_count() or 1
+        n_jobs_inner = max(1, total_cores // n_pending)
+        log(f"  Running {n_pending} data seeds in parallel ({total_cores} cores, {n_jobs_inner} per seed)")
+        log(f"  Running {R}×{R}={R * R} cells...")
+
+        results_list = Parallel(n_jobs=n_pending, backend="loky")(
+            delayed(_run_crossed_data_seed)(di, data_seed, model_seeds, feature_names, n_jobs_inner)
+            for di, data_seed in pending_dis
+        )
+
+        for di, cell_results in results_list:
+            for (method, d_i, m_i), imp in cell_results.items():
+                importances[method][(d_i, m_i)] = imp
+            save_checkpoint(
+                f"variance_decomp_crossed_di_{di}",
+                checkpoint_dir=CKPT_DIR,
+                importances=importances,
             )
-            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-            importances["DASH (MaxMin)"][(di, mi)] = dm.global_importance_
 
     # Compute ANOVA decomposition for each method
     log(f"\n  {'Method':<22} {'Data%':>8} {'Model%':>8} {'Residual%':>10}")
@@ -2708,9 +2877,9 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
 
     for B in B_VALUES:
         ckpt_name = f"background_B_{B}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for B={B}")
-            results[str(B)] = load_checkpoint(ckpt_name, CKPT_DIR)["b_results"]
+            results[str(B)] = _load(ckpt_name)["b_results"]
             continue
 
         imp_runs, acc_runs, eq_runs = [], [], []
@@ -2759,7 +2928,7 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
             f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
         )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, b_results=results[str(B)])
+        _save(ckpt_name, b_results=results[str(B)])
 
     save_json(results, f"{OUT}/tables/background_sensitivity.json")
     log(f"  Saved: {OUT}/tables/background_sensitivity.json")
@@ -2819,8 +2988,8 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
     if resume:
         for batch_end in range(n_vis_reps, 0, -10):
             ckpt_name = f"first_mover_vis_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 method_importances = cached["results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -2862,9 +3031,8 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
         method_importances["DASH (MaxMin)"].append(dash.global_importance_[group_features])
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
+            _save(
                 f"first_mover_vis_batch_{rep + 1}",
-                checkpoint_dir=CKPT_DIR,
                 results=method_importances,
                 completed_reps=rep + 1,
             )
@@ -2974,8 +3142,8 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
     if resume:
         for batch_end in range(n_bias_reps, 0, -10):
             ckpt_name = f"first_mover_bias_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 single_concentrations = cached["single_concentrations"]
                 dash_concentrations = cached["dash_concentrations"]
                 start_rep = cached["completed_reps"]
@@ -3031,9 +3199,8 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
             dash_concentrations[n_est].append(conc_avg)
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
+            _save(
                 f"first_mover_bias_batch_{rep + 1}",
-                checkpoint_dir=CKPT_DIR,
                 single_concentrations=single_concentrations,
                 dash_concentrations=dash_concentrations,
                 completed_reps=rep + 1,

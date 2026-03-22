@@ -40,3 +40,10 @@ __pycache__/
 # Private strategy documents (never commit)
 docs/private/
 docs/TMLR_cover_letter_draft.md
+
+# Unpublished research strategy — do not commit
+ROADMAP.md
+docs/RESEARCH_DIRECTIONS.md
+docs/EXTENSIONS.md
+paper/REVIEW_v*.md
+PRIVATE_RESEARCH_CONTEXT.md

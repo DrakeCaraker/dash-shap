@@ -4,9 +4,13 @@ Provides save/load/has/clear checkpoint operations using pickle serialization.
 Checkpoints are stored in a configurable directory (default: checkpoints/ at repo root).
 """
 
+import hashlib
+import json as _json
 import os
 import pickle
+import warnings
 from pathlib import Path
+from typing import Optional
 
 DEFAULT_CHECKPOINT_DIR = "checkpoints"
 
@@ -21,7 +25,20 @@ def _checkpoint_path(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR) ->
     return Path(checkpoint_dir) / f"ckpt_{name}.pkl"
 
 
-def save_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR, **data):
+def _config_fingerprint(config: Optional[dict]) -> Optional[str]:
+    """Return a stable 64-char SHA-256 hex digest of a config dict, or None."""
+    if config is None:
+        return None
+    canonical = _json.dumps(config, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def save_checkpoint(
+    name: str,
+    checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR,
+    config: Optional[dict] = None,
+    **data,
+):
     """Save keyword arguments as a named checkpoint.
 
     Parameters
@@ -35,8 +52,12 @@ def save_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR, **d
     """
     os.makedirs(checkpoint_dir, exist_ok=True)
     path = _checkpoint_path(name, checkpoint_dir)
+    payload = dict(data)
+    fingerprint = _config_fingerprint(config)
+    if fingerprint is not None:
+        payload["__meta__"] = {"config_hash": fingerprint}
     with open(path, "wb") as f:
-        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
     size_mb = os.path.getsize(path) / (1024 * 1024)
     print(f"  [CHECKPOINT] Saved {name} ({size_mb:.1f} MB)")
 
@@ -54,7 +75,11 @@ class _LegacyUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 
-def load_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR):
+def load_checkpoint(
+    name: str,
+    checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR,
+    config: Optional[dict] = None,
+) -> Optional[dict]:
     """Load a named checkpoint. Returns dict or None if not found."""
     path = _checkpoint_path(name, checkpoint_dir)
     if not path.exists():
@@ -63,6 +88,18 @@ def load_checkpoint(name: str, checkpoint_dir: str = DEFAULT_CHECKPOINT_DIR):
         data = _LegacyUnpickler(f).load()
     size_mb = os.path.getsize(path) / (1024 * 1024)
     print(f"  [CHECKPOINT] Loaded {name} ({size_mb:.1f} MB)")
+    if config is not None:
+        expected = _config_fingerprint(config)
+        assert expected is not None  # config is not None, so fingerprint is never None
+        stored_hash = data.get("__meta__", {}).get("config_hash")
+        if stored_hash is not None and stored_hash != expected:
+            warnings.warn(
+                f"[CHECKPOINT] '{name}' was saved with a different config "
+                f"(stored={stored_hash[:8]}…, current={expected[:8]}…). "
+                "Results may be stale — run clear_checkpoint() to recompute.",
+                UserWarning,
+                stacklevel=2,
+            )
     return data
 
 

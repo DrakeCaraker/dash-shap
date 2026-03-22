@@ -137,10 +137,10 @@ The Importance-Stability (IS) plot places features on axes of global importance 
 
 | Quadrant | Importance | FSI | Interpretation |
 |---|---|---|---|
-| I (top-right) | High | High | Collinear cluster member — important but unstable; interpret as a group |
-| II (top-left) | Low | High | Unstable and unimportant — noise; de-emphasize |
-| III (bottom-left) | Low | Low | Unimportant and stable — confidently irrelevant |
-| IV (bottom-right) | High | Low | **Robust** — important and stable; most trustworthy features |
+| I: Robust Drivers | High | **Low** | Trustworthy — important and stable; report individually |
+| II: Collinear Cluster | High | **High** | Interpret as a group — important but contested by correlated features |
+| III: Confirmed Unimportant | Low | Low | Reliably irrelevant — safe to omit |
+| IV: Fragile Interactions | Low | High | Unstable and weak — investigate or de-emphasize |
 
 **Q: My top feature has high FSI — what does that mean?**
 
@@ -167,3 +167,47 @@ No. TreeSHAP is CPU-based. XGBoost's GPU training is not exercised in DASH's pop
 2. Set `n_jobs=1` to disable parallelism and isolate the hang
 3. Reduce K to confirm it's the SHAP stage (not population or filtering)
 4. Check memory: K × background_size × n_features SHAP matrices are held in RAM
+
+---
+
+## Troubleshooting
+
+**Q: Fewer than K models passed the epsilon filter. What should I do?**
+
+If you see a warning like "Only N models passed the performance filter (K=30)", there are three fixes:
+
+1. **Increase epsilon** — Widen the performance band. If using `epsilon_mode="absolute"`, try doubling epsilon. If using `epsilon_mode="relative"`, increase from 0.05 to 0.10.
+
+2. **Switch to quantile mode** — `epsilon_mode="quantile"` always passes a fixed fraction of models regardless of score scale:
+   ```python
+   pipe = DASHPipeline(M=100, K=20, epsilon=0.5, epsilon_mode="quantile", ...)
+   # Always passes top 50% of models — guarantees at least 50 candidates with M=100
+   ```
+
+3. **Increase M** — A larger population gives more candidates. With M=200 and K=30, the filter typically passes 60–100 models, leaving plenty of diversity candidates.
+
+The rule of thumb: after filtering, you want at least 2×K models remaining. Check with:
+```python
+print(f"Filtered: {len(pipe.filtered_indices_)} models passed (K={pipe.K})")
+```
+
+**Q: How should I preprocess features before using DASH?**
+
+Tree-based models (XGBoost) are scale-invariant — standardization (`StandardScaler`) is not required and will not change model predictions or SHAP values. DASH's diversity mechanism uses gain-importance vectors for the MaxMin selection in Stage 3; these are information-based (not scale-based) and will not be affected by feature scaling.
+
+SHAP values are in output space: same units as `y` for regression, log-odds for binary classification. If you standardize `y` for regression, SHAP values will be in standardized units.
+
+Recommendation: preprocessing is optional but harmless. You do not need to standardize before using DASH.
+
+**Q: My SHAP computation runs out of memory. What should I do?**
+
+In addition to the tips above (reduce `background_size`, set `n_jobs=1`):
+
+5. **Reduce K** — each selected model holds an N' × P SHAP matrix in RAM. With K=30, N'=100, P=30, this is 30 × 100 × 30 × 8 bytes ≈ 7 MB — small. But with K=30, N'=5000, P=500, it's 30 × 5000 × 500 × 8 bytes ≈ 600 MB. Reduce K to 10 for large datasets.
+
+6. **Reduce X_ref to 200 rows** — The SHAP background and reference set can both be trimmed:
+   ```python
+   pipe = DASHPipeline(M=100, K=20, background_size=50, ...)
+   pipe.fit(X_train, y_train, X_val, y_val, X_ref=X_explain[:200])
+   ```
+   200 rows is sufficient for stable global importance estimates on most datasets.
