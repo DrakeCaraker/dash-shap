@@ -147,6 +147,22 @@ REAL_EPSILON_MODE = "relative"
 OUT = "results"
 CKPT_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), OUT, "checkpoints")
 
+# Checkpoint wrappers — bake in CKPT_DIR and PAPER_CONFIG so all call sites
+# can use _save/_load/_has without repeating checkpoint_dir and config args.
+_CKPT_CONFIG = PAPER_CONFIG  # canonical; frozen at import time
+
+
+def _save(name: str, **data) -> None:
+    save_checkpoint(name, checkpoint_dir=CKPT_DIR, config=_CKPT_CONFIG, **data)
+
+
+def _load(name: str):
+    return load_checkpoint(name, checkpoint_dir=CKPT_DIR, config=_CKPT_CONFIG)
+
+
+def _has(name: str) -> bool:
+    return has_checkpoint(name, checkpoint_dir=CKPT_DIR)
+
 
 def make_feature_names(n_groups=10, group_size=5):
     """Generate feature names matching the DGP structure (m6 fix)."""
@@ -523,9 +539,9 @@ def experiment_linear_sweep(resume=False, cleanup=False):
 
     for rho in rho_levels:
         ckpt_name = f"linear_sweep_rho_{rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for ρ={rho}")
-            sweep_results[rho] = load_checkpoint(ckpt_name, CKPT_DIR)["rho_results"]
+            sweep_results[rho] = _load(ckpt_name)["rho_results"]
             continue
 
         log(f"\n--- ρ = {rho} ---")
@@ -742,7 +758,7 @@ def experiment_linear_sweep(resume=False, cleanup=False):
                 f"({md['t_accum']:.1f}s)"
             )
 
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=sweep_results[rho])
+        _save(ckpt_name,rho_results=sweep_results[rho])
 
     # FSI collinearity validation (reviewer #7): show FSI rises with rho
     log("\n  FSI Collinearity Validation (DASH):")
@@ -890,8 +906,8 @@ def experiment_overlapping(resume=False, cleanup=False):
     if resume:
         for batch_end in range(N_REPS, 0, -10):
             ckpt_name = f"overlapping_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 results = cached["results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -961,8 +977,8 @@ def experiment_overlapping(resume=False, cleanup=False):
         results["DASH (Cluster)"]["rmse_runs"].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
-                f"overlapping_batch_{rep + 1}", checkpoint_dir=CKPT_DIR, results=results, completed_reps=rep + 1
+            _save(
+                f"overlapping_batch_{rep + 1}", results=results, completed_reps=rep + 1
             )
 
     log(
@@ -1042,9 +1058,9 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
 
     for rho in nl_rho_levels:
         ckpt_name = f"nonlinear_sweep_rho_{rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for NL ρ={rho}")
-            nl_sweep[rho] = load_checkpoint(ckpt_name, CKPT_DIR)["rho_results"]
+            nl_sweep[rho] = _load(ckpt_name)["rho_results"]
             continue
 
         log(f"\n--- Nonlinear DGP, ρ = {rho} ---")
@@ -1138,7 +1154,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
                 f"RMSE={np.mean(rmse_runs):.4f}"
             )
 
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=nl_sweep[rho])
+        _save(ckpt_name,rho_results=nl_sweep[rho])
 
     # Safety desideratum check: flag rho levels where DASH < SB
     log("\n  Safety desideratum check (nonlinear DGP):")
@@ -1190,9 +1206,9 @@ def experiment_table2_baselines(resume=False, cleanup=False):
 
     for name in table2_methods:
         ckpt_name = f"table2_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for {name}")
-            table2_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
+            table2_results[name] = _load(ckpt_name)["method_results"]
             continue
 
         imp_runs, acc_runs, eq_runs = [], [], []
@@ -1201,8 +1217,8 @@ def experiment_table2_baselines(resume=False, cleanup=False):
             batch_prefix = f"table2_{_sanitize_ckpt_name(name)}_batch_"
             for batch_end in range(N_REPS, 0, -10):
                 batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                if _has(batch_name):
+                    cached = _load(batch_name)
                     imp_runs = cached["imp_runs"]
                     acc_runs = cached["acc_runs"]
                     eq_runs = cached["eq_runs"]
@@ -1271,9 +1287,8 @@ def experiment_table2_baselines(resume=False, cleanup=False):
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
             if (rep + 1) % 10 == 0:
-                save_checkpoint(
+                _save(
                     f"table2_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
                     imp_runs=imp_runs,
                     acc_runs=acc_runs,
                     eq_runs=eq_runs,
@@ -1302,7 +1317,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
             f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
         )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=table2_results[name])
+        _save(ckpt_name,method_results=table2_results[name])
         clear_checkpoints_by_prefix(f"table2_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
@@ -1352,9 +1367,9 @@ def experiment_real_california(resume=False, cleanup=False):
 
     for name in cal_methods:
         ckpt_name = f"california_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for {name}")
-            cal_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
+            cal_results[name] = _load(ckpt_name)["method_results"]
             continue
 
         imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
@@ -1363,8 +1378,8 @@ def experiment_real_california(resume=False, cleanup=False):
             batch_prefix = f"california_{_sanitize_ckpt_name(name)}_batch_"
             for batch_end in range(N_REPS, 0, -10):
                 batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                if _has(batch_name):
+                    cached = _load(batch_name)
                     imp_runs = cached["imp_runs"]
                     rmse_runs = cached["rmse_runs"]
                     ablation_runs = cached["ablation_runs"]
@@ -1467,9 +1482,8 @@ def experiment_real_california(resume=False, cleanup=False):
             if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
                 keff_runs.append(len(m.selected_indices_))
             if (rep + 1) % 10 == 0:
-                save_checkpoint(
+                _save(
                     f"california_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
                     imp_runs=imp_runs,
                     rmse_runs=rmse_runs,
                     ablation_runs=ablation_runs,
@@ -1503,7 +1517,7 @@ def experiment_real_california(resume=False, cleanup=False):
             f"RMSE={np.mean(rmse_runs):.4f}±{np.std(rmse_runs, ddof=1):.4f}  "
             f"ablation={np.mean(ablation_runs):.4f}"
         )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=cal_results[name])
+        _save(ckpt_name,method_results=cal_results[name])
         clear_checkpoints_by_prefix(f"california_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
@@ -1565,9 +1579,9 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
 
     for name in bc_methods:
         ckpt_name = f"breast_cancer_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for {name}")
-            bc_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
+            bc_results[name] = _load(ckpt_name)["method_results"]
             continue
 
         imp_runs, ablation_runs, keff_runs = [], [], []
@@ -1576,8 +1590,8 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
             batch_prefix = f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_"
             for batch_end in range(N_REPS, 0, -10):
                 batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                if _has(batch_name):
+                    cached = _load(batch_name)
                     imp_runs = cached["imp_runs"]
                     ablation_runs = cached["ablation_runs"]
                     keff_runs = cached["keff_runs"]
@@ -1672,9 +1686,8 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
             if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
                 keff_runs.append(len(m.selected_indices_))
             if (rep + 1) % 10 == 0:
-                save_checkpoint(
+                _save(
                     f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
                     imp_runs=imp_runs,
                     ablation_runs=ablation_runs,
                     keff_runs=keff_runs,
@@ -1700,7 +1713,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
             "imp_runs": imp_runs,
         }
         log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  ablation={np.mean(ablation_runs):.4f}")
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=bc_results[name])
+        _save(ckpt_name,method_results=bc_results[name])
         clear_checkpoints_by_prefix(f"breast_cancer_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
@@ -1779,9 +1792,9 @@ def experiment_real_superconductor(resume=False, cleanup=False):
 
     for name in sc_methods:
         ckpt_name = f"superconductor_{_sanitize_ckpt_name(name)}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for {name}")
-            sc_results[name] = load_checkpoint(ckpt_name, CKPT_DIR)["method_results"]
+            sc_results[name] = _load(ckpt_name)["method_results"]
             continue
 
         imp_runs, rmse_runs, ablation_runs, keff_runs = [], [], [], []
@@ -1790,8 +1803,8 @@ def experiment_real_superconductor(resume=False, cleanup=False):
             batch_prefix = f"superconductor_{_sanitize_ckpt_name(name)}_batch_"
             for batch_end in range(N_REPS, 0, -10):
                 batch_name = f"{batch_prefix}{batch_end}"
-                if has_checkpoint(batch_name, CKPT_DIR):
-                    cached = load_checkpoint(batch_name, CKPT_DIR)
+                if _has(batch_name):
+                    cached = _load(batch_name)
                     imp_runs = cached["imp_runs"]
                     rmse_runs = cached["rmse_runs"]
                     ablation_runs = cached["ablation_runs"]
@@ -1904,9 +1917,8 @@ def experiment_real_superconductor(resume=False, cleanup=False):
             if hasattr(m, "selected_indices_") and m.selected_indices_ is not None:
                 keff_runs.append(len(m.selected_indices_))
             if (rep + 1) % 10 == 0:
-                save_checkpoint(
+                _save(
                     f"superconductor_{_sanitize_ckpt_name(name)}_batch_{rep + 1}",
-                    checkpoint_dir=CKPT_DIR,
                     imp_runs=imp_runs,
                     rmse_runs=rmse_runs,
                     ablation_runs=ablation_runs,
@@ -1940,7 +1952,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
             f"RMSE={np.mean(rmse_runs):.2f}±{np.std(rmse_runs, ddof=1):.2f}  "
             f"ablation={np.mean(ablation_runs):.4f}"
         )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, method_results=sc_results[name])
+        _save(ckpt_name,method_results=sc_results[name])
         clear_checkpoints_by_prefix(f"superconductor_{_sanitize_ckpt_name(name)}_batch_", CKPT_DIR)
 
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
@@ -1994,8 +2006,8 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
     if resume:
         for batch_end in range(N_REPS, 0, -10):
             ckpt_name = f"epsilon_sens_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 eps_results = cached["eps_results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -2047,9 +2059,8 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
             eps_results[eps]["imp_runs"].append(imp)
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
+            _save(
                 f"epsilon_sens_batch_{rep + 1}",
-                checkpoint_dir=CKPT_DIR,
                 eps_results=eps_results,
                 completed_reps=rep + 1,
             )
@@ -2109,9 +2120,9 @@ def experiment_ablation(resume=False, cleanup=False):
 
     for abl_rho in ABL_RHOS:
         ckpt_name = f"ablation_rho_{abl_rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for ρ={abl_rho}")
-            abl_results[abl_rho] = load_checkpoint(ckpt_name, CKPT_DIR)["rho_results"]
+            abl_results[abl_rho] = _load(ckpt_name)["rho_results"]
             continue
 
         log(f"\n{'=' * 60}")
@@ -2179,7 +2190,7 @@ def experiment_ablation(resume=False, cleanup=False):
                     }
                     log(f"    SKIPPED — only {len(imp_runs)}/{ABL_N_REPS} reps passed filter")
 
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_results=abl_results[abl_rho])
+        _save(ckpt_name,rho_results=abl_results[abl_rho])
 
     save_json(abl_results, f"{OUT}/tables/ablation.json")
     log(f"  Saved: {OUT}/tables/ablation.json")
@@ -2224,8 +2235,8 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
     if resume:
         for batch_end in range(N_REPS, 0, -10):
             ckpt_name = f"variance_decomp_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 results = cached["results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -2266,8 +2277,8 @@ def experiment_variance_decomposition(resume=False, cleanup=False):
             results[cond]["DASH (MaxMin)"].append(dm.global_importance_)
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
-                f"variance_decomp_batch_{rep + 1}", checkpoint_dir=CKPT_DIR, results=results, completed_reps=rep + 1
+            _save(
+                f"variance_decomp_batch_{rep + 1}", results=results, completed_reps=rep + 1
             )
 
     # Compute stability for each condition × method
@@ -2353,8 +2364,8 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False):
 
         start_rep = 0
         ckpt_name = f"asym_dgp_rho{rho}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
-            cached = load_checkpoint(ckpt_name, CKPT_DIR)
+        if resume and _has(ckpt_name):
+            cached = _load(ckpt_name)
             rho_imps = cached["rho_imps"]
             start_rep = cached["completed_reps"]
             log(f"  Resuming from rep {start_rep}")
@@ -2397,7 +2408,7 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False):
         if cleanup:
             clear_checkpoints_by_prefix(f"asym_dgp_rho{rho}", CKPT_DIR)
         else:
-            save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, rho_imps=rho_imps, completed_reps=N_ASYM_REPS)
+            _save(ckpt_name,rho_imps=rho_imps, completed_reps=N_ASYM_REPS)
 
         # Compute metrics for each method
         # true_imp = [1.0, 0.0] — f0 is causal, f1 is passive
@@ -2708,9 +2719,9 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
 
     for B in B_VALUES:
         ckpt_name = f"background_B_{B}"
-        if resume and has_checkpoint(ckpt_name, CKPT_DIR):
+        if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for B={B}")
-            results[str(B)] = load_checkpoint(ckpt_name, CKPT_DIR)["b_results"]
+            results[str(B)] = _load(ckpt_name)["b_results"]
             continue
 
         imp_runs, acc_runs, eq_runs = [], [], []
@@ -2759,7 +2770,7 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
             f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
         )
-        save_checkpoint(ckpt_name, checkpoint_dir=CKPT_DIR, b_results=results[str(B)])
+        _save(ckpt_name,b_results=results[str(B)])
 
     save_json(results, f"{OUT}/tables/background_sensitivity.json")
     log(f"  Saved: {OUT}/tables/background_sensitivity.json")
@@ -2819,8 +2830,8 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
     if resume:
         for batch_end in range(n_vis_reps, 0, -10):
             ckpt_name = f"first_mover_vis_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 method_importances = cached["results"]
                 start_rep = cached["completed_reps"]
                 log(f"  Resuming from rep {start_rep}")
@@ -2862,9 +2873,8 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
         method_importances["DASH (MaxMin)"].append(dash.global_importance_[group_features])
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
+            _save(
                 f"first_mover_vis_batch_{rep + 1}",
-                checkpoint_dir=CKPT_DIR,
                 results=method_importances,
                 completed_reps=rep + 1,
             )
@@ -2962,8 +2972,8 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
     if resume:
         for batch_end in range(n_bias_reps, 0, -10):
             ckpt_name = f"first_mover_bias_batch_{batch_end}"
-            if has_checkpoint(ckpt_name, CKPT_DIR):
-                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
                 single_concentrations = cached["single_concentrations"]
                 dash_concentrations = cached["dash_concentrations"]
                 start_rep = cached["completed_reps"]
@@ -3019,9 +3029,8 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
             dash_concentrations[n_est].append(conc_avg)
 
         if (rep + 1) % 10 == 0:
-            save_checkpoint(
+            _save(
                 f"first_mover_bias_batch_{rep + 1}",
-                checkpoint_dir=CKPT_DIR,
                 single_concentrations=single_concentrations,
                 dash_concentrations=dash_concentrations,
                 completed_reps=rep + 1,
