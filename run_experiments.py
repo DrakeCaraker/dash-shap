@@ -754,6 +754,7 @@ def experiment_linear_sweep():
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     sweep_results.pop("_stability_tests", None)  # remove string key before return
     sweep_results.pop("_equity_tests", None)  # remove string key before return
+    sweep_results.pop("_fsi_validation", None)  # remove string key before return
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
 
