@@ -5,6 +5,7 @@ bugs at development time. No runtime overhead.
 
 The canonical consumer of these schemas is explore_experiment_results.ipynb.
 """
+
 from __future__ import annotations
 
 from typing import TypedDict
