@@ -1321,6 +1321,7 @@ def experiment_real_california():
     log("  Saved: figures/is_plot_california.png/pdf")
 
     save_json(cal_results, f"{OUT}/tables/california_housing.json")
+    cal_results.pop("_significance", None)  # remove metadata key before return
     elapsed = time.time() - t0
     log(f"  California Housing completed in {elapsed / 60:.1f} min")
     return cal_results
@@ -1491,6 +1492,7 @@ def experiment_real_breast_cancer():
     log("  Saved: is_plot_breast_cancer.png/pdf, disagreement_breast_cancer.png/pdf")
 
     save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
+    bc_results.pop("_significance", None)  # remove metadata key before return
     elapsed = time.time() - t0
     log(f"  Breast Cancer completed in {elapsed / 60:.1f} min")
     return bc_results
@@ -1673,6 +1675,7 @@ def experiment_real_superconductor():
     _log_pairwise_significance(sc_results, "DASH (MaxMin)", sc_methods, "Superconductor")
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
+    sc_results.pop("_significance", None)  # remove metadata key before return
     elapsed = time.time() - t0
     log(f"  Superconductor completed in {elapsed / 60:.1f} min")
     return sc_results
