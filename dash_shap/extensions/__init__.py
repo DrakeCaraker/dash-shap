@@ -28,16 +28,13 @@ _EXTENSION_MAP = {
     "robust_certification": ("dash_shap.extensions.certification", "robust_certification"),
 }
 
-_PLANNED = {
-    "audit_report", "causal_flags", "DriftMonitor", "ParetoSelector", "federated_consensus"
-}
+_PLANNED = {"audit_report", "causal_flags", "DriftMonitor", "ParetoSelector", "federated_consensus"}
 
 
 def __getattr__(name):
     if name in _PLANNED:
         raise NotImplementedError(
-            f"'dash_shap.extensions.{name}' is planned for a future release. "
-            "See docs/EXTENSIONS.md for the roadmap."
+            f"'dash_shap.extensions.{name}' is planned for a future release. See docs/EXTENSIONS.md for the roadmap."
         )
     if name in _EXTENSION_MAP:
         module_path, attr = _EXTENSION_MAP[name]
