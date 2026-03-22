@@ -277,7 +277,19 @@ jobs:
               partial_order,
               robust_certification,
           )
-          print('Phase 1 extensions (3/11) imported successfully.')
+          print('Phase 1 extensions (3/6) imported successfully.')
+          "
+      - name: Verify unimplemented extensions raise NotImplementedError
+        run: |
+          python -c "
+          from dash_shap import extensions
+          for name in ['audit_report', 'causal_flags']:
+              try:
+                  getattr(extensions, name)
+                  raise AssertionError(f'{name} should have raised')
+              except NotImplementedError:
+                  pass
+          print('OK: planned extensions raise NotImplementedError')
           "
 
   perf-smoke:
