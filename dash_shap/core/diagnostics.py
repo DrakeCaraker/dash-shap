@@ -162,9 +162,9 @@ class ImportanceStabilityPlot:
                 textcoords="offset points",
             )
 
-        ax.set_xlabel("Consensus Importance $\\bar{I}_j$", fontsize=12)
-        ax.set_ylabel("Feature Stability Index (FSI$_j$)", fontsize=12)
-        ax.set_title(title, fontsize=14)
+        ax.set_xlabel(r"Consensus Importance $\bar{I}_j$", fontsize=12)
+        ax.set_ylabel(r"Feature Stability Index (FSI$_j$)", fontsize=12)
+        ax.set_title(title.replace("\u2014", "-").replace("\u2013", "-"), fontsize=14)
         ax.legend(loc="upper left", fontsize=9)
         fig.tight_layout()
         return fig
@@ -207,7 +207,7 @@ def local_disagreement_map(
     ax.axvline(0, color="k", linewidth=0.5)
     ax.set_xlabel("SHAP Value (consensus +/- 1 std)", fontsize=11)
     if title is None:
-        title = f"Local Disagreement Map — Observation {observation_idx}"
-    ax.set_title(title, fontsize=13)
+        title = f"Local Disagreement Map - Observation {observation_idx}"
+    ax.set_title(title.replace("\u2014", "-").replace("\u2013", "-"), fontsize=13)
     fig.tight_layout()
     return fig

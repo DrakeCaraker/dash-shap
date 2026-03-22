@@ -541,7 +541,12 @@ def experiment_linear_sweep(resume=False, cleanup=False):
         ckpt_name = f"linear_sweep_rho_{rho}"
         if resume and _has(ckpt_name):
             log(f"  Resuming: loaded checkpoint for ρ={rho}")
-            sweep_results[rho] = _load(ckpt_name)["rho_results"]
+            ckpt_data = load_checkpoint(ckpt_name, CKPT_DIR)
+            sweep_results[rho] = ckpt_data["rho_results"]
+            if "fsi_list" in ckpt_data:
+                fsi_by_rho[rho] = ckpt_data["fsi_list"]
+            if "grps" in ckpt_data:
+                grps_by_rho[rho] = ckpt_data["grps"]
             continue
 
         log(f"\n--- ρ = {rho} ---")
@@ -758,7 +763,13 @@ def experiment_linear_sweep(resume=False, cleanup=False):
                 f"({md['t_accum']:.1f}s)"
             )
 
-        _save(ckpt_name,rho_results=sweep_results[rho])
+        save_checkpoint(
+            ckpt_name,
+            checkpoint_dir=CKPT_DIR,
+            rho_results=sweep_results[rho],
+            fsi_list=fsi_by_rho.get(rho, []),
+            grps=grps_by_rho.get(rho),
+        )
 
     # FSI collinearity validation (reviewer #7): show FSI rises with rho
     log("\n  FSI Collinearity Validation (DASH):")
@@ -867,6 +878,8 @@ def experiment_linear_sweep(resume=False, cleanup=False):
 
     save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
     sweep_results.pop("_equity_tests", None)  # remove string key before return
+    sweep_results.pop("_stability_tests", None)  # remove string key before return
+    sweep_results.pop("_fsi_validation", None)  # remove string key before return
     log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
 
@@ -1534,6 +1547,7 @@ def experiment_real_california(resume=False, cleanup=False):
         log("  Skipped IS plot (DASH loaded from checkpoint)")
 
     save_json(cal_results, f"{OUT}/tables/california_housing.json")
+    cal_results.pop("_significance", None)  # remove metadata key before return
 
     if cleanup:
         clear_checkpoints_by_prefix("california_", CKPT_DIR)
@@ -1741,6 +1755,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
         log("  Skipped IS plot and disagreement map (DASH loaded from checkpoint)")
 
     save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
+    bc_results.pop("_significance", None)  # remove metadata key before return
 
     if cleanup:
         clear_checkpoints_by_prefix("breast_cancer_", CKPT_DIR)
@@ -1959,6 +1974,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
     _log_pairwise_significance(sc_results, "DASH (MaxMin)", sc_methods, "Superconductor")
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
+    sc_results.pop("_significance", None)  # remove metadata key before return
 
     if cleanup:
         clear_checkpoints_by_prefix("superconductor_", CKPT_DIR)
@@ -2472,8 +2488,22 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
     methods = ["Single Best", "DASH (MaxMin)"]
     importances = {m: {} for m in methods}
 
+    # Resume: find latest completed data-seed checkpoint
+    start_di = 0
+    if resume:
+        for di_check in range(R - 1, -1, -1):
+            ckpt_name = f"variance_decomp_crossed_di_{di_check}"
+            if has_checkpoint(ckpt_name, CKPT_DIR):
+                cached = load_checkpoint(ckpt_name, CKPT_DIR)
+                importances = cached["importances"]
+                start_di = di_check + 1
+                log(f"  Resuming: loaded checkpoint through data seed {di_check + 1}/{R}")
+                break
+
     log(f"  Running {R}×{R}={R * R} cells...")
     for di, data_seed in enumerate(data_seeds):
+        if di < start_di:
+            continue
         log(f"  Data seed {di + 1}/{R} (seed={data_seed})")
         Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
             N=5000, rho=VD_RHO, seed=data_seed
@@ -2497,6 +2527,12 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=False):
             )
             dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
             importances["DASH (MaxMin)"][(di, mi)] = dm.global_importance_
+
+        save_checkpoint(
+            f"variance_decomp_crossed_di_{di}",
+            checkpoint_dir=CKPT_DIR,
+            importances=importances,
+        )
 
     # Compute ANOVA decomposition for each method
     log(f"\n  {'Method':<22} {'Data%':>8} {'Model%':>8} {'Residual%':>10}")
