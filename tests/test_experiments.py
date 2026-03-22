@@ -7,6 +7,7 @@ import pytest
 def test_k_sweep_independence_smoke():
     """Smoke test: k_sweep_independence runs with tiny settings via parallel runner."""
     from run_experiments_parallel import experiment_k_sweep_independence
+
     results = experiment_k_sweep_independence(resume=False)
     assert len(results) > 0
     # Verify per-method structure
@@ -20,6 +21,7 @@ def test_k_sweep_independence_smoke():
 def test_asymmetric_dgp_schema():
     """Parallel runner returns bias_f0/passive_leak_f1, not old sequential bias_mean/bias_std."""
     from run_experiments_parallel import experiment_asymmetric_dgp
+
     results = experiment_asymmetric_dgp(resume=False)
     assert len(results) > 0
     for rho_key, rho_data in results.items():
@@ -37,6 +39,7 @@ def test_asymmetric_dgp_schema():
 def test_asymmetric_dgp_smoke():
     """Smoke test: asymmetric_dgp uses parallel schema (not old sequential schema)."""
     from run_experiments_parallel import experiment_asymmetric_dgp
+
     results = experiment_asymmetric_dgp(resume=False)
     assert 0.5 in results or "0.5" in results
     # Assert parallel schema — NOT the old sequential keys
@@ -51,6 +54,7 @@ def test_asymmetric_dgp_smoke():
 def test_variance_decomposition_crossed_schema():
     """ANOVA fractions must be present and sum to ~1.0."""
     from run_experiments_parallel import experiment_variance_decomposition_crossed
+
     results = experiment_variance_decomposition_crossed(resume=False)
     assert len(results) > 0
     for method, metrics in results.items():
@@ -65,6 +69,7 @@ def test_variance_decomposition_crossed_schema():
 def test_k_sweep_independence_schema():
     """k_sweep_independence migrated to parallel runner returns expected structure."""
     from run_experiments_parallel import experiment_k_sweep_independence
+
     results = experiment_k_sweep_independence(resume=False)
     assert len(results) > 0
     for k_val, k_data in results.items():
@@ -76,5 +81,6 @@ def test_k_sweep_independence_schema():
 @pytest.mark.slow
 def test_variance_decomposition_basic_schema():
     from run_experiments_parallel import experiment_variance_decomposition
+
     results = experiment_variance_decomposition(resume=False)
     assert len(results) > 0
