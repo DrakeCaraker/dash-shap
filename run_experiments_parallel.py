@@ -119,32 +119,16 @@ from dash_shap.utils.checkpoint import (
 )
 
 # ---------------------------------------------------------------------------
-# Canonical configuration — matches PAPER_CONFIG from audited notebook
+# Canonical configuration — single source of truth in dash_shap.config
 # ---------------------------------------------------------------------------
-PAPER_CONFIG = {
-    "M": 200,
-    "K": 30,
-    "N_REPS": 50,
-    "EPSILON": 0.08,
-    "DELTA": 0.05,
-    "N_TRIALS_SB": 30,
-    "T_PER_MODEL": 500,
-    "N_ESTIMATORS_ESHAP": 2000,
-    "TAU_CLUSTER": 0.3,
-}
+from dash_shap.config import PAPER_CONFIG, SEED, REAL_EPSILON, REAL_EPSILON_MODE
 
-SEED = 42
 M = PAPER_CONFIG["M"]
 K = PAPER_CONFIG["K"]
 N_REPS = PAPER_CONFIG["N_REPS"]
 EPSILON = PAPER_CONFIG["EPSILON"]
 DELTA = PAPER_CONFIG["DELTA"]
 N_TRIALS_SB = PAPER_CONFIG["N_TRIALS_SB"]
-
-# F2 fix: Scale-invariant epsilon for real-world datasets via relative mode.
-# Replaces the manually-tuned CAL_EPSILON/BC_EPSILON/SC_EPSILON constants.
-REAL_EPSILON = 0.05
-REAL_EPSILON_MODE = "relative"
 
 OUT = "results"
 CKPT_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), OUT, "checkpoints")
