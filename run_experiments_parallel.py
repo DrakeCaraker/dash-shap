@@ -110,11 +110,16 @@ from dash_shap.evaluation import (
     anova_decomposition,
 )
 from dash_shap.utils.io import save_json
-from dash_shap.utils.thread_budget import compute_thread_budget
+from dash_shap.utils.thread_budget import (
+    compute_thread_budget,
+    compute_rep_worker_budget,
+    get_available_cores,
+)
 from dash_shap.utils.checkpoint import (
     save_checkpoint,
     load_checkpoint,
     has_checkpoint,
+    clear_checkpoint,
     clear_checkpoints_by_prefix,
     _sanitize_ckpt_name,
 )
@@ -481,20 +486,9 @@ def _collect_rep(md, imp, true_imp, grps, rmse_val, model_obj):
         md["keff_runs"].append(len(model_obj.selected_indices_))
 
 
-###############################################################################
-# EXPERIMENT: Synthetic Linear — Correlation Sweep (PARALLEL OPTIMIZED)
-###############################################################################
-
-
-def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner, *, nthread=1):
-    """Run all reps for a single rho level. Returns (rho, rho_results, fsi_list, grps).
-
-    Designed to be called in parallel across rho levels via joblib.
-    n_jobs_inner controls parallelism within each method (SHAP, etc.).
-    """
-    log(f"\n--- ρ = {rho} ---")
-
-    method_data = {
+def _init_method_data(sweep_methods):
+    """Return a fresh method_data accumulator dict for the given method names."""
+    return {
         name: {
             "acc_runs": [],
             "eq_runs": [],
@@ -507,6 +501,240 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner, *, nthread=
         }
         for name in sweep_methods
     }
+
+
+def _rep_metrics(imp, true_imp, grps, rmse_val, model_obj, elapsed):
+    """Extract per-rep metrics as a plain dict. model_obj is queried but NOT stored."""
+    r, _ = importance_accuracy(imp, true_imp)
+    keff = None
+    if hasattr(model_obj, "selected_indices_") and model_obj.selected_indices_ is not None:
+        keff = len(model_obj.selected_indices_)
+    return {
+        "acc": r,
+        "eq": within_group_equity(imp, grps),
+        "imp": imp,  # numpy array only
+        "rmse": rmse_val,
+        "gacc": group_level_accuracy(imp, true_imp, grps),
+        "gmse": group_level_mse(imp, true_imp, grps),
+        "keff": keff,
+        "t": elapsed,
+    }
+
+
+def _merge_rep(method_data, per_method):
+    """Merge one rep's result dict into accumulated method_data (in-place)."""
+    for name, m in per_method.items():
+        if name not in method_data:
+            continue  # graceful skip for methods added/removed between runs
+        md = method_data[name]
+        md["acc_runs"].append(m["acc"])
+        md["eq_runs"].append(m["eq"])
+        md["imp_runs"].append(m["imp"])
+        md["rmse_runs"].append(m["rmse"])
+        md["gacc_runs"].append(m["gacc"])
+        md["gmse_runs"].append(m["gmse"])
+        if m["keff"] is not None:
+            md["keff_runs"].append(m["keff"])
+        md["t_accum"] += m["t"]
+
+
+def _aggregate_method_data(method_data, sweep_methods):
+    """Compute per-method statistics from accumulated rep lists.
+
+    Extracted from _run_single_rho for reuse in parallel rep mode.
+    Returns a rho_results dict with the same schema as _run_single_rho.
+    """
+    rho_results = {}
+    for name in sweep_methods:
+        md = method_data[name]
+        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md["imp_runs"])
+        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(md["imp_runs"], k=5)
+        n_reps = len(md["acc_runs"])
+        rho_results[name] = {
+            "stability": stab,
+            "stability_se": stab_se,
+            "stability_ci_lo": stab_ci_lo,
+            "stability_ci_hi": stab_ci_hi,
+            "topk5_stability": topk5,
+            "topk5_se": topk5_se,
+            "topk5_ci_lo": topk5_ci_lo,
+            "topk5_ci_hi": topk5_ci_hi,
+            "k_eff_mean": float(np.mean(md["keff_runs"])) if md["keff_runs"] else None,
+            "k_eff_std": float(np.std(md["keff_runs"], ddof=1)) if len(md["keff_runs"]) > 1 else None,
+            "accuracy_mean": np.mean(md["acc_runs"]),
+            "accuracy_se": np.std(md["acc_runs"], ddof=1) / np.sqrt(n_reps),
+            "accuracy_std": np.std(md["acc_runs"], ddof=1),
+            "group_accuracy_mean": np.mean(md["gacc_runs"]),
+            "group_accuracy_std": np.std(md["gacc_runs"], ddof=1),
+            "group_mse_mean": np.mean(md["gmse_runs"]),
+            "group_mse_std": np.std(md["gmse_runs"], ddof=1),
+            "equity_mean": np.mean(md["eq_runs"]),
+            "equity_se": np.std(md["eq_runs"], ddof=1) / np.sqrt(n_reps),
+            "equity_std": np.std(md["eq_runs"], ddof=1),
+            "rmse_mean": np.mean(md["rmse_runs"]),
+            "rmse_std": np.std(md["rmse_runs"], ddof=1),
+            "elapsed_s": md["t_accum"],
+            # Save per-rep arrays for significance tests
+            "acc_runs": np.array(md["acc_runs"]),
+            "eq_runs": np.array(md["eq_runs"]),
+            "rmse_runs": np.array(md["rmse_runs"]),
+            "imp_runs": md["imp_runs"],
+        }
+        log(
+            f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
+            f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
+            f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
+            f"({md['t_accum']:.1f}s)"
+        )
+    return rho_results
+
+
+###############################################################################
+# EXPERIMENT: Synthetic Linear — Correlation Sweep (PARALLEL OPTIMIZED)
+###############################################################################
+
+
+def _run_single_rep(rho, rep, sweep_methods, feature_names, *, nthread=1):
+    """Run all 9 methods for one (rho, rep) pair.
+
+    No inner joblib — all trained models explicitly deleted before return so that
+    loky worker processes inherit no model state across rep boundaries.
+
+    Returns
+    -------
+    tuple : (rep, per_method_dict, fsi_or_none, grps)
+        per_method_dict keys: acc, eq, imp, rmse, gacc, gmse, keff, t
+        All values are scalars or numpy arrays — NO model object references.
+    """
+    rep_seed = SEED + rep
+    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+        N=5000, rho=rho, seed=rep_seed
+    )
+
+    per_method: dict = {}
+    fsi_out = None
+
+    # ── Phase 1: population-dependent methods ─────────────────────────────
+    # DASH builds M=200 models; three baselines reuse via fit_from_population.
+    # Deletion order is mandatory (see ref-count analysis in plan).
+
+    t0 = time.time()
+    dash_pipeline = DASHPipeline(
+        M=M,
+        K=K,
+        epsilon=EPSILON,
+        delta=DELTA,
+        selection_method="maxmin",
+        n_jobs=1,
+        nthread=nthread,
+        seed=rep_seed,
+        verbose=False,
+    )
+    dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+    imp = dash_pipeline.global_importance_
+    rmse_val = rmse_score(yte, dash_pipeline.get_consensus_ensemble_predictions(Xte))
+    per_method["DASH (MaxMin)"] = _rep_metrics(imp, true_imp, grps, rmse_val, dash_pipeline, time.time() - t0)
+    if hasattr(dash_pipeline, "fsi_") and dash_pipeline.fsi_ is not None:
+        fsi_out = dash_pipeline.fsi_.copy()
+
+    t0 = time.time()
+    sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=1, nthread=nthread)
+    sb200.fit_from_population(dash_pipeline.models_, dash_pipeline.val_scores_, Xexp, seed=rep_seed)
+    per_method["Single Best (M=200)"] = _rep_metrics(
+        sb200.global_importance_, true_imp, grps,
+        rmse_score(yte, sb200.model_.predict(Xte)), sb200, time.time() - t0,
+    )
+    del sb200  # releases 1 best-model ref (does not hold population list)
+
+    t0 = time.time()
+    rs = RandomSelectionBaseline(
+        M=M, K=K, epsilon=EPSILON, delta=DELTA, n_jobs=1, nthread=nthread, seed=rep_seed, verbose=False,
+    )
+    rs.fit_from_population(
+        dash_pipeline.models_, dash_pipeline.val_scores_, Xexp, feature_names=feature_names,
+    )
+    per_method["Random Selection"] = _rep_metrics(
+        rs.global_importance_, true_imp, grps,
+        rmse_score(yte, rs.get_consensus_ensemble_predictions(Xte)), rs, time.time() - t0,
+    )
+    del rs  # releases self.models_ ref → population ref count: 3→2
+
+    t0 = time.time()
+    naive = NaiveAveragingBaseline(N=K, task="regression")
+    naive.fit_from_population(dash_pipeline.models_, dash_pipeline.val_scores_, Xexp)
+    per_method["Naive Top-N"] = _rep_metrics(
+        naive.global_importance_, true_imp, grps,
+        rmse_score(yte, naive.get_consensus_ensemble_predictions(Xte)), naive, time.time() - t0,
+    )
+    del naive  # releases self.models_ aliased ref → ref count: 2→1
+
+    del dash_pipeline  # ← ref count hits 0; all 200 XGBoost models freed HERE
+
+    # ── Phase 2: independent methods (population gone) ────────────────────
+
+    t0 = time.time()
+    sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=1, nthread=nthread)
+    sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+    per_method["Single Best"] = _rep_metrics(
+        sb.global_importance_, true_imp, grps,
+        rmse_score(yte, sb.model_.predict(Xte)), sb, time.time() - t0,
+    )
+    del sb
+
+    t0 = time.time()
+    lsm = LargeSingleModelBaseline(
+        K=K, T_per_model=PAPER_CONFIG["T_PER_MODEL"], colsample_bytree=0.2,
+        seed=rep_seed, tune=False, nthread=nthread,
+    )
+    lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+    per_method["Large Single Model"] = _rep_metrics(
+        lsm.global_importance_, true_imp, grps,
+        rmse_score(yte, lsm.model_.predict(Xte)), lsm, time.time() - t0,
+    )
+    del lsm
+
+    t0 = time.time()
+    lsm_t = LargeSingleModelBaseline(
+        K=K, T_per_model=PAPER_CONFIG["T_PER_MODEL"], colsample_bytree=0.2,
+        seed=rep_seed, tune=True, nthread=nthread,
+    )
+    lsm_t.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+    per_method["LSM (Tuned)"] = _rep_metrics(
+        lsm_t.global_importance_, true_imp, grps,
+        rmse_score(yte, lsm_t.model_.predict(Xte)), lsm_t, time.time() - t0,
+    )
+    del lsm_t
+
+    t0 = time.time()
+    sr = StochasticRetrainBaseline(N=K, task="regression", n_jobs=1, nthread=nthread, seed=rep_seed)
+    sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+    per_method["Stochastic Retrain"] = _rep_metrics(
+        sr.global_importance_, true_imp, grps,
+        rmse_score(yte, sr.get_consensus_ensemble_predictions(Xte)), sr, time.time() - t0,
+    )
+    del sr
+
+    t0 = time.time()
+    rf = RandomForestBaseline(n_estimators=500, task="regression", seed=rep_seed)
+    rf.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+    per_method["Random Forest"] = _rep_metrics(
+        rf.global_importance_, true_imp, grps,
+        rmse_score(yte, rf.model_.predict(Xte)), rf, time.time() - t0,
+    )
+    del rf
+
+    return rep, per_method, fsi_out, grps
+
+
+def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner, *, nthread=1):
+    """Run all reps for a single rho level. Returns (rho, rho_results, fsi_list, grps).
+
+    Designed to be called in parallel across rho levels via joblib.
+    n_jobs_inner controls parallelism within each method (SHAP, etc.).
+    """
+    log(f"\n--- ρ = {rho} ---")
+
+    method_data = _init_method_data(sweep_methods)
     fsi_list = []
     grps_last = None
 
@@ -667,48 +895,7 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner, *, nthread=
         _collect_rep(method_data["Random Forest"], imp, true_imp, grps, rmse_val, rf)
 
     # Aggregate results per method
-    rho_results = {}
-    for name in sweep_methods:
-        md = method_data[name]
-        stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(md["imp_runs"])
-        topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(md["imp_runs"], k=5)
-        n_reps = len(md["acc_runs"])
-        rho_results[name] = {
-            "stability": stab,
-            "stability_se": stab_se,
-            "stability_ci_lo": stab_ci_lo,
-            "stability_ci_hi": stab_ci_hi,
-            "topk5_stability": topk5,
-            "topk5_se": topk5_se,
-            "topk5_ci_lo": topk5_ci_lo,
-            "topk5_ci_hi": topk5_ci_hi,
-            "k_eff_mean": float(np.mean(md["keff_runs"])) if md["keff_runs"] else None,
-            "k_eff_std": float(np.std(md["keff_runs"], ddof=1)) if len(md["keff_runs"]) > 1 else None,
-            "accuracy_mean": np.mean(md["acc_runs"]),
-            "accuracy_se": np.std(md["acc_runs"], ddof=1) / np.sqrt(n_reps),
-            "accuracy_std": np.std(md["acc_runs"], ddof=1),
-            "group_accuracy_mean": np.mean(md["gacc_runs"]),
-            "group_accuracy_std": np.std(md["gacc_runs"], ddof=1),
-            "group_mse_mean": np.mean(md["gmse_runs"]),
-            "group_mse_std": np.std(md["gmse_runs"], ddof=1),
-            "equity_mean": np.mean(md["eq_runs"]),
-            "equity_se": np.std(md["eq_runs"], ddof=1) / np.sqrt(n_reps),
-            "equity_std": np.std(md["eq_runs"], ddof=1),
-            "rmse_mean": np.mean(md["rmse_runs"]),
-            "rmse_std": np.std(md["rmse_runs"], ddof=1),
-            "elapsed_s": md["t_accum"],
-            # Save per-rep arrays for significance tests
-            "acc_runs": np.array(md["acc_runs"]),
-            "eq_runs": np.array(md["eq_runs"]),
-            "rmse_runs": np.array(md["rmse_runs"]),
-            "imp_runs": md["imp_runs"],
-        }
-        log(
-            f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
-            f"acc={np.mean(md['acc_runs']):.4f}  gacc={np.mean(md['gacc_runs']):.4f}  gmse={np.mean(md['gmse_runs']):.6f}  "
-            f"eq={np.mean(md['eq_runs']):.4f}  RMSE={np.mean(md['rmse_runs']):.4f}  "
-            f"({md['t_accum']:.1f}s)"
-        )
+    rho_results = _aggregate_method_data(method_data, sweep_methods)
 
     # Checkpoint per-rho results
     save_checkpoint(
@@ -722,12 +909,19 @@ def _run_single_rho(rho, sweep_methods, feature_names, n_jobs_inner, *, nthread=
     return rho, rho_results, fsi_list, grps_last
 
 
-def experiment_linear_sweep(resume=False, cleanup=False):
+def experiment_linear_sweep(resume=False, cleanup=False, sequential=False):
     """Canonical correlation sweep: rho ∈ {0.0, 0.5, 0.7, 0.9, 0.95}.
 
     Parallel-optimized: rep-outer loop with population sharing between
     DASH, RandomSelection, SingleBest(M=200), and NaiveTop-N.
-    Rho levels run in parallel via joblib when multiple cores are available.
+
+    When sequential=False (default): flattens all (rho, rep) pairs into a
+    single Parallel call — up to N_REPS * len(rho_levels) concurrent workers.
+    Uses per-rep checkpointing for crash resilience.
+
+    When sequential=True: runs rho levels in parallel (existing behavior) and
+    reps sequentially within each rho. Useful for validation or single-core
+    machines.
 
     Matches notebook Section 4.  Uses four-way split: X_explain for SHAP
     (X_ref), X_test exclusively for RMSE (A4 fix).  Reports BCa bootstrap
@@ -784,26 +978,89 @@ def experiment_linear_sweep(resume=False, cleanup=False):
             pending_rhos.append(rho)
 
     if pending_rhos:
-        # Determine parallelism: run rho levels concurrently, subdivide cores
-        n_rho = len(pending_rhos)
-        budget = compute_thread_budget(n_outer=n_rho)
-        n_jobs_inner = budget.n_inner
-        nthread = budget.nthread
-        log(
-            f"  Running {n_rho} rho levels in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per level, nthread={nthread})"
-        )
+        if sequential:
+            # ── Sequential fallback: existing behavior (parallel across rho levels) ──
+            n_rho = len(pending_rhos)
+            budget = compute_thread_budget(n_outer=n_rho)
+            n_jobs_inner = budget.n_inner
+            nthread = budget.nthread
+            log(
+                f"  Running {n_rho} rho levels in parallel ({budget.n_outer * budget.n_inner * budget.nthread} cores, {n_jobs_inner} per level, nthread={nthread})"
+            )
 
-        results_list = Parallel(n_jobs=n_rho, backend="loky")(
-            delayed(_run_single_rho)(rho, sweep_methods, feature_names, n_jobs_inner, nthread=nthread)
-            for rho in pending_rhos
-        )
+            results_list = Parallel(n_jobs=n_rho, backend="loky")(
+                delayed(_run_single_rho)(rho, sweep_methods, feature_names, n_jobs_inner, nthread=nthread)
+                for rho in pending_rhos
+            )
 
-        for rho, rho_results, fsi_list, grps_last in results_list:
-            sweep_results[rho] = rho_results
-            if fsi_list:
-                fsi_by_rho[rho] = fsi_list
-            if grps_last is not None:
-                grps_by_rho[rho] = grps_last
+            for rho, rho_results, fsi_list, grps_last in results_list:
+                sweep_results[rho] = rho_results
+                if fsi_list:
+                    fsi_by_rho[rho] = fsi_list
+                if grps_last is not None:
+                    grps_by_rho[rho] = grps_last
+        else:
+            # ── Parallel rep mode: single flat Parallel over all (rho × rep) pairs ──
+            partial_data = {rho: _init_method_data(sweep_methods) for rho in pending_rhos}
+            pending_pairs = []
+
+            for rho in pending_rhos:
+                for rep in range(N_REPS):
+                    ckpt_key = f"linear_sweep_{rho}_rep_{rep}"
+                    if resume and _has(ckpt_key):
+                        data = _load(ckpt_key)
+                        _merge_rep(partial_data[rho], data["per_method"])
+                        if data.get("fsi") is not None:
+                            fsi_by_rho.setdefault(rho, []).append(data["fsi"])
+                        grps_by_rho[rho] = data["grps"]
+                    else:
+                        pending_pairs.append((rho, rep))
+
+            n_total = len(pending_rhos) * N_REPS
+            n_pending = len(pending_pairs)
+            n_resumed = n_total - n_pending
+            log(
+                f"  {n_pending} (rho, rep) pairs pending"
+                + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
+            )
+
+            if pending_pairs:
+                n_workers = compute_rep_worker_budget(n_work=len(pending_pairs))
+                total_cores = get_available_cores()
+                nthread = max(1, total_cores // n_workers)
+                log(
+                    f"  Running {n_workers} workers on {total_cores} cores "
+                    f"(nthread={nthread} per worker)"
+                )
+
+                results_list = Parallel(n_jobs=n_workers, backend="loky")(
+                    delayed(_run_single_rep)(rho, rep, sweep_methods, feature_names, nthread=nthread)
+                    for rho, rep in pending_pairs
+                )
+
+                for (rho, rep), (rep_out, per_method, fsi_out, grps) in zip(pending_pairs, results_list):
+                    _merge_rep(partial_data[rho], per_method)
+                    if fsi_out is not None:
+                        fsi_by_rho.setdefault(rho, []).append(fsi_out)
+                    grps_by_rho[rho] = grps
+                    _save(
+                        f"linear_sweep_{rho}_rep_{rep}",
+                        per_method=per_method, fsi=fsi_out, grps=grps,
+                    )
+
+            # Aggregate per rho, write final checkpoints, clean up per-rep files
+            for rho in pending_rhos:
+                rho_results = _aggregate_method_data(partial_data[rho], sweep_methods)
+                sweep_results[rho] = rho_results
+                save_checkpoint(
+                    f"linear_sweep_rho_{rho}",
+                    checkpoint_dir=CKPT_DIR,
+                    rho_results=rho_results,
+                    fsi_list=fsi_by_rho.get(rho, []),
+                    grps=grps_by_rho.get(rho),
+                )
+                for rep in range(N_REPS):
+                    clear_checkpoint(f"linear_sweep_{rho}_rep_{rep}", CKPT_DIR)
 
     # FSI collinearity validation (reviewer #7): show FSI rises with rho
     log("\n  FSI Collinearity Validation (DASH):")
@@ -3743,6 +4000,11 @@ Examples:
         action="store_true",
         help="Keep per-level checkpoints after experiment completes",
     )
+    parser.add_argument(
+        "--sequential",
+        action="store_true",
+        help="Disable rep parallelism for linear_sweep (use for validation or single-core machines)",
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -3764,7 +4026,10 @@ Examples:
     sweep_results = None
 
     for name in to_run:
-        result = EXPERIMENTS[name](resume=args.resume, cleanup=not args.no_cleanup)
+        kwargs: dict = {"resume": args.resume, "cleanup": not args.no_cleanup}
+        if name == "linear_sweep":
+            kwargs["sequential"] = args.sequential
+        result = EXPERIMENTS[name](**kwargs)
         if name == "linear_sweep":
             sweep_results = result
 

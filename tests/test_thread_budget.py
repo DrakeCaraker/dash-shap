@@ -2,7 +2,12 @@
 
 import pytest
 
-from dash_shap.utils.thread_budget import get_available_cores, compute_thread_budget, ThreadBudget
+from dash_shap.utils.thread_budget import (
+    get_available_cores,
+    compute_thread_budget,
+    compute_rep_worker_budget,
+    ThreadBudget,
+)
 
 
 def test_get_available_cores_returns_positive():
@@ -81,3 +86,58 @@ def test_budget_all_fields_positive():
             assert budget.n_outer >= 1
             assert budget.n_inner >= 1
             assert budget.nthread >= 1
+
+
+###############################################################################
+# Tests for compute_rep_worker_budget
+###############################################################################
+
+
+def test_compute_rep_worker_budget_returns_positive():
+    result = compute_rep_worker_budget(n_work=10, total_cores=4)
+    assert result >= 1
+
+
+def test_compute_rep_worker_budget_never_exceeds_work(monkeypatch):
+    """Result must never exceed the number of work items."""
+    monkeypatch.delenv("DASH_MAX_PARALLEL_REPS", raising=False)
+    monkeypatch.setenv("DASH_MAX_THREADS", "100")
+    result = compute_rep_worker_budget(n_work=3, total_cores=100)
+    assert result <= 3
+
+
+def test_compute_rep_worker_budget_cpu_cap(monkeypatch):
+    """Result must never exceed available cores."""
+    monkeypatch.delenv("DASH_MAX_PARALLEL_REPS", raising=False)
+    monkeypatch.setenv("DASH_MAX_THREADS", "4")
+    result = compute_rep_worker_budget(n_work=250, total_cores=4)
+    assert result <= 4
+
+
+def test_compute_rep_worker_budget_env_override(monkeypatch):
+    """DASH_MAX_PARALLEL_REPS overrides all other caps."""
+    monkeypatch.setenv("DASH_MAX_PARALLEL_REPS", "2")
+    result = compute_rep_worker_budget(n_work=250, total_cores=72)
+    assert result == 2
+
+
+def test_compute_rep_worker_budget_env_override_capped_to_work(monkeypatch):
+    """DASH_MAX_PARALLEL_REPS is capped to n_work even if larger."""
+    monkeypatch.setenv("DASH_MAX_PARALLEL_REPS", "100")
+    result = compute_rep_worker_budget(n_work=3, total_cores=72)
+    assert result == 3
+
+
+def test_compute_rep_worker_budget_single_core(monkeypatch):
+    """On a 1-core machine the result should be 1."""
+    monkeypatch.delenv("DASH_MAX_PARALLEL_REPS", raising=False)
+    monkeypatch.setenv("DASH_MAX_THREADS", "1")
+    result = compute_rep_worker_budget(n_work=50, total_cores=1)
+    assert result == 1
+
+
+def test_compute_rep_worker_budget_zero_env_override_clamped(monkeypatch):
+    """DASH_MAX_PARALLEL_REPS=0 should clamp to 1."""
+    monkeypatch.setenv("DASH_MAX_PARALLEL_REPS", "0")
+    result = compute_rep_worker_budget(n_work=10)
+    assert result >= 1
