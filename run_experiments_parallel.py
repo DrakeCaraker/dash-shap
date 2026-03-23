@@ -641,21 +641,39 @@ def _run_single_rep(rho, rep, sweep_methods, feature_names, *, nthread=1):
     sb200 = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=1, nthread=nthread)
     sb200.fit_from_population(dash_pipeline.models_, dash_pipeline.val_scores_, Xexp, seed=rep_seed)
     per_method["Single Best (M=200)"] = _rep_metrics(
-        sb200.global_importance_, true_imp, grps,
-        rmse_score(yte, sb200.model_.predict(Xte)), sb200, time.time() - t0,
+        sb200.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, sb200.model_.predict(Xte)),
+        sb200,
+        time.time() - t0,
     )
     del sb200  # releases 1 best-model ref (does not hold population list)
 
     t0 = time.time()
     rs = RandomSelectionBaseline(
-        M=M, K=K, epsilon=EPSILON, delta=DELTA, n_jobs=1, nthread=nthread, seed=rep_seed, verbose=False,
+        M=M,
+        K=K,
+        epsilon=EPSILON,
+        delta=DELTA,
+        n_jobs=1,
+        nthread=nthread,
+        seed=rep_seed,
+        verbose=False,
     )
     rs.fit_from_population(
-        dash_pipeline.models_, dash_pipeline.val_scores_, Xexp, feature_names=feature_names,
+        dash_pipeline.models_,
+        dash_pipeline.val_scores_,
+        Xexp,
+        feature_names=feature_names,
     )
     per_method["Random Selection"] = _rep_metrics(
-        rs.global_importance_, true_imp, grps,
-        rmse_score(yte, rs.get_consensus_ensemble_predictions(Xte)), rs, time.time() - t0,
+        rs.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, rs.get_consensus_ensemble_predictions(Xte)),
+        rs,
+        time.time() - t0,
     )
     del rs  # releases self.models_ ref → population ref count: 3→2
 
@@ -663,8 +681,12 @@ def _run_single_rep(rho, rep, sweep_methods, feature_names, *, nthread=1):
     naive = NaiveAveragingBaseline(N=K, task="regression")
     naive.fit_from_population(dash_pipeline.models_, dash_pipeline.val_scores_, Xexp)
     per_method["Naive Top-N"] = _rep_metrics(
-        naive.global_importance_, true_imp, grps,
-        rmse_score(yte, naive.get_consensus_ensemble_predictions(Xte)), naive, time.time() - t0,
+        naive.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, naive.get_consensus_ensemble_predictions(Xte)),
+        naive,
+        time.time() - t0,
     )
     del naive  # releases self.models_ aliased ref → ref count: 2→1
 
@@ -676,32 +698,52 @@ def _run_single_rep(rho, rep, sweep_methods, feature_names, *, nthread=1):
     sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=1, nthread=nthread)
     sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
     per_method["Single Best"] = _rep_metrics(
-        sb.global_importance_, true_imp, grps,
-        rmse_score(yte, sb.model_.predict(Xte)), sb, time.time() - t0,
+        sb.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, sb.model_.predict(Xte)),
+        sb,
+        time.time() - t0,
     )
     del sb
 
     t0 = time.time()
     lsm = LargeSingleModelBaseline(
-        K=K, T_per_model=PAPER_CONFIG["T_PER_MODEL"], colsample_bytree=0.2,
-        seed=rep_seed, tune=False, nthread=nthread,
+        K=K,
+        T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+        colsample_bytree=0.2,
+        seed=rep_seed,
+        tune=False,
+        nthread=nthread,
     )
     lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
     per_method["Large Single Model"] = _rep_metrics(
-        lsm.global_importance_, true_imp, grps,
-        rmse_score(yte, lsm.model_.predict(Xte)), lsm, time.time() - t0,
+        lsm.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, lsm.model_.predict(Xte)),
+        lsm,
+        time.time() - t0,
     )
     del lsm
 
     t0 = time.time()
     lsm_t = LargeSingleModelBaseline(
-        K=K, T_per_model=PAPER_CONFIG["T_PER_MODEL"], colsample_bytree=0.2,
-        seed=rep_seed, tune=True, nthread=nthread,
+        K=K,
+        T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+        colsample_bytree=0.2,
+        seed=rep_seed,
+        tune=True,
+        nthread=nthread,
     )
     lsm_t.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
     per_method["LSM (Tuned)"] = _rep_metrics(
-        lsm_t.global_importance_, true_imp, grps,
-        rmse_score(yte, lsm_t.model_.predict(Xte)), lsm_t, time.time() - t0,
+        lsm_t.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, lsm_t.model_.predict(Xte)),
+        lsm_t,
+        time.time() - t0,
     )
     del lsm_t
 
@@ -709,8 +751,12 @@ def _run_single_rep(rho, rep, sweep_methods, feature_names, *, nthread=1):
     sr = StochasticRetrainBaseline(N=K, task="regression", n_jobs=1, nthread=nthread, seed=rep_seed)
     sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
     per_method["Stochastic Retrain"] = _rep_metrics(
-        sr.global_importance_, true_imp, grps,
-        rmse_score(yte, sr.get_consensus_ensemble_predictions(Xte)), sr, time.time() - t0,
+        sr.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, sr.get_consensus_ensemble_predictions(Xte)),
+        sr,
+        time.time() - t0,
     )
     del sr
 
@@ -718,8 +764,12 @@ def _run_single_rep(rho, rep, sweep_methods, feature_names, *, nthread=1):
     rf = RandomForestBaseline(n_estimators=500, task="regression", seed=rep_seed)
     rf.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
     per_method["Random Forest"] = _rep_metrics(
-        rf.global_importance_, true_imp, grps,
-        rmse_score(yte, rf.model_.predict(Xte)), rf, time.time() - t0,
+        rf.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, rf.model_.predict(Xte)),
+        rf,
+        time.time() - t0,
     )
     del rf
 
@@ -1028,10 +1078,7 @@ def experiment_linear_sweep(resume=False, cleanup=False, sequential=False):
                 n_workers = compute_rep_worker_budget(n_work=len(pending_pairs))
                 total_cores = get_available_cores()
                 nthread = max(1, total_cores // n_workers)
-                log(
-                    f"  Running {n_workers} workers on {total_cores} cores "
-                    f"(nthread={nthread} per worker)"
-                )
+                log(f"  Running {n_workers} workers on {total_cores} cores (nthread={nthread} per worker)")
 
                 results_list = Parallel(n_jobs=n_workers, backend="loky")(
                     delayed(_run_single_rep)(rho, rep, sweep_methods, feature_names, nthread=nthread)
@@ -1045,7 +1092,9 @@ def experiment_linear_sweep(resume=False, cleanup=False, sequential=False):
                     grps_by_rho[rho] = grps
                     _save(
                         f"linear_sweep_{rho}_rep_{rep}",
-                        per_method=per_method, fsi=fsi_out, grps=grps,
+                        per_method=per_method,
+                        fsi=fsi_out,
+                        grps=grps,
                     )
 
             # Aggregate per rho, write final checkpoints, clean up per-rep files

@@ -1,28 +1,28 @@
 .PHONY: test test-fast test-slow lint fmt fmt-check typecheck coverage ci rebase clean
 
 test:
-	pytest -v
+	python3 -m pytest -v
 
 test-fast:
-	pytest -v -m "not slow"
+	python3 -m pytest -v -m "not slow"
 
 test-slow:
-	pytest -v -m "slow"
+	python3 -m pytest -v -m "slow"
 
 lint:
-	ruff check .
+	python3 -m ruff check .
 
 fmt:
-	ruff format .
+	python3 -m ruff format .
 
 fmt-check:
-	ruff format --check .
+	python3 -m ruff format --check .
 
 typecheck:
-	mypy dash_shap/ --ignore-missing-imports --no-error-summary
+	python3 -m mypy dash_shap/ --ignore-missing-imports --no-error-summary
 
 coverage:
-	pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
+	python3 -m pytest --cov=dash_shap --cov-report=term-missing --cov-fail-under=70
 
 ci: lint fmt-check typecheck test coverage
 	@echo "All CI checks passed."
