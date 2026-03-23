@@ -38,6 +38,21 @@ Available experiments:
 
 import argparse
 import os as _os
+
+# Pin BLAS/OpenMP thread counts to 1 before numpy is imported.
+# joblib + XGBoost nthread handle all parallelism; leaving these unset
+# causes each worker to spawn O(cores) threads, producing severe oversubscription.
+# Override with DASH_BLAS_THREADS if you need more (e.g. for pure-numpy workloads).
+_blas_threads = _os.environ.get("DASH_BLAS_THREADS", "1")
+for _var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
+    _os.environ.setdefault(_var, _blas_threads)
+
 import numpy as np
 import matplotlib
 
@@ -1077,8 +1092,8 @@ def experiment_linear_sweep(resume=False, cleanup=False, sequential=False):
             if pending_pairs:
                 n_workers = compute_rep_worker_budget(n_work=len(pending_pairs))
                 total_cores = get_available_cores()
-                nthread = max(1, total_cores // n_workers)
-                log(f"  Running {n_workers} workers on {total_cores} cores (nthread={nthread} per worker)")
+                nthread = 1  # single-threaded XGBoost: deterministic, maximizes worker throughput
+                log(f"  Running {n_workers} workers on {total_cores} cores (nthread={nthread})")
 
                 results_list = Parallel(n_jobs=n_workers, backend="loky")(
                     delayed(_run_single_rep)(rho, rep, sweep_methods, feature_names, nthread=nthread)

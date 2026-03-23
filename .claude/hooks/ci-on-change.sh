@@ -2,10 +2,10 @@
 # Run make ci when dash_shap/ or tests/ Python files have been modified.
 set -euo pipefail
 
-REPO=/Users/drake.caraker/ds_projects/dash-shap
+REPO="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 
 # Ensure user-installed binaries (ruff, mypy, etc.) are on PATH
-export PATH="/Users/drake.caraker/Library/Python/3.9/bin:$PATH"
+export PATH="$HOME/.local/bin:$HOME/Library/Python/3.9/bin:$PATH"
 
 changed=$(git -C "$REPO" status --porcelain 2>/dev/null \
   | awk '{print $2}' \
