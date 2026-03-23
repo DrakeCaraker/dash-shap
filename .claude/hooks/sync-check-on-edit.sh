@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-REPO=/Users/drake.caraker/ds_projects/dash-shap
+export REPO="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 f=$(jq -r '.tool_input.file_path // ""')
-basename "$f" | grep -qE '^run_experiments.*\.py$' || exit 0
+basename "$f" | grep -qE '^(run_experiments.*\.py|config\.py)$' || exit 0
 echo "Checking PAPER_CONFIG sync..."
 python3 << 'PYEOF'
 import re, sys, os
-REPO = os.environ.get('REPO', '/Users/drake.caraker/ds_projects/dash-shap')
+REPO = os.environ.get('REPO', '.')
 
 def parse_config(text):
     return {
@@ -14,12 +14,13 @@ def parse_config(text):
         'N_REPS': int(re.search(r'"N_REPS":\s*(\d+)', text).group(1)),
         'EPSILON': float(re.search(r'"EPSILON":\s*([\d.]+)', text).group(1)),
         'DELTA': float(re.search(r'"DELTA":\s*([\d.]+)', text).group(1)),
-        'SEED': int(re.search(r'SEED\s*=\s*(\d+)', text).group(1)),
+        'SEED': int(re.search(r'SEED\s*(?::\s*int\s*)?=\s*(\d+)', text).group(1)),
     }
 
+# Canonical source of truth + sequential runner (which still has a local copy)
 files = [
+    os.path.join(REPO, 'dash_shap', 'config.py'),
     os.path.join(REPO, 'run_experiments.py'),
-    os.path.join(REPO, 'run_experiments_parallel.py'),
 ]
 configs = {}
 for path in files:
@@ -34,7 +35,7 @@ errors = 0
 for path, vals in list(configs.items())[1:]:
     for key in ref:
         if vals.get(key) != ref[key]:
-            print(f'MISMATCH {key}: run_experiments.py={ref[key]}, parallel={vals.get(key)}')
+            print(f'MISMATCH {key}: config.py={ref[key]}, run_experiments.py={vals.get(key)}')
             errors += 1
 if errors == 0:
     print('PAPER_CONFIG consistent.')
