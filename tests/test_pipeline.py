@@ -49,6 +49,7 @@ def test_performance_filter_verbose(capsys):
 def test_config_values():
     # Covers dash_shap/config.py (was 0% coverage)
     from dash_shap.config import PAPER_CONFIG, SEED, REAL_EPSILON, REAL_EPSILON_MODE
+
     assert PAPER_CONFIG["M"] == 200
     assert PAPER_CONFIG["K"] == 30
     assert SEED == 42
