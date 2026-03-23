@@ -31,6 +31,30 @@ def test_performance_filter_basic():
     assert 2 not in filtered
 
 
+def test_performance_filter_quantile_lower_is_better():
+    # Covers line 38: quantile mode with higher_is_better=False
+    scores = {0: 0.10, 1: 0.20, 2: 0.50, 3: 0.80}
+    filtered = performance_filter(scores, epsilon=0.5, mode="quantile", higher_is_better=False, verbose=False)
+    assert 0 in filtered  # lowest error, should be kept
+
+
+def test_performance_filter_verbose(capsys):
+    # Covers line 43: verbose print path
+    scores = {0: 0.90, 1: 0.85}
+    performance_filter(scores, epsilon=0.1, verbose=True)
+    captured = capsys.readouterr()
+    assert "Performance filter" in captured.out
+
+
+def test_config_values():
+    # Covers dash_shap/config.py (was 0% coverage)
+    from dash_shap.config import PAPER_CONFIG, SEED, REAL_EPSILON, REAL_EPSILON_MODE
+    assert PAPER_CONFIG["M"] == 200
+    assert PAPER_CONFIG["K"] == 30
+    assert SEED == 42
+    assert REAL_EPSILON_MODE == "relative"
+
+
 def test_compute_diagnostics_shapes():
     K, N, P = 3, 10, 5
     all_shap = np.random.randn(K, N, P)
