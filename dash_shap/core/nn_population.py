@@ -41,14 +41,14 @@ def sample_nn_configurations(
     rng = np.random.RandomState(seed)
     configs: list[dict] = []
     for _ in range(M):
-        config = {k: rng.choice(v) for k, v in search_space.items()}
+        config = {}
+        for k, v in search_space.items():
+            idx = rng.randint(len(v))
+            config[k] = v[idx]
         config = {
             k: (float(v) if isinstance(v, np.floating) else int(v) if isinstance(v, np.integer) else v)
             for k, v in config.items()
         }
-        # hidden_layer_sizes must be a tuple, not a numpy array
-        if "hidden_layer_sizes" in config and not isinstance(config["hidden_layer_sizes"], tuple):
-            config["hidden_layer_sizes"] = tuple(config["hidden_layer_sizes"])
         configs.append(config)
     return configs
 

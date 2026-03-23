@@ -12,7 +12,7 @@ __all__ = ["compute_nn_attributions"]
 
 def _compute_kernel_shap_for_model(model: object, bg_data: np.ndarray, X_ref: np.ndarray) -> np.ndarray:
     """Compute KernelSHAP values for a single model."""
-    explainer = shap.KernelExplainer(model.predict, bg_data)
+    explainer = shap.KernelExplainer(model.predict, bg_data)  # type: ignore[attr-defined]
     sv = explainer.shap_values(X_ref, nsamples="auto", silent=True)
     if isinstance(sv, list):
         sv = np.mean(sv, axis=0)
@@ -20,7 +20,7 @@ def _compute_kernel_shap_for_model(model: object, bg_data: np.ndarray, X_ref: np
 
 
 def compute_nn_attributions(
-    models: list,
+    models: dict | list,
     selected_indices: list[int],
     X_ref: np.ndarray,
     background_size: int = 100,
