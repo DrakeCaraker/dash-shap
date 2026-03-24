@@ -1,4 +1,4 @@
-.PHONY: test test-fast test-slow lint fmt fmt-check typecheck coverage ci rebase clean
+.PHONY: test test-fast test-slow lint fmt fmt-check typecheck coverage ci rebase clean audit
 
 test:
 	python3 -m pytest -v
@@ -36,3 +36,12 @@ clean:
 	rm -rf __pycache__ .pytest_cache .mypy_cache .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -name "*.pyc" -delete 2>/dev/null || true
+
+audit:
+	@echo "=== Notebook ID Check ==="
+	-python3 scripts/check_notebook_ids.py
+	@echo ""
+	@echo "=== Sensitive Data Scan ==="
+	@git ls-files | xargs grep -nE '(sk-[a-zA-Z0-9]{20,}|password\s*=\s*["'"'"'][^"'"'"']+|api_key\s*=\s*["'"'"'][^"'"'"']+)' || echo "No sensitive patterns found."
+	@echo ""
+	@echo "For full AI-powered audit, run /audit in Claude Code"
