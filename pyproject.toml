@@ -47,6 +47,7 @@ include = ["dash_shap*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+timeout = 120
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
