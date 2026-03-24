@@ -306,6 +306,53 @@ jobs:
               print('Performance OK.')
           "
 
+  result-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -e .
+      - name: Validate committed result JSONs
+        run: |
+          python -c "
+          import json, sys, os, glob, math
+          errors = 0
+          ref_config = None
+          for path in sorted(glob.glob('results/tables/*.json')):
+              if 'frozen' in os.path.basename(path):
+                  print(f'SKIP (frozen): {path}')
+                  continue
+              try:
+                  data = json.loads(open(path).read())
+              except Exception as e:
+                  print(f'FAIL parse {path}: {e}')
+                  errors += 1
+                  continue
+              if '_meta' not in data:
+                  print(f'FAIL no _meta: {path}')
+                  errors += 1
+                  continue
+              meta = data['_meta']
+              for field in ['experiment', 'timestamp', 'code_sha', 'n_reps', 'paper_config']:
+                  if field not in meta:
+                      print(f'FAIL _meta missing {field}: {path}')
+                      errors += 1
+              cfg = meta.get('paper_config')
+              if cfg:
+                  if ref_config is None:
+                      ref_config = cfg
+                  elif cfg != ref_config:
+                      print(f'FAIL config mismatch vs first seen: {path}')
+                      errors += 1
+              print(f'OK: {path}')
+          sys.exit(errors)
+          "
+
   slow-tests:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest

@@ -17,6 +17,11 @@ from dash_shap.utils.checkpoint import (
     _config_fingerprint,
 )
 from dash_shap.utils.io import save_json
+from dash_shap.utils.provenance import (
+    append_provenance_md,
+    capture_run_meta,
+    validate_result,
+)
 from dash_shap.core.pipeline import DASHPipeline
 
 
@@ -195,3 +200,153 @@ class TestSaveJson:
             loaded = json.load(f)
         assert "0" in loaded
         assert "1" in loaded
+
+    def test_meta_embedded_as_first_key(self, tmp_path):
+        data = {"stability": 0.95, "rmse": 0.12}
+        meta = {"experiment": "test", "n_reps": 50}
+        path = tmp_path / "meta_test.json"
+        save_json(data, str(path), meta=meta)
+        with open(path) as f:
+            loaded = json.load(f)
+        keys = list(loaded.keys())
+        assert keys[0] == "_meta"
+        assert loaded["_meta"]["experiment"] == "test"
+        assert loaded["stability"] == 0.95
+
+    def test_overwrite_creates_backup(self, tmp_path):
+        data = {"x": 1}
+        path = tmp_path / "overwrite_test.json"
+        save_json(data, str(path), overwrite_protection=False)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            save_json({"x": 2}, str(path), overwrite_protection=True)
+        assert len(w) == 1
+        assert issubclass(w[0].category, UserWarning)
+        bak_files = list(tmp_path.glob("overwrite_test.*.bak.json"))
+        assert len(bak_files) == 1
+
+    def test_no_backup_when_protection_off(self, tmp_path):
+        data = {"x": 1}
+        path = tmp_path / "nobackup.json"
+        save_json(data, str(path), overwrite_protection=False)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            save_json({"x": 2}, str(path), overwrite_protection=False)
+        assert len(w) == 0
+        bak_files = list(tmp_path.glob("*.bak.json"))
+        assert len(bak_files) == 0
+
+
+class TestProvenance:
+    def _make_valid_entry(self, n_reps=10):
+        return {
+            "stability": 0.95,
+            "accuracy": 0.88,
+            "equity": 0.91,
+            "n_successful": n_reps,
+        }
+
+    def test_validate_result_clean(self):
+        data = {"0.5": {"DASH": self._make_valid_entry()}}
+        issues = validate_result(data, "test_exp")
+        assert issues == []
+
+    def test_validate_result_nan_stability(self):
+        data = {"0.5": {"DASH": {"stability": float("nan"), "n_successful": 10}}}
+        issues = validate_result(data, "test_exp")
+        assert any("NaN" in i and "stability" in i for i in issues)
+
+    def test_validate_result_zero_successful(self):
+        data = {"0.5": {"DASH": {"stability": 0.9, "n_successful": 0}}}
+        issues = validate_result(data, "test_exp")
+        assert any("n_successful" in i for i in issues)
+
+    def test_validate_result_incomplete_runs(self):
+        data = {
+            "0.5": {
+                "DASH": {
+                    "stability": 0.9,
+                    "n_successful": 10,
+                    "acc_runs": [0.8, 0.9],
+                    "n_reps": 10,
+                }
+            }
+        }
+        issues = validate_result(data, "test_exp")
+        assert any("acc_runs" in i for i in issues)
+
+    def test_validate_result_ci_sanity(self):
+        data = {
+            "0.5": {
+                "DASH": {
+                    "stability": 0.9,
+                    "stability_lo": 0.95,  # lo > point — invalid
+                    "stability_hi": 0.99,
+                }
+            }
+        }
+        issues = validate_result(data, "test_exp")
+        assert any("CI sanity" in i for i in issues)
+
+    def test_validate_result_degenerate_bootstrap(self):
+        data = {
+            "0.5": {
+                "DASH": {
+                    "stability": 0.9,
+                    "stability_se": -0.01,
+                }
+            }
+        }
+        issues = validate_result(data, "test_exp")
+        assert any("stability_se" in i for i in issues)
+
+    def test_validate_skips_meta_keys(self):
+        data = {
+            "_meta": {"experiment": "foo"},
+            "_significance": {"p": 0.01},
+            "0.5": {"DASH": self._make_valid_entry()},
+        }
+        issues = validate_result(data, "test_exp")
+        assert issues == []
+
+    def test_capture_run_meta_fields(self, tmp_path):
+        config = {"M": 200, "K": 30, "N_REPS": 50}
+        meta = capture_run_meta("test_exp", 50, config, 123.4, str(tmp_path / "out.json"))
+        required = {
+            "experiment",
+            "timestamp",
+            "code_sha",
+            "code_dirty",
+            "config_sha",
+            "n_reps",
+            "paper_config",
+            "elapsed_s",
+            "output",
+            "hardware",
+        }
+        assert required.issubset(meta.keys())
+        assert meta["experiment"] == "test_exp"
+        assert meta["n_reps"] == 50
+        assert isinstance(meta["config_sha"], str) and len(meta["config_sha"]) == 64
+
+    def test_append_provenance_md_creates_file(self, tmp_path):
+        config = {"M": 200, "K": 30}
+        meta = capture_run_meta("exp1", 20, config, 60.0, str(tmp_path / "out.json"))
+        append_provenance_md(meta, str(tmp_path))
+        prov = tmp_path / "PROVENANCE.md"
+        assert prov.exists()
+        content = prov.read_text()
+        assert "exp1" in content
+        assert "## exp1" in content
+
+    def test_append_provenance_md_accumulates(self, tmp_path):
+        config = {"M": 200}
+        meta1 = capture_run_meta("exp_a", 10, config, 30.0, str(tmp_path / "a.json"))
+        meta2 = capture_run_meta("exp_b", 10, config, 45.0, str(tmp_path / "b.json"))
+        append_provenance_md(meta1, str(tmp_path))
+        append_provenance_md(meta2, str(tmp_path))
+        content = (tmp_path / "PROVENANCE.md").read_text()
+        assert "## exp_a" in content
+        assert "## exp_b" in content
+        assert content.count("## exp_a") == 1
+        assert content.count("## exp_b") == 1
