@@ -10,6 +10,8 @@ __all__ = [
     "RandomForestBaseline",
     "PermutationImportanceBaseline",
     "LightGBMSingleBestBaseline",
+    "SingleNNBaseline",
+    "BaggedNNBaseline",
 ]
 
 
@@ -50,4 +52,12 @@ def __getattr__(name):
         from dash_shap.baselines.lightgbm_single import LightGBMSingleBestBaseline
 
         return LightGBMSingleBestBaseline
+    elif name == "SingleNNBaseline":
+        from dash_shap.baselines.nn_baselines import SingleNNBaseline
+
+        return SingleNNBaseline
+    elif name == "BaggedNNBaseline":
+        from dash_shap.baselines.nn_baselines import BaggedNNBaseline
+
+        return BaggedNNBaseline
     raise AttributeError(f"module 'dash_shap.baselines' has no attribute {name}")
