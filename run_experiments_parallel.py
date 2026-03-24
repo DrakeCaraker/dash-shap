@@ -364,6 +364,56 @@ def plot_correlation_sweep(all_results, rho_levels, method_names):
 
 
 ###############################################################################
+# PLOT: Nonlinear sweep
+###############################################################################
+
+
+def plot_nonlinear_sweep(nl_results, rho_levels, method_names):
+    """Line plot: stability vs rho for each method (nonlinear DGP)."""
+    _ensure_dirs()
+    plot_methods = [n for n in MARKERS if n in method_names]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    for name in plot_methods:
+        c = COLORS.get(name, "#333")
+        m = MARKERS.get(name, "o")
+        vals = []
+        errs = []
+        xs = []
+        for rho in rho_levels:
+            entry = nl_results.get(rho, {}).get(name)
+            if entry is None:
+                continue
+            xs.append(rho)
+            vals.append(entry["stability"])
+            errs.append(entry.get("stability_se", 0.0))
+        if xs:
+            ax.errorbar(
+                xs,
+                vals,
+                yerr=errs,
+                fmt="-",
+                marker=m,
+                color=c,
+                label=name,
+                linewidth=2,
+                markersize=7,
+                capsize=3,
+            )
+
+    ax.set_xlabel("Within-Group Correlation \u03c1")
+    ax.set_ylabel("Importance Stability\n(Mean Pairwise Spearman)")
+    ax.set_title("DASH vs Baselines \u2014 Synthetic Nonlinear DGP")
+    ax.legend(fontsize=7, loc="lower left")
+    fig.tight_layout()
+    fig.savefig(f"{OUT}/figures/nonlinear_sweep.png", dpi=150, bbox_inches="tight")
+    fig.savefig(f"{OUT}/figures/nonlinear_sweep.pdf", bbox_inches="tight")
+    plt.close(fig)
+    log(f"  Saved {OUT}/figures/nonlinear_sweep.png, nonlinear_sweep.pdf")
+
+
+###############################################################################
 # PLOT: Ablation sensitivity
 ###############################################################################
 
@@ -414,6 +464,129 @@ def plot_ablation_sensitivity(ablation_results):
     fig.savefig(f"{OUT}/figures/ablation_sensitivity.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     log("  Saved: figures/ablation_sensitivity.pdf")
+
+
+###############################################################################
+# PLOT: Epsilon sensitivity
+###############################################################################
+
+
+def plot_epsilon_sensitivity(eps_results):
+    """Line plot: stability vs epsilon threshold."""
+    _ensure_dirs()
+    eps_values = sorted(k for k in eps_results if not str(k).startswith("_"))
+    stab_vals = [eps_results[eps].get("stability", float("nan")) for eps in eps_values]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(
+        eps_values,
+        stab_vals,
+        "-o",
+        color=COLORS.get("DASH (MaxMin)", "#2ecc71"),
+        linewidth=2,
+        markersize=7,
+        label="DASH (MaxMin)",
+    )
+    ax.set_xlabel("Filter Threshold \u03b5")
+    ax.set_ylabel("Importance Stability\n(Mean Pairwise Spearman)")
+    ax.set_title("DASH Stability vs. Epsilon Filter Threshold")
+    ax.legend(fontsize=9)
+    fig.tight_layout()
+    fig.savefig(f"{OUT}/figures/epsilon_sensitivity.png", dpi=150, bbox_inches="tight")
+    fig.savefig(f"{OUT}/figures/epsilon_sensitivity.pdf", bbox_inches="tight")
+    plt.close(fig)
+    log(f"  Saved {OUT}/figures/epsilon_sensitivity.png, epsilon_sensitivity.pdf")
+
+
+###############################################################################
+# PLOT: Table 2 baselines bar chart
+###############################################################################
+
+
+def plot_table2_baselines(table2_results):
+    """Horizontal bar chart comparing Table 2 methods on stability, accuracy, equity."""
+    _ensure_dirs()
+    method_names = [k for k in table2_results if not str(k).startswith("_")]
+
+    stab_vals = [table2_results[n].get("stability", float("nan")) for n in method_names]
+    stab_errs = [table2_results[n].get("stability_se", 0.0) for n in method_names]
+    acc_vals = [table2_results[n].get("accuracy_mean", float("nan")) for n in method_names]
+    acc_errs = [table2_results[n].get("accuracy_std", 0.0) for n in method_names]
+    eq_vals = [table2_results[n].get("equity_mean", float("nan")) for n in method_names]
+    eq_errs = [table2_results[n].get("equity_std", 0.0) for n in method_names]
+
+    bar_colors = [COLORS.get(n, "#333") for n in method_names]
+    y_pos = range(len(method_names))
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, max(4, len(method_names) * 0.7)))
+
+    axes[0].barh(list(y_pos), stab_vals, xerr=stab_errs, color=bar_colors, edgecolor="k", linewidth=0.5, capsize=3)
+    axes[0].set_yticks(list(y_pos))
+    axes[0].set_yticklabels(method_names, fontsize=8)
+    axes[0].set_xlabel("Stability")
+    axes[0].set_title("Importance Stability (\u03c1=0.9)")
+
+    axes[1].barh(list(y_pos), acc_vals, xerr=acc_errs, color=bar_colors, edgecolor="k", linewidth=0.5, capsize=3)
+    axes[1].set_yticks(list(y_pos))
+    axes[1].set_yticklabels(method_names, fontsize=8)
+    axes[1].set_xlabel("Accuracy (Spearman \u03c1)")
+    axes[1].set_title("Importance Accuracy (\u03c1=0.9)")
+
+    axes[2].barh(list(y_pos), eq_vals, xerr=eq_errs, color=bar_colors, edgecolor="k", linewidth=0.5, capsize=3)
+    axes[2].set_yticks(list(y_pos))
+    axes[2].set_yticklabels(method_names, fontsize=8)
+    axes[2].set_xlabel("Within-Group CV (lower=better)")
+    axes[2].set_title("Within-Group Equity (\u03c1=0.9)")
+
+    fig.suptitle("Table 2: Extended Baselines at \u03c1=0.9", fontsize=13, y=1.01)
+    fig.tight_layout()
+    fig.savefig(f"{OUT}/figures/table2_baselines.png", dpi=150, bbox_inches="tight")
+    fig.savefig(f"{OUT}/figures/table2_baselines.pdf", bbox_inches="tight")
+    plt.close(fig)
+    log(f"  Saved {OUT}/figures/table2_baselines.png, table2_baselines.pdf")
+
+
+###############################################################################
+# PLOT: Real-world datasets bar chart
+###############################################################################
+
+
+def plot_real_world_bar(results, dataset_name):
+    """Horizontal bar chart: methods vs stability for a real-world dataset.
+
+    dataset_name is used in the title and file stem:
+        california_housing  → california_housing_results.{png,pdf}
+        breast_cancer       → breast_cancer_results.{png,pdf}
+        superconductor      → superconductor_results.{png,pdf}
+    """
+    _ensure_dirs()
+    method_names = [k for k in results if not str(k).startswith("_")]
+    stab_vals = [results[n].get("stability", float("nan")) for n in method_names]
+    stab_errs = [results[n].get("stability_se", 0.0) for n in method_names]
+    bar_colors = [COLORS.get(n, "#333") for n in method_names]
+    y_pos = range(len(method_names))
+
+    fig, ax = plt.subplots(figsize=(8, max(4, len(method_names) * 0.7)))
+    ax.barh(
+        list(y_pos),
+        stab_vals,
+        xerr=stab_errs,
+        color=bar_colors,
+        edgecolor="k",
+        linewidth=0.5,
+        capsize=3,
+    )
+    ax.set_yticks(list(y_pos))
+    ax.set_yticklabels(method_names, fontsize=9)
+    ax.set_xlabel("Importance Stability (Mean Pairwise Spearman)")
+    title_name = dataset_name.replace("_", " ").title()
+    ax.set_title(f"DASH vs Baselines \u2014 {title_name}")
+    fig.tight_layout()
+    stem = f"{dataset_name}_results"
+    fig.savefig(f"{OUT}/figures/{stem}.png", dpi=150, bbox_inches="tight")
+    fig.savefig(f"{OUT}/figures/{stem}.pdf", bbox_inches="tight")
+    plt.close(fig)
+    log(f"  Saved {OUT}/figures/{stem}.png, {stem}.pdf")
 
 
 ###############################################################################
@@ -1651,6 +1824,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
     log("  Note: DASH advantage is expected only at rho >= 0.7 under nonlinear DGPs.")
 
     _publish_results(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json", "nonlinear_sweep", N_REPS, t0)
+    plot_nonlinear_sweep(nl_sweep, nl_rho_levels, nl_methods)
 
     if cleanup:
         clear_checkpoints_by_prefix("nonlinear_sweep_rho_", CKPT_DIR)
@@ -1855,6 +2029,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
     clear_checkpoints_by_prefix("table2_flat_", CKPT_DIR)
 
     _publish_results(table2_results, f"{OUT}/tables/table2_baselines.json", "table2_baselines", N_REPS, t0)
+    plot_table2_baselines(table2_results)
 
     if cleanup:
         clear_checkpoints_by_prefix("table2_", CKPT_DIR)
@@ -2096,6 +2271,7 @@ def experiment_real_california(resume=False, cleanup=False):
         "source": "sklearn.datasets.fetch_california_housing",
     }
     _publish_results(cal_results, f"{OUT}/tables/california_housing.json", "real_california", N_REPS, t0)
+    plot_real_world_bar(cal_results, "california_housing")
 
     if cleanup:
         clear_checkpoints_by_prefix("california_", CKPT_DIR)
@@ -2318,6 +2494,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
         "source": "sklearn.datasets.load_breast_cancer",
     }
     _publish_results(bc_results, f"{OUT}/tables/breast_cancer.json", "real_breast_cancer", N_REPS, t0)
+    plot_real_world_bar(bc_results, "breast_cancer")
 
     if cleanup:
         clear_checkpoints_by_prefix("breast_cancer_", CKPT_DIR)
@@ -2574,6 +2751,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
         "source": "sklearn.datasets.fetch_openml(name='superconduct', version=1)",
     }
     _publish_results(sc_results, f"{OUT}/tables/superconductor.json", "real_superconductor", N_REPS, t0)
+    plot_real_world_bar(sc_results, "superconductor")
 
     if cleanup:
         clear_checkpoints_by_prefix("superconductor_", CKPT_DIR)
@@ -2700,6 +2878,7 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
         )
 
     _publish_results(eps_results, f"{OUT}/tables/epsilon_sensitivity.json", "epsilon_sensitivity", N_REPS, t0)
+    plot_epsilon_sensitivity(eps_results)
 
     if cleanup:
         clear_checkpoints_by_prefix("epsilon_sens_batch_", CKPT_DIR)
