@@ -1,4 +1,37 @@
 {
+  "_meta": {
+    "experiment": "linear_sweep",
+    "timestamp": "2026-03-24T06:32:53+00:00",
+    "code_sha": "dd092cbe85b3b5b488d62a35c3fdbf72e1416915",
+    "code_dirty": true,
+    "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": null,
+    "output": "results/tables/synthetic_linear_sweep.json",
+    "hardware": {
+      "cpu_count": 72,
+      "hostname": "sagemaker-user@default",
+      "platform": "Linux-6.1.163-186.299.amzn2023.x86_64-x86_64-with-glibc2.35",
+      "python": "3.11.11",
+      "ram_gb": 144.0,
+      "instance_type": "ml.c5.18xlarge",
+      "region": "us-east-2",
+      "vcpus": 72,
+      "cpu_family": "Intel Xeon Platinum 8000-series (Cascade Lake)"
+    },
+    "backfilled": true
+  },
   "0.0": {
     "Single Best": {
       "stability": 0.9715891711786757,
