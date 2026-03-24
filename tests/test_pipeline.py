@@ -46,6 +46,31 @@ def test_performance_filter_verbose(capsys):
     assert "Performance filter" in captured.out
 
 
+def test_performance_filter_high_pass_rate_warning():
+    # 95% of models pass with absolute mode → should warn about possible misconfiguration
+    scores = {i: 0.90 + i * 0.001 for i in range(20)}
+    import warnings
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        filtered = performance_filter(scores, epsilon=0.5, mode="absolute", verbose=False)
+        assert len(filtered) / len(scores) > 0.90
+        assert len(w) == 1
+        assert "mode='relative'" in str(w[0].message)
+
+
+def test_performance_filter_no_warning_relative_mode():
+    # Relative mode should never trigger the absolute-mode warning even with high pass rate
+    scores = {i: 0.90 + i * 0.001 for i in range(20)}
+    import warnings
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        performance_filter(scores, epsilon=0.5, mode="relative", verbose=False)
+        absolute_warnings = [x for x in w if "mode='relative'" in str(x.message)]
+        assert len(absolute_warnings) == 0
+
+
 def test_config_values():
     # Covers dash_shap/config.py (was 0% coverage)
     from dash_shap.config import PAPER_CONFIG, SEED, REAL_EPSILON, REAL_EPSILON_MODE
