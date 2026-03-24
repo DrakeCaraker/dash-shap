@@ -125,16 +125,18 @@ from dash_shap.baselines import SingleBestBaseline, EnsembleSHAPBaseline
 
 ## How to Add a New Experiment
 
-1. Write a new function `experiment_my_name()` in `run_experiments.py`, following the existing pattern:
+1. Write a new function `experiment_my_name()` in `run_experiments_parallel.py`, following the existing pattern:
    - Use `PAPER_CONFIG` for canonical parameter values
-   - Call `save_json(results, "my_name")` at the end
+   - Call `_publish_results(results, path, "my_name", N_REPS, t0)` at the end — this handles provenance, validation, and save atomically
 2. Add a one-line docstring describing the experiment
-3. Register it in the `EXPERIMENTS` dict at the bottom of `run_experiments.py`
-4. Add it to the CLI `--experiments` help string in the argparse block
+3. Register it in the `EXPERIMENTS` dict at the bottom of `run_experiments_parallel.py`
+4. Add it to `DEFAULT_ORDER` if it should run as part of the full suite
 
 ```bash
-python run_experiments.py --experiments my_name
+python run_experiments_parallel.py --experiments my_name
 ```
+
+> `run_experiments.py` is the deprecated sequential runner. It is retained for historical provenance but should not be modified. All new experiments go in `run_experiments_parallel.py`.
 
 ## Commit Conventions
 

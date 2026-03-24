@@ -11,6 +11,19 @@ from __future__ import annotations
 from typing import TypedDict
 
 
+class RunMeta(TypedDict):
+    experiment: str
+    timestamp: str
+    code_sha: str
+    code_dirty: bool
+    config_sha: str
+    n_reps: int
+    paper_config: dict
+    elapsed_s: float
+    output: str
+    hardware: dict
+
+
 class MethodStabilityMetrics(TypedDict):
     stability: float
     dgp_agreement: float

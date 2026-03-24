@@ -147,7 +147,7 @@ python -c "from dash_shap import DASHPipeline; print('DASH installation OK')"
 | scipy | >= 1.11.0 | Statistical tests, clustering |
 | joblib | >= 1.3.0 | Parallel model training |
 
-> Dependency versions are specified in `pyproject.toml`. If you encounter version conflicts, `requirements.txt` lists the exact versions used in CI.
+> Dependency versions are specified in `pyproject.toml`. `requirements.txt` uses version ranges suitable for general installation. `requirements.lock` pins exact versions used to produce the paper results.
 
 ---
 
@@ -207,20 +207,26 @@ Diagnostic interpretation: **[Diagnostics Guide](docs/DIAGNOSTICS.md)** | Full A
 
 ## Reproducing Paper Results
 
+See **[REPRODUCE.md](REPRODUCE.md)** for the complete reproduction guide, including hardware requirements, estimated runtimes, and step-by-step verification instructions.
+
 ```bash
-# Run all 10 experiments (correlation sweep, real-world, ablation, etc.)
-python run_experiments.py
+# Exact paper environment (pinned versions)
+pip install -r requirements.lock
+pip install -e .
+
+# Run all 16 experiments (~6–10 hours on 72-vCPU instance)
+python run_experiments_parallel.py
 
 # Run a single experiment
-python run_experiments.py --experiments linear_sweep
+python run_experiments_parallel.py --experiments linear_sweep
 
 # Run the test suite
-pytest
+pytest -m "not slow"
 ```
 
 **Canonical notebooks:**
-- [`demo_benchmark_6.ipynb`](notebooks/demo_benchmark_6.ipynb) — Authoritative results (M=200, K=30, 20 reps)
-- [`demo_benchmark_7.ipynb`](notebooks/demo_benchmark_7.ipynb) — TMLR submission (in development)
+- [`demo_benchmark_6.ipynb`](notebooks/demo_benchmark_6.ipynb) — ArXiv canonical results (M=200, K=30, 20 reps)
+- [`demo_benchmark_7_parallel.ipynb`](notebooks/demo_benchmark_7_parallel.ipynb) — TMLR canonical notebook
 - [`explore_experiment_results.ipynb`](notebooks/explore_experiment_results.ipynb) — Interactive results viewer
 
 ---
@@ -262,7 +268,10 @@ dash-shap/
 ├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md
 ├── tests/              # pytest suite
 ├── paper/              # LaTeX source
-├── run_experiments.py  # CLI experiment runner
+├── run_experiments_parallel.py  # CLI experiment runner (canonical)
+├── run_experiments.py           # Sequential runner (deprecated — retained for provenance)
+├── REPRODUCE.md        # Step-by-step reproduction guide
+├── requirements.lock   # Pinned exact versions for experiment reproduction
 ├── EXPERIMENT_GUIDE.md # Full methodology and method descriptions
 ├── FAQ.md              # Common questions and answers
 └── CONTRIBUTING.md     # How to contribute and add extensions
