@@ -137,12 +137,18 @@ The Breast Cancer dataset is a natural showcase for DASH because it contains 30 
 
 **Stability across 20 repetitions:**
 
-| Method | Stability (±SE) |
-|--------|-----------------|
-| Single Best (M=200) | 0.317 ± 0.053 |
-| **DASH (MaxMin)** | **0.930 ± 0.005** |
+| Method | Stability (±SE) | Notes |
+|--------|-----------------|-------|
+| Single Best (N=30) | 0.534 ± 0.04 | Standard practice (30 trials) |
+| Single Best (M=200) | 0.317 ± 0.053 | Training-budget-matched (200 trials) |
+| **DASH (MaxMin)** | **0.930 ± 0.005** | |
 
-DASH improves stability by +0.614 on this heavily collinear dataset. This is the most dramatic improvement across all experiments. The Single Best (M=200) baseline is tree-count-matched: it trains 200 models and selects the best, yet still produces essentially random importance rankings across runs.
+Two Single Best variants are reported for transparency:
+- **SB (N=30):** Standard practice — trains 30 models, picks the best. DASH improves stability by +0.40.
+- **SB (M=200):** Training-budget-matched — trains 200 models (same compute as DASH), picks the best. DASH improves stability by +0.61. This is the fairer comparison since DASH also trains 200 models.
+
+> **Provenance note:** SB(N=30)=0.534 is sourced from `notebooks/demo_benchmark_6.ipynb` (v6/ArXiv).
+> Machine-readable JSON (`results/tables/breast_cancer.json`) will be produced by the v7 SageMaker run.
 
 ---
 
