@@ -1,4 +1,28 @@
 {
+  "_meta": {
+    "experiment": "synthetic_linear_sweep",
+    "timestamp": "2026-03-23T00:00:00+00:00",
+    "code_sha": "52cb725",
+    "code_dirty": false,
+    "config_sha": "backfilled",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": null,
+    "output": "results/tables/synthetic_linear_sweep.json",
+    "hardware": {
+      "note": "SageMaker run \u2014 hardware details not captured at time of run"
+    }
+  },
   "0.0": {
     "Single Best": {
       "stability": 0.9715891711786757,
