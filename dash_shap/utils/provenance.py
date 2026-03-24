@@ -101,7 +101,7 @@ def write_environment_snapshot(results_dir: str) -> None:
         "packages": pip_freeze(),
     }
     path = Path(results_dir) / "environment.json"
-    save_json(snapshot, str(path), overwrite_protection=False)
+    save_json(snapshot, str(path))
 
 
 def capture_run_meta(
