@@ -13,6 +13,7 @@ checkpoints/
 
 # Data/model artifacts
 *.pkl
+*.bak.json
 
 # Virtual environments
 .venv/

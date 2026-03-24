@@ -125,6 +125,12 @@ from dash_shap.evaluation import (
     anova_decomposition,
 )
 from dash_shap.utils.io import save_json
+from dash_shap.utils.provenance import (
+    append_provenance_md,
+    capture_run_meta,
+    validate_result,
+    write_environment_snapshot,
+)
 from dash_shap.utils.thread_budget import (
     compute_thread_budget,
     compute_rep_worker_budget,
@@ -174,6 +180,20 @@ def _load(name: str):
 
 def _has(name: str) -> bool:
     return has_checkpoint(name, checkpoint_dir=CKPT_DIR)
+
+
+def _publish_results(data, path, experiment_name, n_reps, t0):
+    """Validate, attach provenance, save JSON, and append PROVENANCE.md."""
+    elapsed = time.time() - t0
+    issues = validate_result(data, experiment_name)
+    for issue in issues:
+        log(f"  WARNING: {experiment_name}: {issue}")
+    meta = capture_run_meta(experiment_name, n_reps, PAPER_CONFIG, elapsed, path)
+    if meta.get("code_dirty"):
+        log(f"  WARNING: code_dirty=True for {experiment_name} — results from uncommitted changes")
+    save_json(data, path, meta=meta, overwrite_protection=True)
+    append_provenance_md(meta, OUT)
+    log(f"  Saved: {path}")
 
 
 def make_feature_names(n_groups=10, group_size=5):
@@ -1231,11 +1251,10 @@ def experiment_linear_sweep(resume=False, cleanup=False, sequential=False):
                 pass
     sweep_results["_equity_tests"] = eq_test_results
 
-    save_json(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json")
+    _publish_results(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json", "linear_sweep", N_REPS, t0)
     sweep_results.pop("_equity_tests", None)  # remove string key before return
     sweep_results.pop("_stability_tests", None)  # remove string key before return
     sweep_results.pop("_fsi_validation", None)  # remove string key before return
-    log(f"  Saved: {OUT}/tables/synthetic_linear_sweep.json")
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
 
     if cleanup:
@@ -1382,10 +1401,13 @@ def experiment_overlapping(resume=False, cleanup=False):
             "equity_std": float(np.std(results[name]["eq_runs"])),
             "rmse_mean": rmse,
             "rmse_std": float(np.std(results[name]["rmse_runs"])),
+            "acc_runs": [float(x) for x in results[name]["acc_runs"]],
+            "eq_runs": [float(x) for x in results[name]["eq_runs"]],
+            "rmse_runs": [float(x) for x in results[name]["rmse_runs"]],
+            "n_reps": len(results[name]["acc_runs"]),
         }
 
-    save_json(overlap_results, f"{OUT}/tables/overlapping.json")
-    log(f"  Saved: {OUT}/tables/overlapping.json")
+    _publish_results(overlap_results, f"{OUT}/tables/overlapping.json", "overlapping", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("overlapping_batch_", CKPT_DIR)
@@ -1568,8 +1590,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
             log(f"  {rho:5.2f} {dash_s:10.4f} {sb_s:10.4f} {status:>12}")
     log("  Note: DASH advantage is expected only at rho >= 0.7 under nonlinear DGPs.")
 
-    save_json(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json")
-    log(f"  Saved: {OUT}/tables/nonlinear_sweep.json")
+    _publish_results(nl_sweep, f"{OUT}/tables/nonlinear_sweep.json", "nonlinear_sweep", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("nonlinear_sweep_rho_", CKPT_DIR)
@@ -1742,8 +1763,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
     )
     table2_results = {name: result for name, result in results_list}
 
-    save_json(table2_results, f"{OUT}/tables/table2_baselines.json")
-    log(f"  Saved: {OUT}/tables/table2_baselines.json")
+    _publish_results(table2_results, f"{OUT}/tables/table2_baselines.json", "table2_baselines", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("table2_", CKPT_DIR)
@@ -1947,8 +1967,14 @@ def experiment_real_california(resume=False, cleanup=False):
     # IS plot skipped when methods run in parallel (model object not available)
     log("  Skipped IS plot (methods ran in parallel)")
 
-    save_json(cal_results, f"{OUT}/tables/california_housing.json")
-    cal_results.pop("_significance", None)  # remove metadata key before return
+    import sklearn as _sklearn
+
+    cal_results["_dataset"] = {
+        "sklearn_version": _sklearn.__version__,
+        "dataset": "california_housing",
+        "source": "sklearn.datasets.fetch_california_housing",
+    }
+    _publish_results(cal_results, f"{OUT}/tables/california_housing.json", "real_california", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("california_", CKPT_DIR)
@@ -2137,8 +2163,14 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
     # IS plot skipped when methods run in parallel (model object not available)
     log("  Skipped IS plot and disagreement map (methods ran in parallel)")
 
-    save_json(bc_results, f"{OUT}/tables/breast_cancer.json")
-    bc_results.pop("_significance", None)  # remove metadata key before return
+    import sklearn as _sklearn
+
+    bc_results["_dataset"] = {
+        "sklearn_version": _sklearn.__version__,
+        "dataset": "breast_cancer",
+        "source": "sklearn.datasets.load_breast_cancer",
+    }
+    _publish_results(bc_results, f"{OUT}/tables/breast_cancer.json", "real_breast_cancer", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("breast_cancer_", CKPT_DIR)
@@ -2369,8 +2401,14 @@ def experiment_real_superconductor(resume=False, cleanup=False):
     # C7+F1: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(sc_results, "DASH (MaxMin)", sc_methods, "Superconductor")
 
-    save_json(sc_results, f"{OUT}/tables/superconductor.json")
-    sc_results.pop("_significance", None)  # remove metadata key before return
+    import sklearn as _sklearn
+
+    sc_results["_dataset"] = {
+        "sklearn_version": _sklearn.__version__,
+        "dataset": "superconduct",
+        "source": "sklearn.datasets.fetch_openml(name='superconduct', version=1)",
+    }
+    _publish_results(sc_results, f"{OUT}/tables/superconductor.json", "real_superconductor", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("superconductor_", CKPT_DIR)
@@ -2496,7 +2534,7 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
             f"{np.mean(eps_results[eps]['acc_runs']):>10.4f}"
         )
 
-    save_json(eps_results, f"{OUT}/tables/epsilon_sensitivity.json")
+    _publish_results(eps_results, f"{OUT}/tables/epsilon_sensitivity.json", "epsilon_sensitivity", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("epsilon_sens_batch_", CKPT_DIR)
@@ -2634,8 +2672,7 @@ def experiment_ablation(resume=False, cleanup=False):
         for rho, rho_results in results_list:
             abl_results[rho] = rho_results
 
-    save_json(abl_results, f"{OUT}/tables/ablation.json")
-    log(f"  Saved: {OUT}/tables/ablation.json")
+    _publish_results(abl_results, f"{OUT}/tables/ablation.json", "ablation", N_REPS, t0)
 
     # Generate publication figure
     plot_ablation_sensitivity(abl_results)
@@ -2761,7 +2798,7 @@ def experiment_variance_decomposition(resume=False, cleanup=False) -> dict:
         for cond in conditions:
             summary[cond][m]["decomposition"] = summary_ratios
 
-    save_json(summary, f"{OUT}/tables/variance_decomposition.json")
+    _publish_results(summary, f"{OUT}/tables/variance_decomposition.json", "variance_decomposition", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("variance_decomp_batch_", CKPT_DIR)
@@ -2917,7 +2954,7 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False) -> dict:
         for rho, rho_summary in results_list:
             all_results[rho] = rho_summary
 
-    save_json(all_results, f"{OUT}/tables/asymmetric_dgp.json")
+    _publish_results(all_results, f"{OUT}/tables/asymmetric_dgp.json", "asymmetric_dgp", N_REPS, t0)
 
     elapsed = time.time() - t0
     log(f"\n  Asymmetric DGP experiment completed in {elapsed / 60:.1f} min")
@@ -3034,7 +3071,9 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=False) -> di
             f"{result['residual_var_frac']:>10.1%}"
         )
 
-    save_json(summary, f"{OUT}/tables/variance_decomposition_crossed.json")
+    _publish_results(
+        summary, f"{OUT}/tables/variance_decomposition_crossed.json", "variance_decomposition_crossed", N_REPS, t0
+    )
 
     elapsed = time.time() - t0
     log(f"\n  Crossed variance decomposition completed in {elapsed / 60:.1f} min")
@@ -3297,8 +3336,7 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
         )
         _save(ckpt_name, b_results=results[str(B)])
 
-    save_json(results, f"{OUT}/tables/background_sensitivity.json")
-    log(f"  Saved: {OUT}/tables/background_sensitivity.json")
+    _publish_results(results, f"{OUT}/tables/background_sensitivity.json", "background_sensitivity", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("background_B_", CKPT_DIR)
@@ -3468,8 +3506,7 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
             "std_importance": std_imp[m],
             "concentration": conc,
         }
-    save_json(fmv_json, f"{OUT}/tables/first_mover_visualization.json")
-    log(f"  Saved: {OUT}/tables/first_mover_visualization.json")
+    _publish_results(fmv_json, f"{OUT}/tables/first_mover_visualization.json", "first_mover_visualization", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("first_mover_vis_batch_", CKPT_DIR)
@@ -3636,7 +3673,7 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
     plt.close(fig)
     log("  Saved: figures/first_mover_bias_isolation.{png,pdf}")
 
-    save_json(summary, f"{OUT}/tables/first_mover_bias.json")
+    _publish_results(summary, f"{OUT}/tables/first_mover_bias.json", "first_mover_bias", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("first_mover_bias_batch_", CKPT_DIR)
@@ -3974,8 +4011,7 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
             f"  ({len(sr_imp_runs)}/{n_reps})"
         )
 
-    save_json(results, f"{OUT}/tables/k_sweep_independence.json")
-    log(f"  Saved: {OUT}/tables/k_sweep_independence.json")
+    _publish_results(results, f"{OUT}/tables/k_sweep_independence.json", "k_sweep_independence", N_REPS, t0)
 
     plot_k_sweep_independence(k_values, results)
 
@@ -4084,6 +4120,8 @@ Examples:
     log("DASH Experimental Validation")
     log(f"Config: M={M}, K={K}, ε={EPSILON}, δ={DELTA}, N_REPS={N_REPS}")
     log(f"  Real-data: ε={REAL_EPSILON} (mode={REAL_EPSILON_MODE})")
+    write_environment_snapshot(OUT)
+    log(f"  Environment snapshot: {OUT}/environment.json")
     log("")
 
     to_run = args.experiments or DEFAULT_ORDER
