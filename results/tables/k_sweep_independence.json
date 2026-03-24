@@ -1,4 +1,37 @@
 {
+  "_meta": {
+    "experiment": "k_sweep_independence",
+    "timestamp": "2026-03-23T00:00:00+00:00",
+    "code_sha": "fffe764",
+    "code_dirty": false,
+    "config_sha": "backfilled",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": null,
+    "output": "results/tables/k_sweep_independence.json",
+    "hardware": {
+      "cpu_count": 72,
+      "hostname": "sagemaker-user@default",
+      "platform": "Linux-6.1.163-186.299.amzn2023.x86_64-x86_64-with-glibc2.35",
+      "python": "3.11.11",
+      "ram_gb": 144.0,
+      "instance_type": "ml.c5.18xlarge",
+      "region": "us-east-2",
+      "vcpus": 72,
+      "cpu_family": "Intel Xeon Platinum 8000-series (Cascade Lake)"
+    },
+    "backfilled": true
+  },
   "1": {
     "DASH": {
       "stability": NaN,
