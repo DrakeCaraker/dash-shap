@@ -1432,9 +1432,7 @@ def _run_single_rep_nonlinear(rho, rep, nl_methods, feature_names, *, nthread=1)
         All values are scalars or numpy arrays — NO model object references.
     """
     rep_seed = SEED + rep
-    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = generate_synthetic_nonlinear(
-        N=5000, rho=rho, seed=rep_seed
-    )
+    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = generate_synthetic_nonlinear(N=5000, rho=rho, seed=rep_seed)
 
     per_method: dict = {}
 
@@ -1735,11 +1733,15 @@ def _run_single_table2_rep(name, rep, feature_names, *, nthread=1):
     del m
 
     r, _ = dgp_agreement(imp, true_imp)
-    return name, rep, {
-        "imp": imp,
-        "acc": r,
-        "eq": within_group_equity(imp, grps),
-    }
+    return (
+        name,
+        rep,
+        {
+            "imp": imp,
+            "acc": r,
+            "eq": within_group_equity(imp, grps),
+        },
+    )
 
 
 def experiment_table2_baselines(resume=False, cleanup=False):
@@ -1768,9 +1770,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
     feature_names = make_feature_names()
 
     # Check for method-level checkpoints (fully computed methods)
-    partial_data = {
-        name: {"imp_runs": [], "acc_runs": [], "eq_runs": []} for name in table2_methods
-    }
+    partial_data = {name: {"imp_runs": [], "acc_runs": [], "eq_runs": []} for name in table2_methods}
     pending_methods_set = set(table2_methods)
     for name in table2_methods:
         ckpt_name = f"table2_{_sanitize_ckpt_name(name)}"
@@ -1800,8 +1800,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
     n_pending = len(pending_pairs)
     n_resumed = n_total - n_pending
     log(
-        f"  {n_pending} (method, rep) pairs pending"
-        + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
+        f"  {n_pending} (method, rep) pairs pending" + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
     )
 
     if pending_pairs:
@@ -1810,8 +1809,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
         log(f"  Running {n_workers} workers on {get_available_cores()} cores (nthread={nthread})")
 
         results_list = Parallel(n_jobs=n_workers, backend="loky")(
-            delayed(_run_single_table2_rep)(name, rep, feature_names, nthread=nthread)
-            for name, rep in pending_pairs
+            delayed(_run_single_table2_rep)(name, rep, feature_names, nthread=nthread) for name, rep in pending_pairs
         )
 
         for (name, rep), (_, _, per_rep) in zip(pending_pairs, results_list):
@@ -2020,8 +2018,7 @@ def experiment_real_california(resume=False, cleanup=False):
     n_pending = len(pending_pairs)
     n_resumed = n_total - n_pending
     log(
-        f"  {n_pending} (method, rep) pairs pending"
-        + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
+        f"  {n_pending} (method, rep) pairs pending" + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
     )
 
     if pending_pairs:
@@ -2132,9 +2129,7 @@ def _run_single_bc_rep(name, rep, X_pool, X_test, y_pool, y_test, bc_names, *, n
     Xte_r = scaler_r.transform(X_test)
 
     if name == "Single Best":
-        m = SingleBestBaseline(
-            n_trials=N_TRIALS_SB, task="binary", seed=rep_seed, n_jobs=1, nthread=nthread
-        )
+        m = SingleBestBaseline(n_trials=N_TRIALS_SB, task="binary", seed=rep_seed, n_jobs=1, nthread=nthread)
         m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
         imp = m.global_importance_
         abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
@@ -2224,9 +2219,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
     bc_methods = ["Single Best", "Random Forest", "Stochastic Retrain", "Random Selection", "DASH (MaxMin)"]
 
     # Check for method-level checkpoints (fully computed methods)
-    partial_data = {
-        name: {"imp_runs": [], "ablation_runs": [], "keff_runs": []} for name in bc_methods
-    }
+    partial_data = {name: {"imp_runs": [], "ablation_runs": [], "keff_runs": []} for name in bc_methods}
     pending_methods_set = set(bc_methods)
     for name in bc_methods:
         ckpt_name = f"breast_cancer_{_sanitize_ckpt_name(name)}"
@@ -2256,8 +2249,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
     n_pending = len(pending_pairs)
     n_resumed = n_total - n_pending
     log(
-        f"  {n_pending} (method, rep) pairs pending"
-        + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
+        f"  {n_pending} (method, rep) pairs pending" + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
     )
 
     if pending_pairs:
@@ -2383,9 +2375,7 @@ def _run_single_sc_rep(name, rep, X_pool, X_test, y_pool, y_test, sc_names, sc_m
         rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
         abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
     elif name == "Stochastic Retrain":
-        m = StochasticRetrainBaseline(
-            N=sc_k, task="regression", n_jobs=1, nthread=nthread, seed=rep_seed
-        )
+        m = StochasticRetrainBaseline(N=sc_k, task="regression", n_jobs=1, nthread=nthread, seed=rep_seed)
         m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
         imp = m.global_importance_
         preds = m.get_consensus_ensemble_predictions(Xte_r)
@@ -2509,8 +2499,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
     n_pending = len(pending_pairs)
     n_resumed = n_total - n_pending
     log(
-        f"  {n_pending} (method, rep) pairs pending"
-        + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
+        f"  {n_pending} (method, rep) pairs pending" + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else "")
     )
 
     if pending_pairs:
