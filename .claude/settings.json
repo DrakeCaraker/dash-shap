@@ -53,6 +53,11 @@
                         "command": ".claude/hooks/ci-on-change.sh",
                         "timeout": 300,
                         "statusMessage": "Running CI checks..."
+                    },
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/feedback-capture.sh",
+                        "timeout": 5
                     }
                 ]
             }
@@ -63,6 +68,16 @@
                     {
                         "type": "command",
                         "command": ".claude/hooks/session-start.sh"
+                    }
+                ]
+            }
+        ],
+        "PreCompact": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/pre-compact.sh"
                     }
                 ]
             }

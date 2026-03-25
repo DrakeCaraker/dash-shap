@@ -1,44 +1,72 @@
-# Exact package versions used to produce the TMLR paper results.
-# Generated from results/environment.json captured on the SageMaker run (commit fffe764).
-# Hardware: ml.c5.18xlarge (72 vCPUs, 144 GB RAM), Python 3.9.6.
-#
-# Use this for exact reproduction:
-#   pip install -r requirements.lock
-#   pip install -e .
-#
-# requirements.txt uses version ranges suitable for general installation.
-# This file pins exact versions for experiment reproducibility.
-
-# Core scientific stack
-xgboost==2.1.4
-shap==0.49.1
-scikit-learn==1.6.1
-numpy==2.0.2
-pandas==2.3.3
-scipy==1.13.1
-matplotlib==3.9.4
-joblib==1.5.3
-tqdm==4.67.3
-psutil==7.0.0
-numba==0.60.0
-
-# Transitive dependencies (pinned for reproducibility)
+altgraph @ file:///AppleInternal/Library/BuildRoots/2c89a47b-9dd5-11ef-938f-6e654a286000/Library/Caches/com.apple.xbs/Sources/python3/altgraph-0.17.2-py2.py3-none-any.whl
+appnope==0.1.4
+asttokens==3.0.0
 cloudpickle==3.1.2
+comm==0.2.2
 contourpy==1.3.0
+coverage==7.10.7
 cycler==0.12.1
+debugpy==1.8.14
+decorator==5.2.1
+exceptiongroup==1.3.0
+executing==2.2.0
 fonttools==4.60.2
+future @ file:///AppleInternal/Library/BuildRoots/2c89a47b-9dd5-11ef-938f-6e654a286000/Library/Caches/com.apple.xbs/Sources/python3/future-0.18.2-py3-none-any.whl
 importlib_metadata==8.7.0
 importlib_resources==6.5.2
+iniconfig==2.1.0
+ipykernel==6.29.5
+ipython==8.18.1
+jedi==0.19.2
+joblib==1.5.3
+jupyter_client==8.6.3
+jupyter_core==5.8.1
 kiwisolver==1.4.7
+librt==0.8.1
 llvmlite==0.43.0
+macholib @ file:///AppleInternal/Library/BuildRoots/2c89a47b-9dd5-11ef-938f-6e654a286000/Library/Caches/com.apple.xbs/Sources/python3/macholib-1.15.2-py2.py3-none-any.whl
+matplotlib==3.9.4
+matplotlib-inline==0.1.7
+mypy==1.19.1
+mypy_extensions==1.1.0
+nest-asyncio==1.6.0
+numba==0.60.0
+numpy==2.0.2
 packaging==25.0
+pandas==2.3.3
+parso==0.8.4
+pathspec==1.0.4
+pexpect==4.9.0
 pillow==11.3.0
+platformdirs==4.3.8
+pluggy==1.6.0
+prompt_toolkit==3.0.51
+psutil==7.0.0
+ptyprocess==0.7.0
+pure_eval==0.2.3
+Pygments==2.19.1
 pyparsing==3.3.2
+pytest==8.4.2
+pytest-cov==7.1.0
+pytest-timeout==2.4.0
 python-dateutil==2.9.0.post0
 pytz==2026.1.post1
-six==1.15.0
+pyzmq==26.4.0
+ruff==0.15.7
+scikit-learn==1.6.1
+scipy==1.13.1
+shap==0.49.1
+six @ file:///AppleInternal/Library/BuildRoots/2c89a47b-9dd5-11ef-938f-6e654a286000/Library/Caches/com.apple.xbs/Sources/python3/six-1.15.0-py2.py3-none-any.whl
 slicer==0.0.8
+stack-data==0.6.3
 threadpoolctl==3.6.0
+tomli==2.4.0
+tornado==6.5.1
+tqdm==4.67.3
+traitlets==5.14.3
 typing_extensions==4.14.0
 tzdata==2025.3
+UNKNOWN @ file:///Users/drake.caraker/ds_projects/dash-shap
+wcwidth==0.2.13
+xgboost==2.1.4
 zipp==3.22.0
