@@ -1,6 +1,10 @@
 """Stage 2: Performance Filtering."""
 
+import warnings
+
 __all__ = ["performance_filter"]
+
+_HIGH_PASS_RATE_THRESHOLD = 0.90
 
 
 def performance_filter(val_scores, epsilon=0.08, higher_is_better=True, mode="absolute", verbose=True):
@@ -38,6 +42,16 @@ def performance_filter(val_scores, epsilon=0.08, higher_is_better=True, mode="ab
             filtered = [i for i, s in val_scores.items() if s <= cutoff_score]
     else:  # absolute (default)
         filtered = [i for i, s in val_scores.items() if abs(s - best_score) <= epsilon]
+
+    pass_rate = len(filtered) / len(val_scores) if val_scores else 0.0
+    if mode == "absolute" and pass_rate > _HIGH_PASS_RATE_THRESHOLD and len(val_scores) >= 10:
+        warnings.warn(
+            f"Performance filter (absolute mode): {len(filtered)}/{len(val_scores)} "
+            f"models passed ({pass_rate:.0%}). This may indicate that epsilon={epsilon} "
+            f"is too large for this dataset's score scale (best={best_score:.4f}). "
+            f"Consider using mode='relative' for real-world datasets.",
+            stacklevel=2,
+        )
 
     if verbose:
         print(
