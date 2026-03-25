@@ -82,6 +82,28 @@ for nb in notebooks/demo_benchmark_6.ipynb notebooks/demo_benchmark_7.ipynb; do
     fi
 done
 
+# 7. Session counter + self-improvement nudge
+count_file=".claude/.session-count"
+if [ -f "$count_file" ]; then
+    session_count=$(cat "$count_file")
+else
+    session_count=0
+fi
+session_count=$((session_count + 1))
+echo "$session_count" > "$count_file"
+
+# 8. Feedback memory accumulation check
+memory_dir="$HOME/.claude/projects/-Users-drake-caraker-ds-projects-dash-shap/memory"
+feedback_count=$(ls "$memory_dir"/feedback_*.md 2>/dev/null | wc -l | tr -d ' ')
+
+if [ "$feedback_count" -ge 5 ]; then
+    echo "" >&2
+    echo "Improvement: $feedback_count feedback memories accumulated. Consider running /self-improve to promote recurring patterns to CLAUDE.md rules or hooks." >&2
+elif [ "$session_count" -ge 10 ]; then
+    echo "" >&2
+    echo "Improvement: $session_count sessions since last /self-improve. Consider running /self-improve to check for new improvements." >&2
+fi
+
 echo "" >&2
 echo "=================================" >&2
 
