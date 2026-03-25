@@ -93,6 +93,7 @@ epsilon_mode = 'relative'
 pytest                                         # all tests
 pytest tests/test_evaluation.py                # single file
 pytest -m "not slow"                           # fast tests only
+make setup                                     # install deps, activate hooks, verify tools
 make test                                      # all tests (via Makefile)
 make test-fast                                 # skip slow tests
 make lint                                      # ruff check
@@ -218,8 +219,9 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 
 ### Hooks
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
-- **Stop** (user-level): prevents session end with uncommitted/unpushed changes
+- **Stop** (project-level): runs lint/typecheck/test on session end if source files changed
 - **PreToolUse** (project-level): warns when editing notebooks >2MB (catches output bloat before commit)
+- **PreCompact** (project-level): reminds to save in-progress context before context compression
 
 ## Research Program
 
