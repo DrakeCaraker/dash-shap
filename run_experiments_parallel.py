@@ -210,6 +210,22 @@ def _ensure_dirs():
     os.makedirs(f"{OUT}/tables", exist_ok=True)
 
 
+def _shutdown_loky_workers():
+    """Shut down the reusable loky executor to reclaim worker memory.
+
+    After a Parallel() call returns, loky keeps worker processes alive for
+    reuse.  In long-running real-world experiments this leaks memory (workers
+    hold copies of large datasets).  Calling this between experiments releases
+    those resources so subsequent experiments can use the full core budget.
+    """
+    try:
+        from joblib.externals.loky import get_reusable_executor
+
+        get_reusable_executor().shutdown(wait=False)
+    except Exception:
+        pass  # non-critical; loky may not be available in all environments
+
+
 ###############################################################################
 # PLOTTING
 ###############################################################################
@@ -2216,6 +2232,8 @@ def experiment_real_california(resume=False, cleanup=False):
                 partial_data[name]["keff_runs"].append(per_rep["keff"])
             _save(f"cal_flat_{_sanitize_ckpt_name(name)}_rep_{rep}", per_rep=per_rep)
 
+        _shutdown_loky_workers()
+
     # Aggregate per method, write final checkpoints, clean up per-rep files
     cal_results = {}
     for name in cal_methods:
@@ -2446,6 +2464,8 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
             if per_rep["keff"] is not None:
                 partial_data[name]["keff_runs"].append(per_rep["keff"])
             _save(f"bc_flat_{_sanitize_ckpt_name(name)}_rep_{rep}", per_rep=per_rep)
+
+        _shutdown_loky_workers()
 
     # Aggregate per method, write final checkpoints, clean up per-rep files
     bc_results = {}
@@ -2698,6 +2718,8 @@ def experiment_real_superconductor(resume=False, cleanup=False):
             if per_rep["keff"] is not None:
                 partial_data[name]["keff_runs"].append(per_rep["keff"])
             _save(f"sc_flat_{_sanitize_ckpt_name(name)}_rep_{rep}", per_rep=per_rep)
+
+        _shutdown_loky_workers()
 
     # Aggregate per method, write final checkpoints, clean up per-rep files
     sc_results = {}
