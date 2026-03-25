@@ -16,6 +16,8 @@ These apply to every session, no exceptions:
 
 5. **Bound background processes.** Never spawn more than one test process at a time. If a command seems hung, read its background task output before retrying. Use `pgrep -f pytest` to check for running processes.
 
+6. **Capture corrections immediately.** When the user redirects your approach ("no", "don't", "stop", "instead", "actually"), save a feedback memory *before* continuing with the corrected approach. Check existing memories first to avoid duplicates. Only capture genuine corrections to approach, not routine task requests.
+
 ## Directory Map
 
 ```
