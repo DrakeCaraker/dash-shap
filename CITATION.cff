@@ -10,6 +10,10 @@ authors:
   - given-names: David
     family-names: Rhoads
 doi: 10.5281/zenodo.19060133
+identifiers:
+  - type: url
+    value: https://arxiv.org/abs/2603.22346
+    description: arXiv pre-print
 url: https://github.com/DrakeCaraker/dash-shap
 license: MIT
 date-released: "2026-03-17"

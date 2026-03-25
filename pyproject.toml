@@ -40,6 +40,7 @@ lightgbm = ["lightgbm>=3.3"]
 
 [project.urls]
 Homepage = "https://github.com/DrakeCaraker/dash-shap"
+ArXiv = "https://arxiv.org/abs/2603.22346"
 Paper = "https://doi.org/10.5281/zenodo.19060133"
 
 [tool.setuptools.packages.find]
