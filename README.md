@@ -1,13 +1,13 @@
 # DASH: Diversified Aggregation of SHAP
 
+[![ArXiv](https://img.shields.io/badge/arXiv-2603.22346-b31b1b.svg)](https://arxiv.org/abs/2603.22346)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19060133.svg)](https://doi.org/10.5281/zenodo.19060133)
-<!-- TODO: Replace with ArXiv badge once endorsed: [![ArXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX) -->
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.9-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 **Stable feature importance explanations under collinearity via independent model aggregation.**
 
-> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* [Zenodo pre-print](https://doi.org/10.5281/zenodo.19060133) (2026). Target venue: TMLR.
+> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* [arXiv:2603.22346](https://arxiv.org/abs/2603.22346) | [Zenodo](https://doi.org/10.5281/zenodo.19060133). Target venue: TMLR.
 
 ---
 
@@ -248,7 +248,7 @@ confidence intervals, partial orders, robust certification, and more on top of a
 
 The key insight: model independence — not model size or count — is what cancels the arbitrary noise. Stochastic Retrain (same hyperparameters, different seeds) achieves equivalent stability, confirming that independence is the operative principle. DASH adds diversity selection and diagnostics on top.
 
-See the **[paper](https://doi.org/10.5281/zenodo.19060133)** for the full mechanism analysis and the Large Single Model experiment that proves bigger models make the problem worse.
+See the **[paper](https://arxiv.org/abs/2603.22346)** for the full mechanism analysis and the Large Single Model experiment that proves bigger models make the problem worse.
 
 ---
 
@@ -286,9 +286,11 @@ dash-shap/
   title={First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution},
   author={Caraker, Drake and Arnold, Bryan and Rhoads, David},
   year={2026},
+  eprint={2603.22346},
+  archiveprefix={arXiv},
+  primaryclass={cs.LG},
   doi={10.5281/zenodo.19060133},
-  url={https://doi.org/10.5281/zenodo.19060133},
-  publisher={Zenodo}
+  url={https://arxiv.org/abs/2603.22346}
 }
 ```
 
