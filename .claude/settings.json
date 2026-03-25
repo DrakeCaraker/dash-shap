@@ -53,6 +53,11 @@
                         "command": ".claude/hooks/ci-on-change.sh",
                         "timeout": 300,
                         "statusMessage": "Running CI checks..."
+                    },
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/feedback-capture.sh",
+                        "timeout": 5
                     }
                 ]
             }
