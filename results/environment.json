@@ -1,0 +1,87 @@
+{
+  "recorded_at": "2026-03-25T21:55:05.722791+00:00",
+  "instance": {
+    "type": "ml.c5.18xlarge",
+    "region": "us-east-2",
+    "hostname": "default",
+    "platform": "Linux-6.1.163-186.299.amzn2023.x86_64-x86_64-with-glibc2.35",
+    "uptime_since": "2026-03-22T02:00:31Z"
+  },
+  "cpu": {
+    "model": "Intel(R) Xeon(R) Platinum 8124M CPU @ 3.00GHz",
+    "sockets": 2,
+    "cores_per_socket": 18,
+    "threads_per_core": 2,
+    "total_vcpus": 72,
+    "isa_extensions": [
+      "AVX2",
+      "AVX-512F",
+      "SSE4.2"
+    ]
+  },
+  "memory": {
+    "total_gib": 137,
+    "swap": "none",
+    "numa_nodes": 2
+  },
+  "cache": {
+    "L1d": "1.1 MiB",
+    "L1i": "1.1 MiB",
+    "L2": "36 MiB",
+    "L3": "49.5 MiB"
+  },
+  "os": {
+    "distro": "Ubuntu 22.04.5 LTS",
+    "kernel": "6.1.163-186.299.amzn2023.x86_64"
+  },
+  "python": {
+    "version": "3.11.11",
+    "build": "3.11.11 | packaged by conda-forge | (main, Dec  5 2024, 14:17:24) [GCC 13.3.0]",
+    "conda_env": "base",
+    "conda_prefix": "/opt/conda"
+  },
+  "packages": {
+    "numpy": "2.3.5",
+    "scipy": "1.16.3",
+    "xgboost": "2.1.4",
+    "shap": "0.51.0",
+    "scikit-learn": "1.7.2",
+    "joblib": "1.5.3",
+    "pandas": "2.3.3",
+    "matplotlib": "3.10.8",
+    "seaborn": "0.13.2",
+    "lightgbm": "4.6.0"
+  },
+  "blas": {
+    "backend": "scipy-openblas 0.3.30",
+    "config": "USE64BITINT DYNAMIC_ARCH NO_AFFINITY Haswell MAX_THREADS=64",
+    "mkl_interface_layer": "LP64,GNU"
+  },
+  "thread_pinning": {
+    "OMP_NUM_THREADS": "NOT SET",
+    "OPENBLAS_NUM_THREADS": "NOT SET",
+    "MKL_NUM_THREADS": "NOT SET",
+    "note": "Thread pinning env vars were NOT set for this run despite PR #180 being merged"
+  },
+  "git": {
+    "repository": "https://github.com/DrakeCaraker/dash-shap.git",
+    "branch": "results/sagemaker-run-20260323",
+    "head_sha": "74edfe66d8be3d76eae30c44cba4c003fb6d228b",
+    "main_sha": "4836bb12ac5809847307116402f14ad8adc28c59",
+    "start_tag": "run-tmlr-20260323-start"
+  },
+  "paper_config": {
+    "M": 200,
+    "K": 30,
+    "N_REPS": 50,
+    "EPSILON": 0.08,
+    "DELTA": 0.05,
+    "N_TRIALS_SB": 30,
+    "T_PER_MODEL": 500,
+    "N_ESTIMATORS_ESHAP": 2000,
+    "TAU_CLUSTER": 0.3,
+    "REAL_EPSILON": 0.05,
+    "REAL_EPSILON_MODE": "relative",
+    "SEED": 42
+  }
+}

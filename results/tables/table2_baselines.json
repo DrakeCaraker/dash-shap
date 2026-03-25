@@ -1,4 +1,33 @@
 {
+  "_meta": {
+    "experiment": "table2_baselines",
+    "timestamp": "2026-03-25T21:55:15.505814+00:00",
+    "code_sha": "74edfe66d8be3d76eae30c44cba4c003fb6d228b",
+    "code_dirty": true,
+    "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": null,
+    "output": "results/tables/table2_baselines.json",
+    "hardware": {
+      "cpu_count": 72,
+      "hostname": "default",
+      "platform": "Linux-6.1.163-186.299.amzn2023.x86_64-x86_64-with-glibc2.35",
+      "python": "3.11.11",
+      "ram_gb": 137.6
+    },
+    "backfilled": true
+  },
   "Ensemble SHAP": {
     "stability": 0.9552530759242472,
     "stability_se": 0.0013844335073326588,
