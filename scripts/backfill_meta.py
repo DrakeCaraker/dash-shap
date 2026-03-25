@@ -87,6 +87,7 @@ def _hardware_info() -> dict:
     }
     try:
         import psutil
+
         info["ram_gb"] = round(psutil.virtual_memory().total / 1024**3, 1)
     except ImportError:
         pass
