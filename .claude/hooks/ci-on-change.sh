@@ -13,21 +13,30 @@ changed=$(git -C "$REPO" status --porcelain 2>/dev/null \
 
 if [ -n "$changed" ]; then
   echo "Source files modified — running lint + typecheck..."
-  make -C "$REPO" lint typecheck
+  if ! make -C "$REPO" lint typecheck 2>&1; then
+    echo '{"decision": "block", "reason": "Lint or typecheck failed. Run /ci-fix to auto-repair, or fix manually with: make lint && make typecheck"}'
+    exit 0
+  fi
 
   # Run tests only if xgboost is available (required by pipeline tests)
   if python3 -c "import xgboost" 2>/dev/null; then
-    make -C "$REPO" test coverage
+    if ! make -C "$REPO" test coverage 2>&1; then
+      echo '{"decision": "block", "reason": "Tests or coverage failed. Run /ci-fix to auto-repair, or fix manually with: make test-fast"}'
+      exit 0
+    fi
   else
     echo "xgboost not installed — skipping test/coverage (run: pip install xgboost)"
-    pytest --ignore=tests/test_baselines.py \
+    if ! pytest --ignore=tests/test_baselines.py \
            --ignore=tests/test_baselines_extended.py \
            --ignore=tests/test_consensus.py \
            --ignore=tests/test_diversity_filtering.py \
            --ignore=tests/test_pipeline.py \
            --ignore=tests/test_utils.py \
            --ignore=tests/test_cli_smoke.py \
-           -q --tb=short
+           -q --tb=short 2>&1; then
+      echo '{"decision": "block", "reason": "Tests failed. Run /ci-fix to auto-repair."}'
+      exit 0
+    fi
   fi
 else
   echo "No dash_shap/ or tests/ .py changes — skipping make ci."

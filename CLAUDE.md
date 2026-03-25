@@ -16,6 +16,8 @@ These apply to every session, no exceptions:
 
 5. **Bound background processes.** Never spawn more than one test process at a time. If a command seems hung, read its background task output before retrying. Use `pgrep -f pytest` to check for running processes.
 
+6. **Capture corrections immediately.** When the user redirects your approach ("no", "don't", "stop", "instead", "actually"), save a feedback memory *before* continuing with the corrected approach. Check existing memories first to avoid duplicates. Only capture genuine corrections to approach, not routine task requests.
+
 ## Directory Map
 
 ```
@@ -93,6 +95,7 @@ epsilon_mode = 'relative'
 pytest                                         # all tests
 pytest tests/test_evaluation.py                # single file
 pytest -m "not slow"                           # fast tests only
+make setup                                     # install deps, activate hooks, verify tools
 make test                                      # all tests (via Makefile)
 make test-fast                                 # skip slow tests
 make lint                                      # ruff check
@@ -215,11 +218,13 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 - `/audit` — parallel four-dimension repo audit (notebooks, preprint parity, sensitive data, release readiness) → merged report in `docs/audit/`
 - `/safe-refactor <target>` — test-gated refactoring: writes characterization tests, applies one change at a time, auto-rollbacks on failure
 - `/pr` — standardized branch→commit→push→PR workflow with lint gates and main-branch guard
+- `/self-improve` — analyze feedback memories and propose promotions to CLAUDE.md rules or hooks (promotion ladder: memory → rule → hook)
 
 ### Hooks
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
-- **Stop** (user-level): prevents session end with uncommitted/unpushed changes
+- **Stop** (project-level): runs lint/typecheck/test on session end if source files changed
 - **PreToolUse** (project-level): warns when editing notebooks >2MB (catches output bloat before commit)
+- **PreCompact** (project-level): reminds to save in-progress context before context compression
 
 ## Research Program
 

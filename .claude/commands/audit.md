@@ -11,6 +11,27 @@ This skill performs a comprehensive audit across four dimensions: Notebook Healt
 - `/audit sensitive` — sensitive data scan only
 - `/audit release` — release readiness only
 
+## Verification Protocol (applies to ALL agents)
+
+Every finding MUST include an `Evidence:` line showing the command output that confirms it:
+```
+- [HIGH] notebooks/demo_benchmark_6.ipynb — file size 2.3MB exceeds 2MB threshold
+  Evidence: `wc -c` reports 2,412,544 bytes (2.30MB)
+```
+
+**Required evidence per dimension:**
+- Notebook Health: `wc -c` for file sizes, `python3 -c "import json; ..."` for cell counts and structure checks
+- Preprint Parity: `grep -n` for line numbers of claims, `python3 -c "import json; ..."` for JSON values
+- Sensitive Data: `grep -rn` with exact patterns, `git ls-files` for tracking status
+- Release Readiness: actual `pytest --cov` output, `python3 -c "import dash_shap"` for version
+
+**If a claim cannot be verified by command output, mark it `[UNVERIFIED]` and explain why.**
+
+Each agent must follow the cite-then-verify pattern:
+1. Record the raw claim (e.g., "file X is 2.3MB")
+2. Run a verification command (e.g., `wc -c notebooks/X.ipynb`)
+3. Compare command output to claim — if they disagree, correct the finding before writing it
+
 ## Execution
 
 ### Step 1: Get today's date
@@ -217,6 +238,7 @@ Spawn one additional Agent to merge results. Pass the resolved date string expli
 
 **Task:**
 - Read all four output files from `docs/audit/AUDIT_DATE-*.md` (excluding the merge output itself)
+- **Spot-check verification:** Before writing the merged report, randomly pick 3 findings across dimensions that have `Evidence:` lines. Re-run the evidence commands yourself and confirm the results match. If any discrepancy is found, add a `## Verification Warnings` section at the top of the report listing the failed checks.
 - Create consolidated report: `docs/audit/AUDIT_DATE-REPORT.md`
 - Include a summary table with columns: Dimension | CRITICAL | HIGH | MEDIUM | LOW | Total
 - Create a prioritized fix list:
