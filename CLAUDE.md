@@ -214,6 +214,7 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 - `/ci-fix` — autonomous CI fix loop: runs ruff/mypy/pytest incrementally, fixes failures by type, loops until green (max 5 iterations)
 - `/audit` — parallel four-dimension repo audit (notebooks, preprint parity, sensitive data, release readiness) → merged report in `docs/audit/`
 - `/safe-refactor <target>` — test-gated refactoring: writes characterization tests, applies one change at a time, auto-rollbacks on failure
+- `/pr` — standardized branch→commit→push→PR workflow with lint gates and main-branch guard
 
 ### Hooks
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
