@@ -1,4 +1,15 @@
-.PHONY: test test-fast test-slow lint fmt fmt-check typecheck coverage ci rebase clean audit
+.PHONY: setup test test-fast test-slow lint fmt fmt-check typecheck coverage ci rebase clean audit
+
+setup:
+	pip install -e ".[dev]" 2>/dev/null || pip install -e . && pip install -r requirements-dev.txt
+	git config core.hooksPath .githooks
+	@echo "Verifying tools..."
+	@python3 -m ruff --version >/dev/null 2>&1 && echo "  ruff: $$(python3 -m ruff --version)" || echo "  ruff: NOT FOUND (install with: pip install ruff)"
+	@python3 -m mypy --version >/dev/null 2>&1 && echo "  mypy: $$(python3 -m mypy --version)" || echo "  mypy: NOT FOUND (install with: pip install mypy)"
+	@python3 -c "import pytest; print(f'  pytest: {pytest.__version__}')" 2>/dev/null || echo "  pytest: NOT FOUND (install with: pip install pytest)"
+	@python3 -c "import xgboost; print(f'  xgboost: {xgboost.__version__}')" 2>/dev/null || echo "  xgboost: NOT FOUND (install with: pip install xgboost)"
+	@echo ""
+	@echo "Setup complete. Git hooks activated. Run 'make test-fast' to verify."
 
 test:
 	python3 -m pytest -v
