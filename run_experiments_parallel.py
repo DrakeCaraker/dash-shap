@@ -3651,8 +3651,36 @@ def check_success_criteria(
 ###############################################################################
 
 
+def _run_single_bg_rep(B, rep, feature_names, *, nthread=1):
+    """Run one (B, rep) pair for background sensitivity. Returns scalars only."""
+    rep_seed = SEED + rep
+    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+        N=5000, rho=0.9, seed=rep_seed
+    )
+    dm = DASHPipeline(
+        M=M,
+        K=K,
+        epsilon=EPSILON,
+        delta=DELTA,
+        selection_method="maxmin",
+        n_jobs=1,
+        nthread=nthread,
+        background_size=B,
+        seed=rep_seed,
+        verbose=False,
+    )
+    dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+    imp = dm.global_importance_
+    r, _ = dgp_agreement(imp, true_imp)
+    eq = within_group_equity(imp, grps)
+    del dm
+    return B, rep, {"imp": imp, "acc": float(r), "eq": float(eq)}
+
+
 def experiment_background_sensitivity(resume=False, cleanup=False):
     """Sweep background dataset size B ∈ {50, 100, 200, 500} at ρ=0.9."""
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
@@ -3662,43 +3690,63 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
     B_VALUES = [50, 100, 200, 500]
     feature_names = make_feature_names()
     results = {}
-    seq_budget = compute_thread_budget(n_outer=1)
+
+    # Collect per-B data (resumed or pending)
+    partial_data = {B: {"imp_runs": [], "acc_runs": [], "eq_runs": []} for B in B_VALUES}
+    pending_pairs = []
 
     for B in B_VALUES:
-        ckpt_name = f"background_B_{B}"
-        if resume and _has(ckpt_name):
-            log(f"  Resuming: loaded checkpoint for B={B}")
-            results[str(B)] = _load(ckpt_name)["b_results"]
+        # Check for old-style per-B checkpoint (full B completed)
+        old_ckpt = f"background_B_{B}"
+        if resume and _has(old_ckpt):
+            log(f"  Resuming: loaded aggregate checkpoint for B={B}")
+            results[str(B)] = _load(old_ckpt)["b_results"]
             continue
 
-        imp_runs, acc_runs, eq_runs = [], [], []
         for rep in range(N_REPS):
-            rep_seed = SEED + rep
-            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-                N=5000, rho=0.9, seed=rep_seed
-            )
+            ckpt_key = f"bg_flat_{B}_rep_{rep}"
+            if resume and _has(ckpt_key):
+                data = _load(ckpt_key)
+                partial_data[B]["imp_runs"].append(data["imp"])
+                partial_data[B]["acc_runs"].append(data["acc"])
+                partial_data[B]["eq_runs"].append(data["eq"])
+            else:
+                pending_pairs.append((B, rep))
 
-            dm = DASHPipeline(
-                M=M,
-                K=K,
-                epsilon=EPSILON,
-                delta=DELTA,
-                selection_method="maxmin",
-                n_jobs=seq_budget.n_inner,
-                nthread=seq_budget.nthread,
-                background_size=B,
-                seed=rep_seed,
-                verbose=False,
-            )
-            dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-            imp = dm.global_importance_
+    n_total = len(B_VALUES) * N_REPS
+    n_pending = len(pending_pairs)
+    n_resumed = n_total - n_pending - sum(1 for B in B_VALUES if str(B) in results) * N_REPS
+    log(
+        f"  {n_pending} (B, rep) pairs pending"
+        + (f" ({n_resumed} resumed from per-rep checkpoints)" if n_resumed else "")
+    )
 
-            r, _ = dgp_agreement(imp, true_imp)
-            acc_runs.append(r)
-            eq_runs.append(within_group_equity(imp, grps))
-            imp_runs.append(imp)
-            del dm
+    if pending_pairs:
+        n_workers = compute_rep_worker_budget(n_work=len(pending_pairs))
+        nthread = 1
+        log(f"  Running {n_workers} workers on {get_available_cores()} cores (nthread={nthread})")
 
+        results_list = Parallel(n_jobs=n_workers, backend="loky")(
+            delayed(_run_single_bg_rep)(B, rep, feature_names, nthread=nthread) for B, rep in pending_pairs
+        )
+
+        for B_out, rep_out, per_rep in results_list:
+            partial_data[B_out]["imp_runs"].append(per_rep["imp"])
+            partial_data[B_out]["acc_runs"].append(per_rep["acc"])
+            partial_data[B_out]["eq_runs"].append(per_rep["eq"])
+            _save(f"bg_flat_{B_out}_rep_{rep_out}", **per_rep)
+        _shutdown_loky_workers()
+
+    # Aggregate per B
+    for B in B_VALUES:
+        if str(B) in results:
+            continue  # already loaded from old-style checkpoint
+        imp_runs = partial_data[B]["imp_runs"]
+        acc_runs = partial_data[B]["acc_runs"]
+        eq_runs = partial_data[B]["eq_runs"]
+        if len(imp_runs) < 2:
+            log(f"  B={B}: only {len(imp_runs)} reps completed, skipping")
+            continue
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
         results[str(B)] = {
@@ -3719,12 +3767,12 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
             f"  B={B:<4} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  "
             f"acc={np.mean(acc_runs):.4f}  eq={np.mean(eq_runs):.4f}"
         )
-        _save(ckpt_name, b_results=results[str(B)])
 
     _publish_results(results, f"{OUT}/tables/background_sensitivity.json", "background_sensitivity", N_REPS, t0)
 
     if cleanup:
         clear_checkpoints_by_prefix("background_B_", CKPT_DIR)
+        clear_checkpoints_by_prefix("bg_flat_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  Background sensitivity completed in {elapsed / 60:.1f} min")
@@ -3907,6 +3955,64 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
 ###############################################################################
 
 
+def _run_single_fmb_rep(rep, n_estimator_levels, feature_names_loc, group_features):
+    """Run one rep of first-mover bias isolation. Returns per-n_est concentrations."""
+    import xgboost as xgb
+    import shap
+
+    rho = 0.9
+    rep_seed = SEED + rep
+    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+        N=5000, rho=rho, seed=rep_seed
+    )
+
+    single_conc = {}
+    dash_conc = {}
+    for n_est in n_estimator_levels:
+        # --- Single model: concentration grows with depth ---
+        model = xgb.XGBRegressor(
+            n_estimators=n_est,
+            max_depth=6,
+            learning_rate=0.1,
+            colsample_bytree=0.3,
+            subsample=0.8,
+            random_state=rep_seed,
+        )
+        model.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
+        explainer = shap.TreeExplainer(model)
+        sv = explainer.shap_values(Xexp[:200], check_additivity=False)
+        imp_single = np.mean(np.abs(sv), axis=0)
+        grp_imp = imp_single[group_features]
+        conc = float(np.max(grp_imp) / (np.sum(grp_imp) + 1e-10))
+        single_conc[n_est] = conc
+        del model, explainer
+
+        # --- Independent ensemble: M small models, averaged ---
+        n_per_model = max(10, n_est // 20)
+        m_models = n_est // n_per_model
+        imp_accum = np.zeros(len(feature_names_loc))
+        for mi in range(m_models):
+            m_seed = rep_seed * 10000 + mi
+            mdl = xgb.XGBRegressor(
+                n_estimators=n_per_model,
+                max_depth=6,
+                learning_rate=0.1,
+                colsample_bytree=np.random.RandomState(m_seed).uniform(0.1, 0.5),
+                subsample=0.8,
+                random_state=m_seed,
+            )
+            mdl.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
+            sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200], check_additivity=False)
+            imp_accum += np.mean(np.abs(sv_m), axis=0)
+            del mdl
+        imp_avg = imp_accum / m_models
+        grp_imp_avg = imp_avg[group_features]
+        conc_avg = float(np.max(grp_imp_avg) / (np.sum(grp_imp_avg) + 1e-10))
+        dash_conc[n_est] = conc_avg
+
+    return rep, single_conc, dash_conc
+
+
 def experiment_first_mover_bias(resume=False, cleanup=False):
     """First-mover bias isolation: concentration grows with tree count.
 
@@ -3915,16 +4021,14 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
     Compares against M independent models averaged at the same total tree
     count.  Produces a line plot: concentration vs n_estimators.
     """
+    from joblib import Parallel, delayed
+
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: First-Mover Bias Isolation")
     log("=" * 70)
 
-    import xgboost as xgb
-    import shap
-
-    rho = 0.9
     n_estimator_levels = [50, 100, 200, 500, 1000, 2000]
     n_bias_reps = 20  # Match N_REPS for publication-quality results
     feature_names_loc = make_feature_names()
@@ -3933,8 +4037,11 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
     single_concentrations = {n: [] for n in n_estimator_levels}
     dash_concentrations = {n: [] for n in n_estimator_levels}
 
+    # Resume: check for old-style batch checkpoints or per-rep flat checkpoints
+    pending_reps = []
     start_rep = 0
     if resume:
+        # Try old-style batch checkpoint first
         for batch_end in range(n_bias_reps, 0, -10):
             ckpt_name = f"first_mover_bias_batch_{batch_end}"
             if _has(ckpt_name):
@@ -3942,66 +4049,41 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
                 single_concentrations = cached["single_concentrations"]
                 dash_concentrations = cached["dash_concentrations"]
                 start_rep = cached["completed_reps"]
-                log(f"  Resuming from rep {start_rep}")
+                log(f"  Resuming from batch checkpoint at rep {start_rep}")
                 break
 
-    for rep in range(start_rep, n_bias_reps):
-        rep_seed = SEED + rep
-        log(f"  Rep {rep + 1}/{n_bias_reps}")
+        # Check per-rep flat checkpoints for remaining reps
+        for rep in range(start_rep, n_bias_reps):
+            ckpt_key = f"fmb_flat_rep_{rep}"
+            if _has(ckpt_key):
+                data = _load(ckpt_key)
+                for n_est in n_estimator_levels:
+                    single_concentrations[n_est].append(data["single_conc"][n_est])
+                    dash_concentrations[n_est].append(data["dash_conc"][n_est])
+            else:
+                pending_reps.append(rep)
+    else:
+        pending_reps = list(range(n_bias_reps))
 
-        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-            N=5000, rho=rho, seed=rep_seed
+    n_pending = len(pending_reps)
+    n_resumed = n_bias_reps - n_pending
+    log(f"  {n_pending} reps pending" + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else ""))
+
+    if pending_reps:
+        n_workers = compute_rep_worker_budget(n_work=n_pending)
+        log(f"  Running {n_workers} workers on {get_available_cores()} cores")
+
+        results_list = Parallel(n_jobs=n_workers, backend="loky")(
+            delayed(_run_single_fmb_rep)(rep, n_estimator_levels, feature_names_loc, group_features)
+            for rep in pending_reps
         )
 
-        for n_est in n_estimator_levels:
-            # --- Single model: concentration grows with depth ---
-            model = xgb.XGBRegressor(
-                n_estimators=n_est,
-                max_depth=6,
-                learning_rate=0.1,
-                colsample_bytree=0.3,
-                subsample=0.8,
-                random_state=rep_seed,
-            )
-            model.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
-            explainer = shap.TreeExplainer(model)
-            sv = explainer.shap_values(Xexp[:200], check_additivity=False)
-            imp_single = np.mean(np.abs(sv), axis=0)
-            grp_imp = imp_single[group_features]
-            conc = np.max(grp_imp) / (np.sum(grp_imp) + 1e-10)
-            single_concentrations[n_est].append(conc)
-            del model, explainer
-
-            # --- Independent ensemble: M small models, averaged ---
-            n_per_model = max(10, n_est // 20)
-            m_models = n_est // n_per_model
-            imp_accum = np.zeros(len(feature_names_loc))
-            for mi in range(m_models):
-                m_seed = rep_seed * 10000 + mi
-                mdl = xgb.XGBRegressor(
-                    n_estimators=n_per_model,
-                    max_depth=6,
-                    learning_rate=0.1,
-                    colsample_bytree=np.random.RandomState(m_seed).uniform(0.1, 0.5),
-                    subsample=0.8,
-                    random_state=m_seed,
-                )
-                mdl.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
-                sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200], check_additivity=False)
-                imp_accum += np.mean(np.abs(sv_m), axis=0)
-                del mdl
-            imp_avg = imp_accum / m_models
-            grp_imp_avg = imp_avg[group_features]
-            conc_avg = np.max(grp_imp_avg) / (np.sum(grp_imp_avg) + 1e-10)
-            dash_concentrations[n_est].append(conc_avg)
-
-        if (rep + 1) % 10 == 0:
-            _save(
-                f"first_mover_bias_batch_{rep + 1}",
-                single_concentrations=single_concentrations,
-                dash_concentrations=dash_concentrations,
-                completed_reps=rep + 1,
-            )
+        for rep_out, single_conc, dash_conc in results_list:
+            for n_est in n_estimator_levels:
+                single_concentrations[n_est].append(single_conc[n_est])
+                dash_concentrations[n_est].append(dash_conc[n_est])
+            _save(f"fmb_flat_rep_{rep_out}", single_conc=single_conc, dash_conc=dash_conc)
+        _shutdown_loky_workers()
 
     # Summarize
     summary = {}
@@ -4065,6 +4147,7 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
 
     if cleanup:
         clear_checkpoints_by_prefix("first_mover_bias_batch_", CKPT_DIR)
+        clear_checkpoints_by_prefix("fmb_flat_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  First-mover bias isolation completed in {elapsed / 60:.1f} min")
@@ -4275,86 +4358,138 @@ def plot_k_sweep_independence(k_values, results):
     log(f"  Saved: {OUT}/figures/k_sweep_independence.png")
 
 
+def _run_single_ksweep_pair(k_val, rep, feature_names, *, nthread=1):
+    """Run one (k_val, rep) pair for k_sweep_independence. Returns scalars only."""
+    rep_seed = SEED + rep
+    Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+        N=5000, rho=0.9, seed=rep_seed
+    )
+
+    result = {"k_val": k_val, "rep": rep}
+
+    # DASH (MaxMin)
+    dm = DASHPipeline(
+        M=M,
+        K=k_val,
+        epsilon=EPSILON,
+        delta=DELTA,
+        selection_method="maxmin",
+        n_jobs=1,
+        nthread=nthread,
+        seed=rep_seed,
+        verbose=False,
+    )
+    try:
+        dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        imp = dm.global_importance_
+        r, _ = dgp_agreement(imp, true_imp)
+        result["dash_imp"] = imp
+        result["dash_acc"] = float(r)
+    except ValueError:
+        result["dash_imp"] = None
+        result["dash_acc"] = None
+    del dm
+
+    # Random Selection baseline
+    sr = RandomSelectionBaseline(
+        M=M,
+        K=k_val,
+        epsilon=EPSILON,
+        delta=DELTA,
+        n_jobs=1,
+        nthread=nthread,
+        seed=rep_seed,
+    )
+    try:
+        sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        imp_sr = sr.global_importance_
+        r_sr, _ = dgp_agreement(imp_sr, true_imp)
+        result["sr_imp"] = imp_sr
+        result["sr_acc"] = float(r_sr)
+    except ValueError:
+        result["sr_imp"] = None
+        result["sr_acc"] = None
+    del sr
+
+    return result
+
+
 def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
     """Ablation: independence vs. K — stability scaling with ensemble size.
 
     Tests whether increasing K (models selected) provides logarithmically
     diminishing returns, consistent with the model-independence hypothesis.
     """
+    from joblib import Parallel, delayed
+
     k_values = [1, 3, 5, 10, 20, 30]
     n_reps = N_REPS
-    seed = SEED
 
     _ensure_dirs()
     t0 = time.time()
     log("\n" + "=" * 70)
     log("EXPERIMENT: K Sweep Independence Boundary")
     log("=" * 70)
-    log(f"  k_values={k_values}, n_reps={n_reps}, seed={seed}")
+    log(f"  k_values={k_values}, n_reps={n_reps}, seed={SEED}")
 
     feature_names = make_feature_names()
-    results = {}
-    seq_budget = compute_thread_budget(n_outer=1)
 
     def _fmt(v: float) -> str:
         """Format float values for logging."""
         return f"{v:.4f}" if not np.isnan(v) else "nan"
 
+    # Collect per-k data (resumed or pending)
+    partial_data: dict = {k: {"dash_imp": [], "dash_acc": [], "sr_imp": [], "sr_acc": []} for k in k_values}
+    pending_pairs = []
+
     for k_val in k_values:
-        log(f"\n--- K={k_val} ---")
-        dash_imp_runs: list = []
-        dash_acc_runs: list = []
-        sr_imp_runs: list = []
-        sr_acc_runs: list = []
-
         for rep in range(n_reps):
-            log(f"  K={k_val}  Rep {rep + 1}/{n_reps}")
-            rep_seed = seed + rep
-            Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
-                N=5000, rho=0.9, seed=rep_seed
-            )
+            ckpt_key = f"ksweep_flat_{k_val}_{rep}"
+            if resume and _has(ckpt_key):
+                data = _load(ckpt_key)
+                if data.get("dash_imp") is not None:
+                    partial_data[k_val]["dash_imp"].append(data["dash_imp"])
+                    partial_data[k_val]["dash_acc"].append(data["dash_acc"])
+                if data.get("sr_imp") is not None:
+                    partial_data[k_val]["sr_imp"].append(data["sr_imp"])
+                    partial_data[k_val]["sr_acc"].append(data["sr_acc"])
+            else:
+                pending_pairs.append((k_val, rep))
 
-            # DASH (MaxMin)
-            dm = DASHPipeline(
-                M=M,
-                K=k_val,
-                epsilon=EPSILON,
-                delta=DELTA,
-                selection_method="maxmin",
-                n_jobs=seq_budget.n_inner,
-                nthread=seq_budget.nthread,
-                seed=rep_seed,
-                verbose=False,
-            )
-            try:
-                dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-                imp = dm.global_importance_
-                r, _ = dgp_agreement(imp, true_imp)
-                dash_acc_runs.append(r)
-                dash_imp_runs.append(imp)
-            except ValueError:
-                pass
+    n_total = len(k_values) * n_reps
+    n_pending = len(pending_pairs)
+    n_resumed = n_total - n_pending
+    log(f"  {n_pending} (k, rep) pairs pending" + (f" ({n_resumed} resumed from checkpoints)" if n_resumed else ""))
 
-            # Random Selection baseline
-            sr = RandomSelectionBaseline(
-                M=M,
-                K=k_val,
-                epsilon=EPSILON,
-                delta=DELTA,
-                n_jobs=seq_budget.n_inner,
-                nthread=seq_budget.nthread,
-                seed=rep_seed,
-            )
-            try:
-                sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
-                imp_sr = sr.global_importance_
-                r_sr, _ = dgp_agreement(imp_sr, true_imp)
-                sr_acc_runs.append(r_sr)
-                sr_imp_runs.append(imp_sr)
-            except ValueError:
-                pass
+    if pending_pairs:
+        n_workers = compute_rep_worker_budget(n_work=n_pending)
+        nthread = 1
+        log(f"  Running {n_workers} workers on {get_available_cores()} cores (nthread={nthread})")
 
-        # Summarize DASH
+        results_list = Parallel(n_jobs=n_workers, backend="loky")(
+            delayed(_run_single_ksweep_pair)(k_val, rep, feature_names, nthread=nthread) for k_val, rep in pending_pairs
+        )
+
+        for per_pair in results_list:
+            k_val = per_pair["k_val"]
+            rep = per_pair["rep"]
+            if per_pair.get("dash_imp") is not None:
+                partial_data[k_val]["dash_imp"].append(per_pair["dash_imp"])
+                partial_data[k_val]["dash_acc"].append(per_pair["dash_acc"])
+            if per_pair.get("sr_imp") is not None:
+                partial_data[k_val]["sr_imp"].append(per_pair["sr_imp"])
+                partial_data[k_val]["sr_acc"].append(per_pair["sr_acc"])
+            _save(f"ksweep_flat_{k_val}_{rep}", **{k: v for k, v in per_pair.items() if k not in ("k_val", "rep")})
+        _shutdown_loky_workers()
+
+    # Aggregate per k_val
+    results = {}
+    for k_val in k_values:
+        dash_imp_runs = partial_data[k_val]["dash_imp"]
+        dash_acc_runs = partial_data[k_val]["dash_acc"]
+        sr_imp_runs = partial_data[k_val]["sr_imp"]
+        sr_acc_runs = partial_data[k_val]["sr_acc"]
+
         if len(dash_imp_runs) >= 2:
             try:
                 dash_stab, dash_se, _, _ = stability_bootstrap_ci(dash_imp_runs)
@@ -4364,7 +4499,6 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
         else:
             dash_stab, dash_se = float("nan"), float("nan")
 
-        # Summarize SR
         if len(sr_imp_runs) >= 2:
             try:
                 sr_stab, sr_se, _, _ = stability_bootstrap_ci(sr_imp_runs)
@@ -4406,6 +4540,9 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
     _publish_results(results, f"{OUT}/tables/k_sweep_independence.json", "k_sweep_independence", N_REPS, t0)
 
     plot_k_sweep_independence(k_values, results)
+
+    if cleanup:
+        clear_checkpoints_by_prefix("ksweep_flat_", CKPT_DIR)
 
     elapsed = time.time() - t0
     log(f"  K sweep completed in {elapsed / 60:.1f} min")
