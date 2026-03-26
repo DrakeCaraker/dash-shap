@@ -222,7 +222,7 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 
 ### Hooks
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
-- **Stop** (project-level): runs lint/typecheck/test on session end if source files changed
+- **Stop** (project-level): runs lint/typecheck/test on session end if source files changed; suggests `/ci-fix` on failure
 - **PreToolUse** (project-level): warns when editing notebooks >2MB (catches output bloat before commit)
 - **PreCompact** (project-level): reminds to save in-progress context before context compression
 
