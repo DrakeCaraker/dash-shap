@@ -1334,6 +1334,7 @@ def experiment_linear_sweep(resume=False, cleanup=False, sequential=False):
                 )
                 for rep in range(N_REPS):
                     clear_checkpoint(f"linear_sweep_{rho}_rep_{rep}", CKPT_DIR)
+            _shutdown_loky_workers()
 
     # FSI collinearity validation (reviewer #7): show FSI rises with rho
     log("\n  FSI Collinearity Validation (DASH):")
@@ -1529,6 +1530,8 @@ def experiment_overlapping(resume=False, cleanup=False):
         results["DASH (MaxMin)"]["gmse_runs"].append(group_level_mse(dm.global_importance_, true_imp, grps))
         results["DASH (MaxMin)"]["eq_runs"].append(within_group_equity(dm.global_importance_, grps))
         results["DASH (MaxMin)"]["rmse_runs"].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
+        dm.all_shap_matrices_ = None
+        dm.consensus_matrix_ = None
 
         imp_vecs = get_preliminary_importance(
             dm.models_,
@@ -1545,7 +1548,7 @@ def experiment_overlapping(resume=False, cleanup=False):
             K=K,
             verbose=False,
         )
-        cons_c, shap_c = compute_consensus(dm.models_, sel_c, Xexp, verbose=False)
+        cons_c, shap_c = compute_consensus(dm.models_, sel_c, Xexp, verbose=False, n_jobs=seq_budget.n_inner)
         _, _, _, imp_c = compute_diagnostics(shap_c)
         results["DASH (Cluster)"]["imp_runs"].append(imp_c)
         r, _ = dgp_agreement(imp_c, true_imp)
@@ -1555,6 +1558,7 @@ def experiment_overlapping(resume=False, cleanup=False):
         results["DASH (Cluster)"]["eq_runs"].append(within_group_equity(imp_c, grps))
         # Cluster uses same models as DASH, so use DASH predictions for RMSE
         results["DASH (Cluster)"]["rmse_runs"].append(rmse_score(yte, dm.get_consensus_ensemble_predictions(Xte)))
+        del sb, dm
 
         if (rep + 1) % 10 == 0:
             _save(f"overlapping_batch_{rep + 1}", results=results, completed_reps=rep + 1)
@@ -1788,6 +1792,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
                     if m["keff"] is not None:
                         partial_data[rho][name]["keff_runs"].append(m["keff"])
                 _save(f"nonlinear_sweep_{rho}_rep_{rep}", per_method=per_method)
+            _shutdown_loky_workers()
 
         # Aggregate per rho, write final checkpoints, clean up per-rep files
         for rho in pending_rhos:
@@ -2007,6 +2012,7 @@ def experiment_table2_baselines(resume=False, cleanup=False):
             partial_data[name]["acc_runs"].append(per_rep["acc"])
             partial_data[name]["eq_runs"].append(per_rep["eq"])
             _save(f"table2_flat_{_sanitize_ckpt_name(name)}_rep_{rep}", per_rep=per_rep)
+        _shutdown_loky_workers()
 
     # Aggregate per method, write final checkpoints, clean up per-rep files
     table2_results = {}
@@ -2700,7 +2706,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
     )
 
     if pending_pairs:
-        n_workers = compute_rep_worker_budget(n_work=len(pending_pairs))
+        n_workers = compute_rep_worker_budget(n_work=len(pending_pairs), memory_per_worker_mb=500)
         nthread = 1
         log(f"  Running {n_workers} workers on {get_available_cores()} cores (nthread={nthread})")
 
@@ -2867,13 +2873,17 @@ def experiment_epsilon_sensitivity(resume=False, cleanup=False):
             eps_results[eps]["k_eff"].append(len(selected))
 
             # Stage 4-5: Consensus SHAP (use Xexp, not Xte, to avoid data leakage)
-            cons, all_shap = compute_consensus(models, selected, Xexp, seed=rep_seed, verbose=False)
+            cons, all_shap = compute_consensus(
+                models, selected, Xexp, seed=rep_seed, verbose=False, n_jobs=seq_budget.n_inner
+            )
             _, _, _, imp = compute_diagnostics(all_shap)
 
             r, _ = dgp_agreement(imp, true_imp)
             eps_results[eps]["acc_runs"].append(r)
             eps_results[eps]["eq_runs"].append(within_group_equity(imp, grps))
             eps_results[eps]["imp_runs"].append(imp)
+
+        del models, val_scores, configs
 
         if (rep + 1) % 10 == 0:
             _save(
@@ -2958,6 +2968,7 @@ def _run_ablation_rho(abl_rho, ablations, abl_defaults, n_jobs_inner, *, nthread
                 r, _ = dgp_agreement(imp, true_imp)
                 acc_runs.append(r)
                 imp_runs.append(imp)
+                del dm
 
             if len(imp_runs) >= 2:
                 stab = importance_stability(imp_runs)
@@ -3037,6 +3048,7 @@ def experiment_ablation(resume=False, cleanup=False):
         )
         for rho, rho_results in results_list:
             abl_results[rho] = rho_results
+        _shutdown_loky_workers()
 
     _publish_results(abl_results, f"{OUT}/tables/ablation.json", "ablation", N_REPS, t0)
 
@@ -3124,6 +3136,7 @@ def experiment_variance_decomposition(resume=False, cleanup=False) -> dict:
             )
             dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
             results[cond]["DASH (MaxMin)"].append(dm.global_importance_)
+            del sb, dm
 
         if (rep + 1) % 10 == 0:
             _save(f"variance_decomp_batch_{rep + 1}", results=results, completed_reps=rep + 1)
@@ -3216,6 +3229,7 @@ def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup
         lsm = LargeSingleModelBaseline(seed=rep_seed, nthread=nthread)
         lsm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
         rho_imps["Large Single Model"].append(lsm.global_importance_)
+        del sb, sr, dm, lsm
 
     ckpt_name = f"asym_dgp_rho{rho}"
     if do_cleanup:
@@ -3319,6 +3333,7 @@ def experiment_asymmetric_dgp(resume=False, cleanup=False) -> dict:
         )
         for rho, rho_summary in results_list:
             all_results[rho] = rho_summary
+        _shutdown_loky_workers()
 
     _publish_results(all_results, f"{OUT}/tables/asymmetric_dgp.json", "asymmetric_dgp", N_REPS, t0)
 
@@ -3344,6 +3359,7 @@ def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inn
         sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=model_seed, n_jobs=n_jobs_inner, nthread=nthread)
         sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=model_seed)
         cell_results[("Single Best", di, mi)] = sb.global_importance_
+        del sb
 
         dm = DASHPipeline(
             M=M,
@@ -3358,6 +3374,7 @@ def _run_crossed_data_seed(di, data_seed, model_seeds, feature_names, n_jobs_inn
         )
         dm.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
         cell_results[("DASH (MaxMin)", di, mi)] = dm.global_importance_
+        del dm
 
     return di, cell_results
 
@@ -3423,6 +3440,7 @@ def experiment_variance_decomposition_crossed(resume=False, cleanup=False) -> di
                 checkpoint_dir=CKPT_DIR,
                 importances=importances,
             )
+        _shutdown_loky_workers()
 
     # Compute ANOVA decomposition for each method
     log(f"\n  {'Method':<22} {'Data%':>8} {'Model%':>8} {'Residual%':>10}")
@@ -3679,6 +3697,7 @@ def experiment_background_sensitivity(resume=False, cleanup=False):
             acc_runs.append(r)
             eq_runs.append(within_group_equity(imp, grps))
             imp_runs.append(imp)
+            del dm
 
         stab, stab_se, stab_ci_lo, stab_ci_hi = stability_bootstrap_ci(imp_runs)
         topk5, topk5_se, topk5_ci_lo, topk5_ci_hi = topk_stability_bootstrap_ci(imp_runs, k=5)
@@ -3805,6 +3824,7 @@ def experiment_first_mover_visualization(resume=False, cleanup=False):
         )
         dash.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
         method_importances["DASH (MaxMin)"].append(dash.global_importance_[group_features])
+        del sb, lsm, dash
 
         if (rep + 1) % 10 == 0:
             _save(
@@ -3950,6 +3970,7 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
             grp_imp = imp_single[group_features]
             conc = np.max(grp_imp) / (np.sum(grp_imp) + 1e-10)
             single_concentrations[n_est].append(conc)
+            del model, explainer
 
             # --- Independent ensemble: M small models, averaged ---
             n_per_model = max(10, n_est // 20)
@@ -3968,6 +3989,7 @@ def experiment_first_mover_bias(resume=False, cleanup=False):
                 mdl.fit(Xtr, ytr, eval_set=[(Xv, yv)], verbose=False)
                 sv_m = shap.TreeExplainer(mdl).shap_values(Xexp[:200], check_additivity=False)
                 imp_accum += np.mean(np.abs(sv_m), axis=0)
+                del mdl
             imp_avg = imp_accum / m_models
             grp_imp_avg = imp_avg[group_features]
             conc_avg = np.max(grp_imp_avg) / (np.sum(grp_imp_avg) + 1e-10)
@@ -4272,6 +4294,7 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
 
     feature_names = make_feature_names()
     results = {}
+    seq_budget = compute_thread_budget(n_outer=1)
 
     def _fmt(v: float) -> str:
         """Format float values for logging."""
@@ -4298,7 +4321,8 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
                 epsilon=EPSILON,
                 delta=DELTA,
                 selection_method="maxmin",
-                n_jobs=-1,
+                n_jobs=seq_budget.n_inner,
+                nthread=seq_budget.nthread,
                 seed=rep_seed,
                 verbose=False,
             )
@@ -4317,6 +4341,8 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
                 K=k_val,
                 epsilon=EPSILON,
                 delta=DELTA,
+                n_jobs=seq_budget.n_inner,
+                nthread=seq_budget.nthread,
                 seed=rep_seed,
             )
             try:
