@@ -220,11 +220,28 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 - `/pr` — standardized branch→commit→push→PR workflow with lint gates and main-branch guard
 - `/self-improve` — analyze feedback memories and propose promotions to CLAUDE.md rules or hooks (promotion ladder: memory → rule → hook)
 
-### Hooks
+### Hooks (fully automated)
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
-- **Stop** (project-level): runs lint/typecheck/test on session end if source files changed; suggests `/ci-fix` on failure
-- **PreToolUse** (project-level): warns when editing notebooks >2MB (catches output bloat before commit)
-- **PreCompact** (project-level): reminds to save in-progress context before context compression
+- **Stop: CI gate** — runs lint/typecheck/test if source files changed; suggests `/ci-fix` on failure
+- **Stop: Feedback capture** — reminds to save uncaptured user corrections as feedback memories
+- **Stop: Self-improve check** — classifies feedback memories and surfaces promotion proposals if actionable
+- **PostToolUse** — auto-format Python, sync-check config files, lint LaTeX on every edit
+- **PreToolUse** — warns when editing notebooks >2MB (catches output bloat before commit)
+- **PreCompact** — reminds to save in-progress context before context compression
+
+### Smart Suggestions
+
+Proactively suggest these commands when the conditions are met. Explain briefly why, then ask for confirmation. Never run gated commands without asking.
+
+- **Suggest `/new-work`** when: session starts on `main`, or the user describes a new task without scoping it. Say: *"Want me to create a branch and scope this work first?"*
+- **Suggest `/commit`** when: a logical unit of work is complete and there are uncommitted changes. Say: *"That looks complete — want me to checkpoint this?"*
+- **Suggest `/ci-fix`** when: a lint, type, or test error occurs mid-session. Say: *"CI checks failed — want me to auto-fix?"*
+- **Suggest `/pr`** when: the branch has commits, all checks pass, and the user says the work is done. Say: *"Ready to open a PR?"*
+- **Suggest `/safe-refactor`** when: the user asks to restructure, rename, or reorganize code touching multiple files. Say: *"This touches multiple files — want me to use test-gated refactoring so we can rollback safely?"*
+- **Suggest `/audit`** when: the user mentions release readiness, submission prep, or asks about project health. Say: *"Want me to run a full audit?"*
+- **Suggest `/paper-context`** when: the user asks about paper writing, results, or TMLR submission. Load it automatically.
+- **Suggest `/notebook-status`** when: the user is about to edit a notebook. Check canonical status first.
+- **Suggest `/checkpoint-clear`** when: session-start reports stale checkpoint files.
 
 ## Research Program
 
