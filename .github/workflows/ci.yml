@@ -371,6 +371,6 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install -e .
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov pytest-timeout
       - name: Run full test suite with coverage
         run: pytest -v --cov=dash_shap --cov-report=term-missing --cov-fail-under=70 --timeout=3600
