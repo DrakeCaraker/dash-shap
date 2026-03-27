@@ -1,13 +1,13 @@
 # DASH: Diversified Aggregation of SHAP
 
 [![ArXiv](https://img.shields.io/badge/arXiv-2603.22346-b31b1b.svg)](https://arxiv.org/abs/2603.22346)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19060133.svg)](https://doi.org/10.5281/zenodo.19060133)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19060132.svg)](https://doi.org/10.5281/zenodo.19060132)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.9-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 **Stable feature importance explanations under collinearity via independent model aggregation.**
 
-> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* [arXiv:2603.22346](https://arxiv.org/abs/2603.22346) | [Zenodo](https://doi.org/10.5281/zenodo.19060133). Target venue: TMLR.
+> Caraker, Arnold, Rhoads (2026). *First-Mover Bias in Gradient Boosting Explanations: Mechanism, Detection, and Resolution.* [arXiv:2603.22346](https://arxiv.org/abs/2603.22346) | [Zenodo](https://doi.org/10.5281/zenodo.19060132). Target venue: TMLR.
 
 ---
 
@@ -289,7 +289,7 @@ dash-shap/
   eprint={2603.22346},
   archiveprefix={arXiv},
   primaryclass={cs.LG},
-  doi={10.5281/zenodo.19060133},
+  doi={10.5281/zenodo.19060132},
   url={https://arxiv.org/abs/2603.22346}
 }
 ```
