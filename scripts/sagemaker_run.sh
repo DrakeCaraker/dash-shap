@@ -251,6 +251,26 @@ print(f'  Instance: {os.environ.get(\"SM_CURRENT_INSTANCE_TYPE\", \"NOT SET\")}'
         [[ "$confirm" =~ ^[Yy]$ ]] || die "Aborted. Set the env var and re-run."
     fi
 
+    # --- Pre-flight checks ---
+    if [[ ! -f "scripts/sagemaker_finalize_run.sh" ]]; then
+        warn "scripts/sagemaker_finalize_run.sh not found."
+        warn "You won't be able to finalize results without it."
+        warn "Fetch it: git checkout origin/main -- scripts/sagemaker_finalize_run.sh"
+        read -rp "Continue anyway? [y/N] " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] || die "Aborted. Get the finalize script first."
+    fi
+
+    # --- Smoke test (1 rep, reduced config, validates full pipeline) ---
+    log "Running smoke test (1 rep, M=10, K=5)..."
+    if python run_experiments_parallel.py --smoke --experiments linear_sweep; then
+        log "Smoke test passed — full pipeline including serialization OK."
+        # Clean up smoke test output so it doesn't pollute the real run
+        rm -f results/tables/synthetic_linear_sweep.json
+        rm -f results/checkpoints/linear_sweep_*
+    else
+        die "Smoke test FAILED. Fix the error above before starting a long run."
+    fi
+
     log ""
     log "Starting experiments. Use Ctrl-A,D to detach if in screen/tmux."
     log "Re-run this command with --resume to pick up from checkpoints."
