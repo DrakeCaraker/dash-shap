@@ -18,6 +18,8 @@ These apply to every session, no exceptions:
 
 6. **Capture corrections immediately.** When the user redirects your approach ("no", "don't", "stop", "instead", "actually"), save a feedback memory *before* continuing with the corrected approach. Check existing memories first to avoid duplicates. Only capture genuine corrections to approach, not routine task requests.
 
+7. **Close superseded PRs.** When a new PR includes the changes from earlier PRs, close the earlier ones with a comment referencing the replacement. Don't leave overlapping PRs open.
+
 ## Directory Map
 
 ```
