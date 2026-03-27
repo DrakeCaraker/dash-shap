@@ -55,15 +55,15 @@ The `config_sha` field in each result JSON is a SHA256 fingerprint of this dict.
 
 ### 4. Full reproduction (cloud)
 
-**Hardware:** The paper results were produced on an AWS SageMaker instance with 72 vCPUs and 144 GB RAM (likely `ml.c5.18xlarge`). The runner is designed around this parallelism level.
+**Hardware:** The TMLR results were produced on an AWS SageMaker `ml.g5.16xlarge` instance (64 vCPUs, 256 GB RAM). Any instance with ≥32 vCPUs and ≥64 GB RAM is recommended. The runner auto-tunes parallelism to available cores.
 
-**Minimum viable hardware:** Any machine with ≥8 vCPUs and ≥16 GB RAM will run all experiments correctly but significantly slower. On an 8-core machine, expect 3–5× longer runtimes.
+**Minimum viable hardware:** ≥8 vCPUs and ≥16 GB RAM will work but 3–5× slower.
 
-**Estimated wall-clock time on 72-vCPU instance:**
+**Estimated wall-clock time on 64-vCPU instance:**
 
 | Experiment | Est. time | Notes |
 |---|---|---|
-| `linear_sweep` | ~36 min | Confirmed from run metadata |
+| `linear_sweep` | ~40 min | 5 rho levels × 50 reps × 9 methods |
 | `nonlinear_sweep` | ~30–45 min | Similar structure to linear |
 | `table2_baselines` | ~20–30 min | |
 | `overlapping` | ~15–25 min | |
@@ -79,7 +79,7 @@ The `config_sha` field in each result JSON is a SHA256 fingerprint of this dict.
 | `first_mover_visualization` | ~15–25 min | |
 | `first_mover_bias` | ~20–30 min | |
 | `k_sweep_independence` | ~20–30 min | |
-| **Total** | **~6–10 hours** | All 16 on 72 vCPUs |
+| **Total** | **~6–12 hours** | All 16 on 64 vCPUs |
 
 **Run all experiments:**
 ```bash
@@ -91,10 +91,66 @@ python run_experiments_parallel.py
 python run_experiments_parallel.py --experiments linear_sweep
 ```
 
+**Smoke test** (validates serialization pipeline in ~1 second, no model training):
+```bash
+python run_experiments_parallel.py --smoke --experiments linear_sweep
+```
+
 **Resume after interruption** (uses per-rep checkpoints):
 ```bash
 python run_experiments_parallel.py --resume
 ```
+
+### 4a. SageMaker workflow (automated)
+
+A scripted workflow handles the full SageMaker lifecycle: environment setup, smoke testing, branch/tag creation, experiment execution, and result finalization. This is how the paper results were produced.
+
+**On a fresh SageMaker notebook instance:**
+
+```bash
+# 1. Clone and enter repo
+cd ~/SageMaker
+git clone https://github.com/DrakeCaraker/dash-shap.git
+cd dash-shap
+
+# 2. Set instance type for provenance metadata
+export SM_CURRENT_INSTANCE_TYPE='ml.g5.16xlarge'
+
+# 3. Install dependencies, verify environment, run fast tests
+bash scripts/sagemaker_run.sh setup
+
+# 4. Validate serialization pipeline (~1 second)
+#    Catches bugs that would otherwise crash after hours of compute.
+bash scripts/sagemaker_run.sh smoke
+
+# 5. Create results branch and start tag (cleans old artifacts)
+bash scripts/sagemaker_run.sh branch
+
+# 6. Launch experiments in a named screen session
+#    Detaches automatically. All 13 experiments run with --resume.
+bash scripts/sagemaker_run.sh run
+
+# 7. Check progress (safe anytime, from any terminal)
+bash scripts/sagemaker_run.sh status
+
+# 8. After all experiments complete: verify metadata, commit, tag, push
+bash scripts/sagemaker_run.sh finish
+```
+
+**What the workflow does:**
+
+| Phase | What happens |
+|---|---|
+| `setup` | Installs pinned deps (`requirements.lock`), psutil, screen. Detects instance type. Runs fast tests. |
+| `smoke` | Builds synthetic result data with float keys, pushes through `_publish_results()`. Catches serialization bugs in 1 second. |
+| `branch` | Checks out main, creates `results/sagemaker-run-YYYYMMDD`, cleans `results/`, tags start commit. Code must be clean (`code_dirty=false`). |
+| `run` | Kills stale screen sessions, launches experiments in a named screen (`dash-YYYYMMDD`). Uses `--resume --no-cleanup` for crash recovery. |
+| `status` | Shows completed result files, running processes, screen sessions, worker count. No side effects. |
+| `finish` | Checks `_meta` in every JSON (skips `backfill_meta.py` if all present), commits, tags end, pushes. |
+
+**After the run:** On your workstation, open a data-only PR from the results branch to main.
+
+**Mid-run code fixes:** If a bug is found during the run, fix it on main via a PR, then cherry-pick to the results branch with a note in the commit message. See `CLAUDE.md` "SageMaker Run Protocol" for the full policy.
 
 ### 5. Verifying results
 
