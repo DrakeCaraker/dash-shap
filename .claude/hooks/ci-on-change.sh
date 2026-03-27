@@ -28,6 +28,11 @@ if [ -n "$changed" ]; then
   else
     echo "xgboost not installed — skipping tests (run: pip install xgboost)"
   fi
+
+  if [ -n "$CI_FAILED" ]; then
+    echo '{"systemMessage": "CI checks failed ('"$CI_FAILED"'). Before ending this session, offer to run /ci-fix to auto-repair. If the user declines, remind them to run it next session. Do not push code with failing checks."}'
+    exit 0
+  fi
 else
   echo "No dash_shap/ or tests/ .py changes — skipping local CI."
 fi
