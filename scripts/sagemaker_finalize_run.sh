@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Finalize a SageMaker experiment run: backfill metadata, commit, tag, push.
+# Finalize a SageMaker experiment run: verify metadata, commit, tag, push.
 # Run this from the repo root after all experiments have completed.
+#
+# This is a standalone version of the 'finish' phase for cases where you
+# need to finalize without the full sagemaker_run.sh workflow.
+# Prefer: bash scripts/sagemaker_run.sh finish
 # =============================================================================
 set -euo pipefail
 
@@ -28,9 +32,24 @@ echo "Result files:"
 ls -lht results/tables/*.json 2>/dev/null || echo "  (none found)"
 echo ""
 
-# --- Backfill provenance ---
-echo "Backfilling provenance metadata..."
-python scripts/backfill_meta.py
+# --- Check metadata completeness (skip backfill if all have _meta) ---
+echo "Checking _meta blocks..."
+MISSING_META=0
+for f in results/tables/*.json; do
+    [[ -f "$f" ]] || continue
+    HAS_META=$(python3 -c "import json; d=json.load(open('$f')); print('yes' if '_meta' in d else 'no')" 2>/dev/null || echo "error")
+    if [[ "$HAS_META" != "yes" ]]; then
+        echo "  Missing _meta: $f"
+        MISSING_META=1
+    fi
+done
+
+if [[ "$MISSING_META" -eq 1 ]]; then
+    echo "Running backfill_meta.py for files missing _meta..."
+    python scripts/backfill_meta.py
+else
+    echo "All result files have _meta blocks. Skipping backfill."
+fi
 
 # --- Commit ---
 echo ""
