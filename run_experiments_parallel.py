@@ -4673,9 +4673,7 @@ Examples:
                     "n_reps": 1,
                     "acc_runs": [0.88],
                 }
-        smoke_path = os.path.join(
-            tempfile.mkdtemp(), "smoke_test.json"
-        )
+        smoke_path = os.path.join(tempfile.mkdtemp(), "smoke_test.json")
         _publish_results(smoke_data, smoke_path, "smoke_test", 1, time.time())
         os.unlink(smoke_path)
         log("SMOKE TEST PASSED: serialization pipeline OK")
