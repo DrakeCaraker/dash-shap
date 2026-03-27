@@ -309,6 +309,25 @@ class TestProvenance:
         issues = validate_result(data, "test_exp")
         assert issues == []
 
+    def test_validate_result_float_keys(self):
+        """Regression: linear_sweep uses float rho keys (0.0, 0.5, etc.)."""
+        data = {
+            0.0: {"DASH": self._make_valid_entry(), "Single Best": self._make_valid_entry()},
+            0.5: {"DASH": self._make_valid_entry()},
+            0.9: {"DASH": self._make_valid_entry()},
+            "_meta": {"experiment": "linear_sweep"},
+        }
+        issues = validate_result(data, "linear_sweep")
+        assert issues == []
+
+    def test_validate_result_float_keys_with_issues(self):
+        """Float keys should still detect data quality problems."""
+        data = {
+            0.9: {"DASH": {"stability": float("nan"), "n_successful": 10}},
+        }
+        issues = validate_result(data, "test_exp")
+        assert any("NaN" in i for i in issues)
+
     def test_capture_run_meta_fields(self, tmp_path):
         config = {"M": 200, "K": 30, "N_REPS": 50}
         meta = capture_run_meta("test_exp", 50, config, 123.4, str(tmp_path / "out.json"))

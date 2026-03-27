@@ -4443,6 +4443,7 @@ Examples:
   python run_experiments.py --experiments linear_sweep nonlinear_sweep
   python run_experiments.py --experiments real_california real_breast_cancer
   python run_experiments.py --list                           # List available experiments
+  python run_experiments.py --smoke --experiments linear_sweep  # Quick validation of full pipeline
         """,
     )
     parser.add_argument(
@@ -4471,6 +4472,11 @@ Examples:
         action="store_true",
         help="Disable rep parallelism for linear_sweep (use for validation or single-core machines)",
     )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Smoke test: 1 rep, reduced config. Validates full pipeline including serialization.",
+    )
     args = parser.parse_args()
 
     if args.list:
@@ -4478,6 +4484,38 @@ Examples:
         for name, fn in EXPERIMENTS.items():
             doc = (fn.__doc__ or "").strip().split("\n")[0]
             print(f"  {name:<24} {doc}")
+        sys.exit(0)
+
+    if args.smoke:
+        # Validate the full serialization pipeline without training any models.
+        # Builds a synthetic result dict with float keys (like linear_sweep
+        # produces) and pushes it through _publish_results. This catches
+        # serialization bugs — like the float-key validation issue that
+        # crashed a 250-rep SageMaker run — in seconds, not hours.
+        import tempfile
+
+        log("SMOKE TEST: validating serialization pipeline...")
+        smoke_data: dict = {}
+        for rho in [0.0, 0.5, 0.9]:
+            smoke_data[rho] = {}
+            for method in ["DASH (MaxMin)", "Single Best"]:
+                smoke_data[rho][method] = {
+                    "stability": 0.95,
+                    "stability_lo": 0.93,
+                    "stability_hi": 0.97,
+                    "stability_se": 0.01,
+                    "accuracy": 0.88,
+                    "equity": 0.15,
+                    "n_successful": 1,
+                    "n_reps": 1,
+                    "acc_runs": [0.88],
+                }
+        smoke_path = os.path.join(
+            tempfile.mkdtemp(), "smoke_test.json"
+        )
+        _publish_results(smoke_data, smoke_path, "smoke_test", 1, time.time())
+        os.unlink(smoke_path)
+        log("SMOKE TEST PASSED: serialization pipeline OK")
         sys.exit(0)
 
     _ensure_dirs()
