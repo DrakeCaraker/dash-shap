@@ -153,13 +153,13 @@ Enable these settings in GitHub > Settings > Branches > Branch protection rules 
 
 ## Pre-push Checklist
 
-Before any `git push`, run the full local CI pipeline and fix all failures before pushing:
+Before any `git push`, run fast local checks:
 
 ```bash
-make lint && make fmt && make typecheck && make test-fast
+make lint && make test-fast
 ```
 
-Do not push partial fixes. CI failures on ruff quote style, mypy ignore codes, and sync-check regexes are avoidable locally.
+Formatting (`make fmt`) and type checking (`make typecheck`) are handled by CI — formatting is auto-fixed and committed, typecheck runs on every PR. Run them locally only when touching type signatures or debugging a CI failure.
 
 ## Do NOT
 
