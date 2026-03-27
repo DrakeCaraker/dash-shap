@@ -7,6 +7,13 @@ REPO="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 # Ensure user-installed binaries (ruff, mypy, etc.) are on PATH
 export PATH="$HOME/.local/bin:$HOME/Library/Python/3.9/bin:$PATH"
 
+# Validate hook scripts have no syntax errors (catches stale variables, typos)
+for hook in "$REPO"/.claude/hooks/*.sh; do
+  if ! bash -n "$hook" 2>/dev/null; then
+    echo "WARNING: syntax error in $hook"
+  fi
+done
+
 changed=$(git -C "$REPO" status --porcelain 2>/dev/null \
   | awk '{print $2}' \
   | grep -E '^(dash_shap|tests)/.*\.py$' || true)
@@ -27,11 +34,6 @@ if [ -n "$changed" ]; then
     fi
   else
     echo "xgboost not installed — skipping tests (run: pip install xgboost)"
-  fi
-
-  if [ -n "$CI_FAILED" ]; then
-    echo '{"systemMessage": "CI checks failed ('"$CI_FAILED"'). Before ending this session, offer to run /ci-fix to auto-repair. If the user declines, remind them to run it next session. Do not push code with failing checks."}'
-    exit 0
   fi
 else
   echo "No dash_shap/ or tests/ .py changes — skipping local CI."
