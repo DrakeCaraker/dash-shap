@@ -32,15 +32,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install ruff
         run: pip install ruff
-      - name: Ruff lint
+      - name: Ruff lint (auto-fix)
+        run: ruff check --fix .
+      - name: Ruff format (auto-fix)
+        run: ruff format .
+      - name: Commit fixes if any
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: auto-format via CI"
+      - name: Ruff lint (verify)
         run: ruff check .
-      - name: Ruff format check
+      - name: Ruff format (verify)
         run: ruff format --check .
 
   typecheck:
