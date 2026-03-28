@@ -324,6 +324,26 @@ def test_topk_overlap_stability_single():
     assert topk_overlap_stability([np.array([1, 2, 3])], k=2) == 1.0
 
 
+def test_topk_overlap_stability_numpy_hashable():
+    """Regression: numpy int indices must be hashable in sets (numpy 2.x compat)."""
+    from dash_shap.evaluation import topk_overlap_stability, topk_stability_bootstrap_ci
+
+    # 1D arrays (standard case)
+    vectors = [np.array([0.5, 0.3, 0.1, 0.8, 0.2], dtype=np.float64) for _ in range(10)]
+    result = topk_overlap_stability(vectors, k=3)
+    assert 0.0 <= result <= 1.0
+
+    # Bootstrap wrapper
+    pt, se, lo, hi = topk_stability_bootstrap_ci(vectors, k=3, n_boot=50)
+    assert 0.0 <= pt <= 1.0
+    assert lo <= pt <= hi
+
+    # 2D arrays (Breast Cancer passes SHAP matrices instead of 1D importance)
+    vectors_2d = [np.random.RandomState(i).rand(50, 30) for i in range(5)]
+    result_2d = topk_overlap_stability(vectors_2d, k=5)
+    assert 0.0 <= result_2d <= 1.0
+
+
 def test_fsi_collinearity_correlation_known():
     """High FSI should correlate with high collinearity."""
     from dash_shap.evaluation import fsi_collinearity_correlation
