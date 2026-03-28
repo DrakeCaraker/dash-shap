@@ -45,3 +45,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/california_housing.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## real_breast_cancer — 2026-03-28T06:27:58.131177+00:00
+- **code_sha**: `5a503f5807b4c9e11c465389bccd913ffa8dc0c0`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 13.28
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/breast_cancer.json`
+
