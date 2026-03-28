@@ -236,6 +236,15 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 - **PreToolUse** — warns when editing notebooks >2MB (catches output bloat before commit)
 - **PreCompact** — reminds to save in-progress context before context compression
 
+### Hook Behaviors (what to do when hooks fire)
+
+These instructions describe what Claude should do when Stop/PreCompact hooks run. The hooks themselves only print short status messages — the detailed behavior lives here.
+
+- **Feedback capture** (Stop): Before ending, check if any user corrections from this session still need to be saved as feedback memories (Non-Negotiable Rule #6). Only capture genuine approach corrections, not routine requests. Check existing memories first to avoid duplicates.
+- **Self-improve check** (Stop): If the hook reports 3+ feedback memories, read each one, check if it duplicates a CLAUDE.md rule (delete if so), and if any pattern has appeared 2+ times, propose promoting it to a rule. Show the user what was found and ask before making changes.
+- **CI gate** (Stop): If CI checks fail, offer to run `/ci-fix` to auto-repair. If the user declines, remind them to run it next session. Do not push code with failing checks.
+- **PreCompact**: When context compression starts, save any in-progress task state, critical file paths, current branch, and uncommitted decisions to the plan file or memory so they survive compression.
+
 ### Smart Suggestions
 
 Proactively suggest these commands when the conditions are met. Explain briefly why, then ask for confirmation. Never run gated commands without asking.
