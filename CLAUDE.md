@@ -20,6 +20,10 @@ These apply to every session, no exceptions:
 
 7. **Close superseded PRs.** When a new PR includes the changes from earlier PRs, close the earlier ones with a comment referencing the replacement. Don't leave overlapping PRs open.
 
+8. **Scripts before remote work.** Commit all tooling scripts (setup, run, finalize) to main before cloning to a remote instance. Do not relay commands through chat — copy-paste across terminals causes syntax errors.
+
+9. **Smoke test before long runs.** Run `python run_experiments_parallel.py --smoke --experiments linear_sweep` before any multi-hour experiment run. The smoke test validates the full serialization pipeline in ~1 second and catches bugs that would otherwise crash after hours of compute.
+
 ## Directory Map
 
 ```
@@ -188,9 +192,10 @@ California Housing: DASH stability=0.982 vs Single Best=0.967 (+0.015)
 Long-running SageMaker experiments have specific branch/provenance rules to prevent muddying.
 
 ### Before starting a run
-1. Ensure all runner code is on `main` first — no code changes on the results branch that aren't also on main
-2. Create the results branch from main: `git checkout -b results/sagemaker-run-YYYYMMDD`
-3. Tag the starting commit: `git tag run-tmlr-YYYYMMDD-start <sha> && git push origin run-tmlr-YYYYMMDD-start`
+1. Ensure all runner code and tooling scripts are on `main` first — no code changes on the results branch that aren't also on main
+2. Run `python run_experiments_parallel.py --smoke --experiments linear_sweep` to validate the serialization pipeline (~1 second)
+3. Create the results branch from main: `git checkout -b results/sagemaker-run-YYYYMMDD`
+4. Tag the starting commit: `git tag run-tmlr-YYYYMMDD-start <sha> && git push origin run-tmlr-YYYYMMDD-start`
 
 ### During a run
 - Results branch gets **data-only commits** (JSON files, figures, `environment.json`)
