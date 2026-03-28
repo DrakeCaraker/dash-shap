@@ -18,9 +18,11 @@ These apply to every session, no exceptions:
 
 6. **Capture corrections immediately.** When the user redirects your approach ("no", "don't", "stop", "instead", "actually"), save a feedback memory *before* continuing with the corrected approach. Check existing memories first to avoid duplicates. Only capture genuine corrections to approach, not routine task requests.
 
-7. **Scripts before remote work.** Commit all tooling scripts (setup, run, finalize) to main before cloning to a remote instance. Do not relay commands through chat — copy-paste across terminals causes syntax errors.
+7. **Close superseded PRs.** When a new PR includes the changes from earlier PRs, close the earlier ones with a comment referencing the replacement. Don't leave overlapping PRs open.
 
-8. **Smoke test before long runs.** Run `python run_experiments_parallel.py --smoke --experiments linear_sweep` before any multi-hour experiment run. The smoke test validates the full serialization pipeline in ~1 second and catches bugs that would otherwise crash after hours of compute.
+8. **Scripts before remote work.** Commit all tooling scripts (setup, run, finalize) to main before cloning to a remote instance. Do not relay commands through chat — copy-paste across terminals causes syntax errors.
+
+9. **Smoke test before long runs.** Run `python run_experiments_parallel.py --smoke --experiments linear_sweep` before any multi-hour experiment run. The smoke test validates the full serialization pipeline in ~1 second and catches bugs that would otherwise crash after hours of compute.
 
 ## Directory Map
 
