@@ -22,14 +22,14 @@ if [ -n "$changed" ]; then
   # Fast local checks only — formatting and typecheck are handled by CI.
   echo "Source files modified — running lint + fast tests..."
   if ! make -C "$REPO" lint 2>&1; then
-    echo '{"decision": "block", "reason": "Lint failed. Run /ci-fix to auto-repair, or fix manually with: make lint"}'
+    echo "Alfred: lint failed — run /ci-fix to auto-repair."
     exit 0
   fi
 
   # Run fast tests only if xgboost is available (required by pipeline tests)
   if python3 -c "import xgboost" 2>/dev/null; then
     if ! make -C "$REPO" test-fast 2>&1; then
-      echo '{"decision": "block", "reason": "Tests failed. Run /ci-fix to auto-repair, or fix manually with: make test-fast"}'
+      echo "Alfred: tests failed — run /ci-fix to auto-repair."
       exit 0
     fi
   else
