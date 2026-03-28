@@ -55,3 +55,22 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/breast_cancer.json`
 
+## real_superconductor — 2026-03-28T16:26:16.277098+00:00
+- **code_sha**: `4f80e61cd59956935c9c5e16e6deddedd1f7bd9a`
+- **code_dirty**: False
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 35897.86
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/superconductor.json`
+
+**⚠ DIRTY** — results from uncommitted changes
+## epsilon_sensitivity — 2026-03-28T17:48:46.753800+00:00
+- **code_sha**: `4f80e61cd59956935c9c5e16e6deddedd1f7bd9a`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 4950.29
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/epsilon_sensitivity.json`
+
