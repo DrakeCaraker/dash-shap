@@ -35,3 +35,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/table2_baselines.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## real_california — 2026-03-28T03:37:11.071320+00:00
+- **code_sha**: `9e7be2c2ed2f5ead351804a18f24491d32f60688`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 14478.68
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/california_housing.json`
+
