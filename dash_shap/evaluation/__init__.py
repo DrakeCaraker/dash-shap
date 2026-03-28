@@ -396,7 +396,7 @@ def topk_overlap_stability(vectors, k=5):
     """
     from itertools import combinations
 
-    top_sets = [set(np.argsort(np.abs(v))[-k:]) for v in vectors]
+    top_sets = [set(np.argsort(np.abs(v))[-k:].tolist()) for v in vectors]
     n = len(top_sets)
     if n < 2:
         return 1.0
