@@ -225,11 +225,11 @@ def validate_result(data: dict, experiment_name: str) -> list[str]:
                 pass
 
     for outer_key, outer_val in data.items():
-        if outer_key.startswith("_"):
+        if isinstance(outer_key, str) and outer_key.startswith("_"):
             continue
         if isinstance(outer_val, dict):
             for inner_key, inner_val in outer_val.items():
-                if inner_key.startswith("_"):
+                if isinstance(inner_key, str) and inner_key.startswith("_"):
                     continue
                 if isinstance(inner_val, dict):
                     _check_entry(f"{outer_key}/{inner_key}", inner_val)
