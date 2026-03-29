@@ -2212,6 +2212,40 @@ def _run_single_cal_rep(name, rep, X_pool, X_test, y_pool, y_test, cal_names, *,
         preds = m.get_consensus_ensemble_predictions(Xte_r)
         rmse_val = rmse_score(y_test, preds)
         abl = feature_ablation_score(m.models_[m.selected_indices_[0]], Xte_r, y_test, imp)
+    elif name == "Ensemble SHAP":
+        m = EnsembleSHAPBaseline(
+            n_estimators=PAPER_CONFIG["N_ESTIMATORS_ESHAP"],
+            task="regression",
+            seed=rep_seed,
+            nthread=nthread,
+        )
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+        imp = m.global_importance_
+        rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Naive Top-N":
+        # Train population (identical to DASH's — same seed, same search space)
+        from dash_shap.core.population import generate_model_population
+
+        pop_models, pop_scores, _ = generate_model_population(
+            Xtr_r,
+            ytr_r,
+            Xv_r,
+            yv_r,
+            M=M,
+            task="regression",
+            seed=rep_seed,
+            n_jobs=1,
+            verbose=False,
+            nthread=nthread,
+        )
+        m = NaiveAveragingBaseline(N=K, task="regression", n_jobs=1)
+        m.fit_from_population(pop_models, pop_scores, Xexp_r)
+        imp = m.global_importance_
+        preds = m.get_consensus_ensemble_predictions(Xte_r)
+        rmse_val = rmse_score(y_test, preds)
+        abl = feature_ablation_score(pop_models[m.selected_indices_[0]], Xte_r, y_test, imp)
+        del pop_models, pop_scores
     else:  # DASH (MaxMin)
         m = DASHPipeline(
             M=M,
@@ -2275,9 +2309,11 @@ def experiment_real_california(resume=False, cleanup=False):
         "Single Best",
         "Single Best (M=200)",
         "Large Single Model",
+        "Ensemble SHAP",
         "Random Forest",
         "Stochastic Retrain",
         "Random Selection",
+        "Naive Top-N",
         "DASH (MaxMin)",
     ]
 
@@ -2476,6 +2512,36 @@ def _run_single_bc_rep(name, rep, X_pool, X_test, y_pool, y_test, bc_names, *, n
         m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
         imp = m.global_importance_
         abl = feature_ablation_score(m.models_[m.selected_indices_[0]], Xte_r, y_test, imp)
+    elif name == "Ensemble SHAP":
+        m = EnsembleSHAPBaseline(
+            n_estimators=PAPER_CONFIG["N_ESTIMATORS_ESHAP"],
+            task="binary",
+            seed=rep_seed,
+            nthread=nthread,
+        )
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+        imp = m.global_importance_
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Naive Top-N":
+        from dash_shap.core.population import generate_model_population
+
+        pop_models, pop_scores, _ = generate_model_population(
+            Xtr_r,
+            ytr_r,
+            Xv_r,
+            yv_r,
+            M=M,
+            task="binary",
+            seed=rep_seed,
+            n_jobs=1,
+            verbose=False,
+            nthread=nthread,
+        )
+        m = NaiveAveragingBaseline(N=K, task="binary", n_jobs=1)
+        m.fit_from_population(pop_models, pop_scores, Xexp_r)
+        imp = m.global_importance_
+        abl = feature_ablation_score(pop_models[m.selected_indices_[0]], Xte_r, y_test, imp)
+        del pop_models, pop_scores
     else:  # DASH (MaxMin)
         m = DASHPipeline(
             M=M,
@@ -2537,9 +2603,11 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
         "Single Best",
         "Single Best (M=200)",
         "Large Single Model",
+        "Ensemble SHAP",
         "Random Forest",
         "Stochastic Retrain",
         "Random Selection",
+        "Naive Top-N",
         "DASH (MaxMin)",
     ]
 
@@ -2732,6 +2800,39 @@ def _run_single_sc_rep(name, rep, X_pool, X_test, y_pool, y_test, sc_names, sc_m
         preds = m.get_consensus_ensemble_predictions(Xte_r)
         rmse_val = rmse_score(y_test, preds)
         abl = feature_ablation_score(m.models_[m.selected_indices_[0]], Xte_r, y_test, imp)
+    elif name == "Ensemble SHAP":
+        m = EnsembleSHAPBaseline(
+            n_estimators=PAPER_CONFIG["N_ESTIMATORS_ESHAP"],
+            task="regression",
+            seed=rep_seed,
+            nthread=nthread,
+        )
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+        imp = m.global_importance_
+        rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Naive Top-N":
+        from dash_shap.core.population import generate_model_population
+
+        pop_models, pop_scores, _ = generate_model_population(
+            Xtr_r,
+            ytr_r,
+            Xv_r,
+            yv_r,
+            M=sc_m,
+            task="regression",
+            seed=rep_seed,
+            n_jobs=1,
+            verbose=False,
+            nthread=nthread,
+        )
+        m = NaiveAveragingBaseline(N=sc_k, task="regression", n_jobs=1)
+        m.fit_from_population(pop_models, pop_scores, Xexp_r)
+        imp = m.global_importance_
+        preds = m.get_consensus_ensemble_predictions(Xte_r)
+        rmse_val = rmse_score(y_test, preds)
+        abl = feature_ablation_score(pop_models[m.selected_indices_[0]], Xte_r, y_test, imp)
+        del pop_models, pop_scores
     else:  # DASH (MaxMin)
         m = DASHPipeline(
             M=sc_m,
@@ -2794,9 +2895,11 @@ def experiment_real_superconductor(resume=False, cleanup=False):
         "Single Best",
         "Single Best (M=200)",
         "Large Single Model",
+        "Ensemble SHAP",
         "Random Forest",
         "Stochastic Retrain",
         "Random Selection",
+        "Naive Top-N",
         "DASH (MaxMin)",
     ]
 
