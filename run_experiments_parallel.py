@@ -1667,7 +1667,7 @@ def _run_single_rep_nonlinear(rho, rep, nl_methods, feature_names, *, nthread=1)
             m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
             imp = m.global_importance_
             preds = m.model_.predict(Xte)
-        else:  # DASH MaxMin
+        elif name == "DASH (MaxMin)":
             m = DASHPipeline(
                 M=M,
                 K=K,
@@ -1682,6 +1682,24 @@ def _run_single_rep_nonlinear(rho, rep, nl_methods, feature_names, *, nthread=1)
             m.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
             imp = m.global_importance_
             preds = m.get_consensus_ensemble_predictions(Xte)
+            # Save population for Random Selection reuse
+            _dash_models = m.models_
+            _dash_val_scores = m.val_scores_
+        elif name == "Random Selection":
+            m = RandomSelectionBaseline(
+                M=M,
+                K=K,
+                epsilon=EPSILON,
+                delta=DELTA,
+                n_jobs=1,
+                nthread=nthread,
+                seed=rep_seed,
+            )
+            m.fit_from_population(_dash_models, _dash_val_scores, Xexp, feature_names=feature_names)
+            imp = m.global_importance_
+            preds = m.get_consensus_ensemble_predictions(Xte)
+        else:
+            raise ValueError(f"Unknown nonlinear method: {name}")
 
         rmse_val = rmse_score(yte, preds)
         keff = None
@@ -1724,6 +1742,7 @@ def experiment_nonlinear_sweep(resume=False, cleanup=False):
         "Stochastic Retrain",
         "Random Forest",
         "DASH (MaxMin)",
+        "Random Selection",  # must follow DASH — reuses its population
     ]
     nl_sweep = {rho: {} for rho in nl_rho_levels}
     feature_names = make_feature_names()
