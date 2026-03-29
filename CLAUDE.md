@@ -148,7 +148,7 @@ To fix a stale branch: `make rebase` then `git push --force-with-lease`.
 
 Enable these settings in GitHub > Settings > Branches > Branch protection rules for `main`:
 
-1. **Require status checks to pass before merging**: `freshness`, `lint`, `test`, `typecheck`
+1. **Require status checks to pass before merging**: `freshness`, `lint`, `test`, `typecheck`, `block-results-to-main`
 2. **Require branches to be up to date before merging**: checked
 3. **Require pull request reviews before merging**: at least 1 approval
 4. **Do not allow bypassing the above settings**: checked
@@ -207,7 +207,8 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 2. Create a completion commit: `chore: mark run-YYYYMMDD complete — all N experiments finished`
 3. Tag the results branch: `git tag results-YYYYMMDD-final`
 4. Open a **data-only PR to main** — only JSON/figure additions; code changes already landed via their own PRs
-5. Freeze the branch — no further commits after the PR merges
+5. Verify provenance, then add the `run-complete` label to the PR — CI blocks merge until this label is present
+6. Freeze the branch — no further commits after the PR merges
 
 ### Key invariant
 > Every line of code on the results branch must also exist on main. The results branch adds only data files.
@@ -229,6 +230,7 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 
 ### Hooks (fully automated)
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
+- **CI: Branch guards** — blocks PRs from `results/*` → `main` unless `run-complete` label is present; blocks code files in PRs targeting `results/*` branches
 - **Stop: CI gate** — runs lint/typecheck/test if source files changed; suggests `/ci-fix` on failure
 - **Stop: Feedback capture** — reminds to save uncaptured user corrections as feedback memories
 - **Stop: Self-improve check** — classifies feedback memories and surfaces promotion proposals if actionable
