@@ -300,6 +300,33 @@ def test_bootstrap_stability_test_equivalent():
     assert pval > 0.01  # not significant
 
 
+def test_bootstrap_topk5_test_significant():
+    """Clearly different top-k sets should yield significant p-value."""
+    from dash_shap.evaluation import bootstrap_topk5_test
+
+    rng = np.random.RandomState(42)
+    # Method A: stable top-k (features 0,1,2 always on top)
+    imp_a = [np.array([5.0, 3.0, 1.0, 0.01, 0.01]) + rng.randn(5) * 0.01 for _ in range(20)]
+    # Method B: top-k shuffled (features swap in/out of top-3)
+    imp_b = [rng.permutation([5.0, 3.0, 1.0, 0.01, 0.01]) for _ in range(20)]
+    diff, pval, ci_lo, ci_hi = bootstrap_topk5_test(imp_a, imp_b, k=3, n_bootstrap=1000)
+    assert diff > 0  # A has more stable top-k
+    assert pval < 0.05
+
+
+def test_bootstrap_topk5_test_equivalent():
+    """Similar top-k sets should yield non-significant p-value."""
+    from dash_shap.evaluation import bootstrap_topk5_test
+
+    rng = np.random.RandomState(42)
+    base = np.array([5.0, 3.0, 1.0, 0.5, 0.1])
+    imp_a = [base + rng.randn(5) * 0.01 for _ in range(20)]
+    imp_b = [base + rng.randn(5) * 0.01 for _ in range(20)]
+    diff, pval, ci_lo, ci_hi = bootstrap_topk5_test(imp_a, imp_b, k=3, n_bootstrap=1000)
+    assert abs(diff) < 0.2
+    assert pval > 0.01  # not significant
+
+
 def test_topk_overlap_stability_perfect():
     """Identical rankings should give Jaccard = 1.0."""
     from dash_shap.evaluation import topk_overlap_stability

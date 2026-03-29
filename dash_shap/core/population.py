@@ -130,6 +130,7 @@ def generate_model_population(
     M=200,
     task="regression",
     search_space=None,
+    configs=None,
     sampling_strategy="random",
     n_estimators=1000,
     early_stopping_rounds=20,
@@ -138,16 +139,26 @@ def generate_model_population(
     verbose=True,
     nthread=None,
 ):
-    """Train M diverse XGBoost models and return (models, val_scores, configs)."""
+    """Train M diverse XGBoost models and return (models, val_scores, configs).
+
+    Parameters
+    ----------
+    configs : list of dict or None
+        Pre-generated hyperparameter configurations. If provided, skips
+        ``sample_configurations`` and trains these exact configs. Used by
+        the colsample ablation experiment to control hyperparameters across
+        conditions without RNG confounds.
+    """
     if search_space is None:
         search_space = DEFAULT_SEARCH_SPACE
 
-    configs = sample_configurations(
-        search_space,
-        M,
-        seed=seed,
-        strategy=sampling_strategy,
-    )
+    if configs is None:
+        configs = sample_configurations(
+            search_space,
+            M,
+            seed=seed,
+            strategy=sampling_strategy,
+        )
 
     def _train(i, config):
         model, score = train_single_model(

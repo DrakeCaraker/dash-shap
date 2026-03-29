@@ -20,6 +20,7 @@ __all__ = [
     "feature_ablation_score",
     "tost_equivalence",
     "bootstrap_stability_test",
+    "bootstrap_topk5_test",
     "fsi_collinearity_correlation",
     "anova_decomposition",
 ]
@@ -340,6 +341,53 @@ def bootstrap_stability_test(imp_runs_a, imp_runs_b, n_bootstrap=10000, seed=42)
     ci_lo = float(np.percentile(boot_diffs, 2.5))
     ci_hi = float(np.percentile(boot_diffs, 97.5))
     return observed_diff, p_value, ci_lo, ci_hi
+
+
+def bootstrap_topk5_test(imp_runs_a, imp_runs_b, k=5, n_bootstrap=10000, seed=42):
+    """Bootstrap permutation test for top-k overlap stability difference.
+
+    Same methodology as ``bootstrap_stability_test`` but uses Jaccard-based
+    top-k overlap (``topk_overlap_stability``) instead of Spearman stability.
+
+    Parameters
+    ----------
+    imp_runs_a, imp_runs_b : list of arrays
+        Per-repetition importance vectors for method A and B (same length).
+    k : int
+        Number of top features to compare.
+    n_bootstrap : int
+        Number of bootstrap resamples.
+    seed : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    observed_diff : float
+        topk_stability_a - topk_stability_b (point estimate).
+    p_value : float
+        Two-sided bootstrap p-value.
+    ci_lo, ci_hi : float
+        95% percentile CI on the top-k stability difference.
+    """
+    rng = np.random.RandomState(seed)
+    n = len(imp_runs_a)
+    assert len(imp_runs_b) == n, "Both methods must have the same number of reps"
+
+    obs_diff = topk_overlap_stability(imp_runs_a, k=k) - topk_overlap_stability(imp_runs_b, k=k)
+
+    boot_diffs = np.empty(n_bootstrap)
+    for b in range(n_bootstrap):
+        idx = rng.choice(n, size=n, replace=True)
+        a_boot = [imp_runs_a[i] for i in idx]
+        b_boot = [imp_runs_b[i] for i in idx]
+        boot_diffs[b] = topk_overlap_stability(a_boot, k=k) - topk_overlap_stability(b_boot, k=k)
+
+    centered = boot_diffs - obs_diff
+    p_value = float(np.mean(np.abs(centered) >= np.abs(obs_diff)))
+
+    ci_lo = float(np.percentile(boot_diffs, 2.5))
+    ci_hi = float(np.percentile(boot_diffs, 97.5))
+    return obs_diff, p_value, ci_lo, ci_hi
 
 
 # =============================================================================
