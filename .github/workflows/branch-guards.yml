@@ -1,0 +1,74 @@
+name: Branch Guards
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+
+jobs:
+  block-results-to-main:
+    # Fires when a results/* branch targets main.
+    # Skipped for all other PRs (satisfies required checks).
+    if: >-
+      startsWith(github.head_ref, 'results/') &&
+      github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for run-complete label
+        run: |
+          if echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | grep -q 'run-complete'; then
+            echo "run-complete label found. Merge allowed."
+            echo ""
+            echo "Reminder: verify before merging:"
+            echo "  1. All experiments are complete"
+            echo "  2. backfill_meta.py has been run"
+            echo "  3. code_dirty: false in all result JSONs"
+            echo "  4. Results branch is tagged (results-YYYYMMDD-final)"
+            echo "  5. Only data files (JSON, figures) differ from main"
+          else
+            echo "::error::Results branches cannot be merged to main without the 'run-complete' label."
+            echo ""
+            echo "Before adding the label, verify:"
+            echo "  1. All experiments are complete"
+            echo "  2. Run: python scripts/backfill_meta.py"
+            echo "  3. Confirm code_dirty: false in all result JSONs"
+            echo "  4. Tag the branch: git tag results-YYYYMMDD-final"
+            echo "  5. Confirm only data files (JSON, figures) differ from main"
+            echo ""
+            echo "Then add the 'run-complete' label to this PR to unblock."
+            exit 1
+          fi
+
+  block-code-to-results:
+    # Fires when any PR targets a results/* branch.
+    # Fails if the PR modifies files outside results/.
+    if: startsWith(github.base_ref, 'results/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for non-data files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking PR #${{ github.event.pull_request.number }} for code files..."
+          files=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --paginate --jq '.[].filename')
+
+          violations=""
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if [[ "$f" != results/* ]]; then
+              violations="$violations  $f"$'\n'
+            fi
+          done <<< "$files"
+
+          if [ -n "$violations" ]; then
+            echo "::error::PRs to results branches may only modify files under results/."
+            echo ""
+            echo "The following files are outside results/:"
+            echo "$violations"
+            echo ""
+            echo "Code changes must go through main first (feature branch -> PR -> main),"
+            echo "then cherry-pick to the results branch. See CLAUDE.md: SageMaker Run Protocol."
+            exit 1
+          fi
+
+          echo "All changed files are under results/. OK."
