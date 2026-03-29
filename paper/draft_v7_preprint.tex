@@ -1015,13 +1015,18 @@ Within the independent tier, Random Selection ($0.976$) nearly matches
 minimally to stability beyond what random sampling from the filtered
 population already provides. The primary value of diversity selection
 is therefore not stability but equity: \dash{}'s within-group CV
-($0.176$) is lower than Random Selection's ($0.187$), indicating that
-deliberate diversity in feature utilization patterns produces more
-equitable credit distribution (though this comparison has not been
-formally significance-tested). Practitioners who need only stability
+($0.176$) is significantly lower than Random Selection's ($0.187$;
+Wilcoxon $p < 0.001$, Cohen's $d = -0.37$), confirming that deliberate
+diversity in feature utilization patterns produces more equitable credit
+distribution within the filtered-population framework. This equity
+advantage is consistent across all $\rhovar$ levels ($p < 0.05$ at
+every level tested). The \dash{} vs.\ SR comparison on equity is
+\emph{not} significant ($p = 0.44$), indicating that the equity benefit
+is specific to diversity-aware selection, not to the overall pipeline
+design relative to seed averaging. Practitioners who need only stability
 can use random selection from a performance-filtered population;
-those who also require equitable attributions benefit from the full
-\dash{} pipeline.
+those who also require equitable attributions benefit from MaxMin
+diversity selection.
 
 \paragraph{Variance decomposition.}
 To directly quantify the role of model-selection randomness, we
@@ -1094,7 +1099,7 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d
 \end{tabular}
 \end{table}
 
-\paragraph{The SR equivalence is the headline theoretical result.}
+\paragraph{The SR equivalence isolates the operative mechanism.}
 We find that model independence alone---even in its simplest form (seed
 averaging, no diversity optimization)---largely resolves first-mover
 bias in the linear regime.  Stochastic Retrain achieves marginally
@@ -1102,14 +1107,15 @@ higher stability point estimates than \dash{} at most $\rhovar$ levels
 ($0.975$--$0.980$ vs.\ $0.972$--$0.977$), and the non-significant
 differences on accuracy ($d = +0.05$, $p = 0.926$) and equity
 ($d = -0.21$, $p = 0.622$) confirm this equivalence statistically.
-\emph{This equivalence is our central theoretical contribution}: it
-isolates model independence as the operative mechanism, and positions
-\dash{} as a principled instantiation of that principle rather than a
-statistically superior pipeline.  Phrased differently: raw seed
-averaging already delivers most of the benefit; \dash{} then
-operationalizes this principle with engineered quality control (filtering,
-diversity-aware selection), diagnostic tools, and hyperparameter
-robustness that seed averaging cannot provide.
+\emph{This equivalence is the strongest evidence for our central claim}:
+that model independence, not any particular aggregation strategy, is the
+operative mechanism that neutralizes first-mover bias.  Phrased differently:
+raw seed averaging already delivers stability in the linear regime;
+\dash{} then operationalizes this principle with additional
+benefits---nonlinear robustness (Section~\ref{sec:nonlinear}), equitable
+attribution (below), ground-truth-free diagnostics
+(Section~\ref{sec:diagnostics}), and computational efficiency---that
+simple seed averaging does not provide.
 
 SR achieves marginally higher stability point estimates at most
 $\rhovar$ levels, though these differences are small ($\leq 0.003$) and
@@ -1126,11 +1132,22 @@ are threefold:
     capability SR lacks entirely. In practice, knowing \emph{that}
     explanations are stable is less useful than knowing \emph{which
     features} are unreliable.
-  \item \textbf{Equity.} Marginally lower within-group CV ($0.176$
-    vs.\ $0.182$), suggesting that forced feature restriction
-    distributes credit more evenly, though this difference is not
-    statistically significant and should be interpreted cautiously.
+  \item \textbf{Equity.} Significantly lower within-group CV than
+    Random Selection ($0.176$ vs.\ $0.187$; $p < 0.001$, $d = -0.37$),
+    indicating that forced feature restriction distributes credit more
+    evenly across correlated groups. The equity advantage over SR is
+    smaller and not significant ($d = -0.13$, $p = 0.44$).
 \end{enumerate}
+
+\paragraph{Beyond stability: nonlinear robustness.}
+The linear regime demonstrates that any form of model independence
+suffices for stability. Section~\ref{sec:nonlinear} shows that under
+nonlinear data-generating processes, \emph{how} independence is achieved
+matters: \dash{}'s population-level diversity---forced feature restriction
+and varied hyperparameters---outperforms seed averaging by $+0.030$
+stability at $\rhovar = 0.9$ (Table~\ref{tab:nonlinear}), likely because
+diverse feature subsets explore distinct nonlinear interaction pathways
+that seed averaging, which fixes hyperparameters, cannot reach.
 
 \subsection{The effect scales with correlation}
 \label{sec:scaling}
