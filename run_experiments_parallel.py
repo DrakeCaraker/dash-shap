@@ -2164,6 +2164,24 @@ def _run_single_cal_rep(name, rep, X_pool, X_test, y_pool, y_test, cal_names, *,
         imp = m.global_importance_
         rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
         abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Single Best (M=200)":
+        m = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=1, nthread=nthread)
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+        imp = m.global_importance_
+        rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Large Single Model":
+        m = LargeSingleModelBaseline(
+            K=K,
+            T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+            colsample_bytree=0.2,
+            seed=rep_seed,
+            nthread=nthread,
+        )
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+        imp = m.global_importance_
+        rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
     elif name == "Random Forest":
         m = RandomForestBaseline(n_estimators=500, task="regression", seed=rep_seed)
         m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
@@ -2253,7 +2271,15 @@ def experiment_real_california(resume=False, cleanup=False):
         random_state=SEED,
     )
 
-    cal_methods = ["Single Best", "Random Forest", "Stochastic Retrain", "Random Selection", "DASH (MaxMin)"]
+    cal_methods = [
+        "Single Best",
+        "Single Best (M=200)",
+        "Large Single Model",
+        "Random Forest",
+        "Stochastic Retrain",
+        "Random Selection",
+        "DASH (MaxMin)",
+    ]
 
     # Check for method-level checkpoints (fully computed methods)
     partial_data = {
@@ -2407,6 +2433,23 @@ def _run_single_bc_rep(name, rep, X_pool, X_test, y_pool, y_test, bc_names, *, n
         m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
         imp = m.global_importance_
         abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Single Best (M=200)":
+        m = SingleBestBaseline(n_trials=M, task="binary", seed=rep_seed, n_jobs=1, nthread=nthread)
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+        imp = m.global_importance_
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Large Single Model":
+        m = LargeSingleModelBaseline(
+            K=K,
+            T_per_model=PAPER_CONFIG["T_PER_MODEL"],
+            colsample_bytree=0.2,
+            task="binary",
+            seed=rep_seed,
+            nthread=nthread,
+        )
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r)
+        imp = m.global_importance_
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
     elif name == "Random Forest":
         m = RandomForestBaseline(n_estimators=500, task="binary", seed=rep_seed)
         m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
@@ -2490,7 +2533,15 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
         random_state=SEED,
     )
 
-    bc_methods = ["Single Best", "Random Forest", "Stochastic Retrain", "Random Selection", "DASH (MaxMin)"]
+    bc_methods = [
+        "Single Best",
+        "Single Best (M=200)",
+        "Large Single Model",
+        "Random Forest",
+        "Stochastic Retrain",
+        "Random Selection",
+        "DASH (MaxMin)",
+    ]
 
     # Check for method-level checkpoints (fully computed methods)
     partial_data = {name: {"imp_runs": [], "ablation_runs": [], "keff_runs": []} for name in bc_methods}
@@ -2633,6 +2684,12 @@ def _run_single_sc_rep(name, rep, X_pool, X_test, y_pool, y_test, sc_names, sc_m
         imp = m.global_importance_
         rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
         abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
+    elif name == "Single Best (M=200)":
+        m = SingleBestBaseline(n_trials=sc_m, seed=rep_seed, n_jobs=1, nthread=nthread)
+        m.fit(Xtr_r, ytr_r, Xv_r, yv_r, X_ref=Xexp_r, seed=rep_seed)
+        imp = m.global_importance_
+        rmse_val = rmse_score(y_test, m.model_.predict(Xte_r))
+        abl = feature_ablation_score(m.model_, Xte_r, y_test, imp)
     elif name == "Large Single Model":
         m = LargeSingleModelBaseline(
             K=sc_k,
@@ -2735,6 +2792,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
     SC_K = 30
     sc_methods = [
         "Single Best",
+        "Single Best (M=200)",
         "Large Single Model",
         "Random Forest",
         "Stochastic Retrain",
