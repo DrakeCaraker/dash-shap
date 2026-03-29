@@ -33,6 +33,7 @@ class DASHPipeline:
         tau=0.3,
         task="regression",
         search_space=None,
+        initial_configs=None,
         preliminary_importance_method="gain",
         background_size=100,
         n_jobs=-1,
@@ -97,6 +98,11 @@ class DASHPipeline:
             Hyperparameter search space for population generation. If None,
             uses DEFAULT_SEARCH_SPACE (colsample_bytree in [0.1, 0.5]).
             Keys must match XGBoost parameter names.
+        initial_configs : list of dict or None, default=None
+            Pre-generated hyperparameter configurations. If provided, these
+            exact configs are used for population training (bypasses
+            ``search_space`` sampling). Used by the colsample ablation
+            experiment to control hyperparameters across conditions.
         preliminary_importance_method : {"gain", "shap_subsample"}, default="gain"
             Fast importance estimate used for diversity selection (Stage 3).
             "gain" is fast and exact; "shap_subsample" is slower but SHAP-based.
@@ -142,6 +148,7 @@ class DASHPipeline:
         self.tau = tau
         self.task = task
         self.search_space = search_space or DEFAULT_SEARCH_SPACE
+        self._initial_configs = initial_configs
         self.preliminary_importance_method = preliminary_importance_method
         self.background_size = background_size
         self.n_jobs = n_jobs
@@ -296,6 +303,7 @@ class DASHPipeline:
                 M=self.M,
                 task=self.task,
                 search_space=self.search_space,
+                configs=self._initial_configs,
                 n_jobs=self.n_jobs,
                 seed=self.seed,
                 verbose=self.verbose,
@@ -325,8 +333,10 @@ class DASHPipeline:
                     f"epsilon_mode='quantile' to guarantee at least K candidates.",
                     UserWarning,
                 )
-            if n_filtered < 2:
-                raise ValueError(f"Only {n_filtered} models passed filter. Increase epsilon.")
+            # K=1 only needs 1 model; K>=2 needs >=2 for pairwise diversity
+            min_required = max(1, min(2, self.K))
+            if n_filtered < min_required:
+                raise ValueError(f"Only {n_filtered} models passed filter (need {min_required}). Increase epsilon.")
 
             # Stage 3: Diversity Selection
             t0 = time.time()
