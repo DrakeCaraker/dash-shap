@@ -4568,6 +4568,252 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
     return results
 
 
+###############################################################################
+# EXPERIMENT: Colsample Ablation
+###############################################################################
+
+# colsample_bytree ranges for the mechanism ablation
+CS_RANGES = {
+    "Low (0.1-0.5)": [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5],
+    "High (0.5-1.0)": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    "Full (0.1-1.0)": [0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0],
+}
+
+
+def experiment_colsample_ablation(resume=False, cleanup=False):
+    """Colsample_bytree ablation: tests whether forced low colsample is the mechanism.
+
+    Trains DASH and Random Selection under three colsample_bytree ranges,
+    plus SR and SB controls. Uses a confound-free design: base hyperparameters
+    (max_depth, learning_rate, subsample, etc.) are identical across ranges;
+    only colsample_bytree varies (drawn from a separate RNG).
+
+    Tests three conditions: linear ρ=0.0 (safety), linear ρ=0.9 (main),
+    nonlinear ρ=0.9 (mechanism).
+    """
+    from dash_shap.core.population import generate_model_population, sample_configurations, DEFAULT_SEARCH_SPACE
+
+    _ensure_dirs()
+    t0 = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: Colsample Ablation")
+    log("=" * 70)
+
+    conditions = ["linear_0.0", "linear_0.9", "nonlinear_0.9"]
+    cs_method_names = []
+    for label in CS_RANGES:
+        cs_method_names.append(f"DASH {label}")
+        cs_method_names.append(f"RS {label}")
+    cs_method_names.extend(["Stochastic Retrain", "Single Best"])
+
+    # Per-condition, per-method storage
+    results = {
+        cond: {name: {"imp_runs": [], "eq_runs": [], "rmse_runs": [], "keff_runs": []} for name in cs_method_names}
+        for cond in conditions
+    }
+
+    feature_names = make_feature_names()
+    seq_budget = compute_thread_budget(n_outer=1)
+
+    # Try to resume from batch checkpoint
+    start_rep = 0
+    if resume:
+        for batch_end in range(N_REPS, 0, -10):
+            ckpt_name = f"colsample_abl_batch_{batch_end}"
+            if _has(ckpt_name):
+                cached = _load(ckpt_name)
+                results = cached["results"]
+                start_rep = cached["completed_reps"]
+                log(f"  Resuming from rep {start_rep}")
+                break
+
+    for rep in range(start_rep, N_REPS):
+        rep_seed = SEED + rep
+        log(f"  Rep {rep + 1}/{N_REPS}")
+
+        # Generate base configs ONCE per rep (confound-free: non-colsample params fixed)
+        base_configs = sample_configurations(DEFAULT_SEARCH_SPACE, M, seed=rep_seed)
+
+        for cond in conditions:
+            # Generate data for this condition
+            if cond == "linear_0.0":
+                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+                    N=5000, rho=0.0, seed=rep_seed
+                )
+            elif cond == "linear_0.9":
+                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+                    N=5000, rho=0.9, seed=rep_seed
+                )
+            else:  # nonlinear_0.9
+                Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, _, _ = generate_synthetic_nonlinear(
+                    N=5000, rho=0.9, seed=rep_seed
+                )
+
+            for label, cs_values in CS_RANGES.items():
+                # Replace colsample_bytree using SEPARATE RNG (confound fix)
+                rng_cs = np.random.RandomState(rep_seed + 7777)
+                configs = []
+                for cfg in base_configs:
+                    c = dict(cfg)
+                    c["colsample_bytree"] = float(rng_cs.choice(cs_values))
+                    configs.append(c)
+
+                # DASH with these configs
+                dash = DASHPipeline(
+                    M=M,
+                    K=K,
+                    epsilon=EPSILON,
+                    delta=DELTA,
+                    selection_method="maxmin",
+                    initial_configs=configs,
+                    n_jobs=1,
+                    nthread=seq_budget.nthread,
+                    seed=rep_seed,
+                    verbose=False,
+                )
+                dash.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+                dash_imp = dash.global_importance_
+                dash_preds = dash.get_consensus_ensemble_predictions(Xte)
+                dash_keff = len(dash.selected_indices_) if dash.selected_indices_ is not None else None
+
+                results[cond][f"DASH {label}"]["imp_runs"].append(dash_imp)
+                results[cond][f"DASH {label}"]["eq_runs"].append(within_group_equity(dash_imp, grps))
+                results[cond][f"DASH {label}"]["rmse_runs"].append(rmse_score(yte, dash_preds))
+                if dash_keff is not None:
+                    results[cond][f"DASH {label}"]["keff_runs"].append(dash_keff)
+
+                # RS reuses DASH's population
+                rs = RandomSelectionBaseline(
+                    M=M,
+                    K=K,
+                    epsilon=EPSILON,
+                    delta=DELTA,
+                    n_jobs=1,
+                    nthread=seq_budget.nthread,
+                    seed=rep_seed,
+                )
+                rs.fit_from_population(dash.models_, dash.val_scores_, Xexp, feature_names=feature_names)
+                rs_imp = rs.global_importance_
+                rs_preds = rs.get_consensus_ensemble_predictions(Xte)
+                rs_keff = len(rs.selected_indices_) if rs.selected_indices_ is not None else None
+
+                results[cond][f"RS {label}"]["imp_runs"].append(rs_imp)
+                results[cond][f"RS {label}"]["eq_runs"].append(within_group_equity(rs_imp, grps))
+                results[cond][f"RS {label}"]["rmse_runs"].append(rmse_score(yte, rs_preds))
+                if rs_keff is not None:
+                    results[cond][f"RS {label}"]["keff_runs"].append(rs_keff)
+
+                del dash, rs
+
+            # Controls: SR and SB (run once per condition, not per range)
+            sr = StochasticRetrainBaseline(
+                N=K,
+                task="regression",
+                n_jobs=1,
+                nthread=seq_budget.nthread,
+                seed=rep_seed,
+            )
+            sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+            sr_imp = sr.global_importance_
+            sr_preds = sr.get_consensus_ensemble_predictions(Xte)
+            results[cond]["Stochastic Retrain"]["imp_runs"].append(sr_imp)
+            results[cond]["Stochastic Retrain"]["eq_runs"].append(within_group_equity(sr_imp, grps))
+            results[cond]["Stochastic Retrain"]["rmse_runs"].append(rmse_score(yte, sr_preds))
+            del sr
+
+            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=1, nthread=seq_budget.nthread)
+            sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+            sb_imp = sb.global_importance_
+            sb_preds = sb.model_.predict(Xte)
+            results[cond]["Single Best"]["imp_runs"].append(sb_imp)
+            results[cond]["Single Best"]["eq_runs"].append(within_group_equity(sb_imp, grps))
+            results[cond]["Single Best"]["rmse_runs"].append(rmse_score(yte, sb_preds))
+            del sb
+
+        if (rep + 1) % 10 == 0:
+            _save(f"colsample_abl_batch_{rep + 1}", results=results, completed_reps=rep + 1)
+
+    # ── Aggregate ──────────────────────────────────────────────────────────
+    log("\n  Colsample ablation results:")
+    for cond in conditions:
+        log(f"\n  === {cond} ===")
+        log(f"  {'Method':<25} {'Stability':>10} {'SE':>8} {'TopK5':>8} {'Equity':>8} {'RMSE':>8} {'Keff':>6}")
+        log("  " + "-" * 80)
+        for name in cs_method_names:
+            d = results[cond][name]
+            imp_runs = d["imp_runs"]
+            if len(imp_runs) < 2:
+                continue
+            stab, se, ci_lo, ci_hi = stability_bootstrap_ci(imp_runs)
+            topk5, _, _, _ = topk_stability_bootstrap_ci(imp_runs, k=5)
+            eq_mean = float(np.mean(d["eq_runs"])) if d["eq_runs"] else float("nan")
+            rmse_mean = float(np.mean(d["rmse_runs"])) if d["rmse_runs"] else float("nan")
+            keff_mean = float(np.mean(d["keff_runs"])) if d["keff_runs"] else float("nan")
+
+            d["stability"] = stab
+            d["stability_se"] = se
+            d["stability_ci_lo"] = ci_lo
+            d["stability_ci_hi"] = ci_hi
+            d["topk5_stability"] = topk5
+            d["equity_mean"] = eq_mean
+            d["rmse_mean"] = rmse_mean
+            d["k_eff_mean"] = keff_mean
+
+            log(
+                f"  {name:<25} {stab:>10.4f} {se:>8.4f} {topk5:>8.4f} {eq_mean:>8.4f} {rmse_mean:>8.3f}"
+                f" {keff_mean:>6.1f}"
+            )
+
+    # ── Statistical tests ──────────────────────────────────────────────────
+    log("\n  Bootstrap stability tests (colsample ablation):")
+    stab_tests = {}
+    eq_tests = {}
+    for cond in conditions:
+        stab_tests[cond] = {}
+        eq_tests[cond] = {}
+        dash_low_imp = results[cond]["DASH Low (0.1-0.5)"].get("imp_runs", [])
+        dash_low_eq = results[cond]["DASH Low (0.1-0.5)"].get("eq_runs", [])
+        if len(dash_low_imp) < 2:
+            continue
+        for name in cs_method_names:
+            if name == "DASH Low (0.1-0.5)":
+                continue
+            bl_imp = results[cond][name].get("imp_runs", [])
+            bl_eq = results[cond][name].get("eq_runs", [])
+            if len(bl_imp) < 2 or len(bl_imp) != len(dash_low_imp):
+                continue
+            try:
+                diff, pval, ci_lo, ci_hi = bootstrap_stability_test(dash_low_imp, bl_imp)
+                sig = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else "n.s."
+                log(f"  {cond:15s} DASH-Low vs {name:<25} diff={diff:+.4f} p={pval:.4f} {sig}")
+                stab_tests[cond][name] = {
+                    "diff": float(diff),
+                    "p": float(pval),
+                    "ci_lo": float(ci_lo),
+                    "ci_hi": float(ci_hi),
+                }
+            except Exception:
+                pass
+            try:
+                _, pval_eq = compare_methods(dash_low_eq, bl_eq)
+                d_eq = cohens_d(dash_low_eq, bl_eq)
+                eq_tests[cond][name] = {"p": float(pval_eq), "cohens_d": float(d_eq)}
+            except Exception:
+                pass
+
+    results["_stability_tests"] = stab_tests
+    results["_equity_tests"] = eq_tests
+
+    _publish_results(results, f"{OUT}/tables/colsample_ablation.json", "colsample_ablation", N_REPS, t0)
+
+    if cleanup:
+        clear_checkpoints_by_prefix("colsample_abl_batch_", CKPT_DIR)
+
+    elapsed = time.time() - t0
+    log(f"  Colsample ablation completed in {elapsed / 60:.1f} min")
+    return results
+
+
 EXPERIMENTS = {
     "linear_sweep": experiment_linear_sweep,
     "overlapping": experiment_overlapping,
@@ -4585,6 +4831,7 @@ EXPERIMENTS = {
     "background_sensitivity": experiment_background_sensitivity,
     "asymmetric_dgp": experiment_asymmetric_dgp,
     "k_sweep_independence": experiment_k_sweep_independence,
+    "colsample_ablation": experiment_colsample_ablation,
     "success_criteria": experiment_success_criteria,
     "extensions_sanity_check": experiment_extensions_sanity_check,
 }
@@ -4607,6 +4854,7 @@ DEFAULT_ORDER = [
     "first_mover_bias",
     "background_sensitivity",
     "k_sweep_independence",
+    "colsample_ablation",
 ]
 
 
