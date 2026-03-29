@@ -122,6 +122,7 @@ from dash_shap.evaluation import (
     feature_ablation_score,
     tost_equivalence,
     bootstrap_stability_test,
+    bootstrap_topk5_test,
     anova_decomposition,
 )
 from dash_shap.utils.io import save_json
@@ -680,6 +681,26 @@ def _log_pairwise_significance(results, dash_name, method_names, dataset_label):
                 sig = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else "n.s."
                 log(f"  {bname:<22} {diff:+10.4f} {pval:10.4f} [{ci_lo:+.4f}, {ci_hi:+.4f}]  {sig}")
                 sig_results[bname]["stability"] = {
+                    "diff": float(diff),
+                    "p": float(pval),
+                    "ci_lo": float(ci_lo),
+                    "ci_hi": float(ci_hi),
+                }
+            except Exception as e:
+                log(f"  {bname:<22} SKIP ({e})")
+        # Top-k5 bootstrap test
+        log(f"\n  Bootstrap top-k5 tests ({dataset_label}):")
+        log(f"  {'Baseline':<22} {'Δ TopK5':>10} {'p-value':>10} {'95% CI':>22}")
+        log("  " + "-" * 70)
+        for bname in baselines:
+            bl = results[bname]
+            if "imp_runs" not in bl:
+                continue
+            try:
+                diff, pval, ci_lo, ci_hi = bootstrap_topk5_test(dash["imp_runs"], bl["imp_runs"])
+                sig = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else "n.s."
+                log(f"  {bname:<22} {diff:+10.4f} {pval:10.4f} [{ci_lo:+.4f}, {ci_hi:+.4f}]  {sig}")
+                sig_results[bname]["topk5"] = {
                     "diff": float(diff),
                     "p": float(pval),
                     "ci_lo": float(ci_lo),
@@ -1441,9 +1462,43 @@ def experiment_linear_sweep(resume=False, cleanup=False, sequential=False):
                 pass
     sweep_results["_equity_tests"] = eq_test_results
 
+    # Top-k5 significance tests: bootstrap permutation on Jaccard overlap
+    log("\n  Top-k5 significance tests (sweep):")
+    log(f"  {'rho':>5} {'Comparison':<35} {'d TopK5':>10} {'p-value':>10} {'95% CI':>22}  Sig")
+    log("  " + "=" * 90)
+    topk5_test_results = {}
+    for rho in rho_levels:
+        if rho not in sweep_results or dash_name not in sweep_results[rho]:
+            continue
+        dash_imp = sweep_results[rho][dash_name].get("imp_runs")
+        if dash_imp is None:
+            continue
+        topk5_test_results[str(rho)] = {}
+        for bname in sweep_methods:
+            if bname == dash_name:
+                continue
+            bl_imp = sweep_results[rho].get(bname, {}).get("imp_runs")
+            if bl_imp is None:
+                continue
+            try:
+                diff, pval, ci_lo, ci_hi = bootstrap_topk5_test(dash_imp, bl_imp)
+                sig = "***" if pval < 0.001 else "**" if pval < 0.01 else "*" if pval < 0.05 else "n.s."
+                label = f"{dash_name} vs {bname}"
+                log(f"  {rho:5.2f} {label:<35} {diff:+10.4f} {pval:10.4f} [{ci_lo:+.4f}, {ci_hi:+.4f}]  {sig}")
+                topk5_test_results[str(rho)][bname] = {
+                    "diff": float(diff),
+                    "p": float(pval),
+                    "ci_lo": float(ci_lo),
+                    "ci_hi": float(ci_hi),
+                }
+            except Exception:
+                pass
+    sweep_results["_topk5_tests"] = topk5_test_results
+
     _publish_results(sweep_results, f"{OUT}/tables/synthetic_linear_sweep.json", "linear_sweep", N_REPS, t0)
     sweep_results.pop("_equity_tests", None)  # remove string key before return
     sweep_results.pop("_stability_tests", None)  # remove string key before return
+    sweep_results.pop("_topk5_tests", None)  # remove string key before return
     sweep_results.pop("_fsi_validation", None)  # remove string key before return
     plot_correlation_sweep(sweep_results, rho_levels, sweep_methods)
 
@@ -4339,37 +4394,30 @@ def plot_k_sweep_independence(k_values, results):
     """Line chart: stability vs K for DASH and SR with error bars."""
     _ensure_dirs()
 
-    dash_stab = [results[k]["DASH"]["stability"] for k in k_values]
-    dash_se = [results[k]["DASH"]["stability_se"] for k in k_values]
-    sr_stab = [results[k]["SR"]["stability"] for k in k_values]
-    sr_se = [results[k]["SR"]["stability_se"] for k in k_values]
+    plot_methods = [
+        ("DASH", "DASH (MaxMin)", "#2ecc71", "o"),
+        ("RS", "Random Selection", "#d4ac0d", "s"),
+        ("SR", "Stochastic Retrain", "#3498db", "^"),
+    ]
 
     fig, ax = plt.subplots(figsize=(7, 5))
-    ax.errorbar(
-        k_values,
-        dash_stab,
-        yerr=dash_se,
-        label="DASH (MaxMin)",
-        color="#2ecc71",
-        marker="o",
-        linewidth=2,
-        markersize=6,
-        capsize=4,
-    )
-    ax.errorbar(
-        k_values,
-        sr_stab,
-        yerr=sr_se,
-        label="Random Selection",
-        color="#d4ac0d",
-        marker="s",
-        linewidth=2,
-        markersize=6,
-        capsize=4,
-    )
+    for key, label, color, marker in plot_methods:
+        stab = [results[k].get(key, {}).get("stability", float("nan")) for k in k_values]
+        se = [results[k].get(key, {}).get("stability_se", 0) for k in k_values]
+        ax.errorbar(
+            k_values,
+            stab,
+            yerr=se,
+            label=label,
+            color=color,
+            marker=marker,
+            linewidth=2,
+            markersize=6,
+            capsize=4,
+        )
     ax.set_xlabel("K (models selected)")
     ax.set_ylabel("Stability (mean \u00b1 SE)")
-    ax.set_title("Stability vs K: DASH vs Random Selection")
+    ax.set_title("Stability vs K: DASH vs Random Selection vs Stochastic Retrain")
     ax.legend()
     fig.tight_layout()
     fig.savefig(f"{OUT}/figures/k_sweep_independence.png", dpi=150, bbox_inches="tight")
@@ -4379,6 +4427,8 @@ def plot_k_sweep_independence(k_values, results):
 
 def _run_single_ksweep_pair(k_val, rep, feature_names, *, nthread=1):
     """Run one (k_val, rep) pair for k_sweep_independence. Returns scalars only."""
+    import traceback
+
     rep_seed = SEED + rep
     Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
         N=5000, rho=0.9, seed=rep_seed
@@ -4404,13 +4454,14 @@ def _run_single_ksweep_pair(k_val, rep, feature_names, *, nthread=1):
         r, _ = dgp_agreement(imp, true_imp)
         result["dash_imp"] = imp
         result["dash_acc"] = float(r)
-    except ValueError:
+    except (ValueError, Exception):
         result["dash_imp"] = None
         result["dash_acc"] = None
+        result["dash_error"] = traceback.format_exc()
     del dm
 
-    # Random Selection baseline
-    sr = RandomSelectionBaseline(
+    # Random Selection baseline (was mislabeled "SR" — now correctly "RS")
+    rs = RandomSelectionBaseline(
         M=M,
         K=k_val,
         epsilon=EPSILON,
@@ -4420,14 +4471,35 @@ def _run_single_ksweep_pair(k_val, rep, feature_names, *, nthread=1):
         seed=rep_seed,
     )
     try:
-        sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        rs.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
+        imp_rs = rs.global_importance_
+        r_rs, _ = dgp_agreement(imp_rs, true_imp)
+        result["rs_imp"] = imp_rs
+        result["rs_acc"] = float(r_rs)
+    except (ValueError, Exception):
+        result["rs_imp"] = None
+        result["rs_acc"] = None
+        result["rs_error"] = traceback.format_exc()
+    del rs
+
+    # Stochastic Retrain (actual seed-averaging baseline)
+    sr = StochasticRetrainBaseline(
+        N=k_val,
+        task="regression",
+        n_jobs=1,
+        nthread=nthread,
+        seed=rep_seed,
+    )
+    try:
+        sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
         imp_sr = sr.global_importance_
         r_sr, _ = dgp_agreement(imp_sr, true_imp)
         result["sr_imp"] = imp_sr
         result["sr_acc"] = float(r_sr)
-    except ValueError:
+    except (ValueError, Exception):
         result["sr_imp"] = None
         result["sr_acc"] = None
+        result["sr_error"] = traceback.format_exc()
     del sr
 
     return result
@@ -4441,7 +4513,7 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
     """
     from joblib import Parallel, delayed
 
-    k_values = [1, 3, 5, 10, 20, 30]
+    k_values = [1, 3, 5, 10, 20, 30, 50]
     n_reps = N_REPS
 
     _ensure_dirs()
@@ -4458,7 +4530,10 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
         return f"{v:.4f}" if not np.isnan(v) else "nan"
 
     # Collect per-k data (resumed or pending)
-    partial_data: dict = {k: {"dash_imp": [], "dash_acc": [], "sr_imp": [], "sr_acc": []} for k in k_values}
+    methods_keys = ["dash", "rs", "sr"]  # DASH, Random Selection, Stochastic Retrain
+    partial_data: dict = {
+        k: {f"{m}_imp": [] for m in methods_keys} | {f"{m}_acc": [] for m in methods_keys} for k in k_values
+    }
     pending_pairs = []
 
     for k_val in k_values:
@@ -4466,12 +4541,10 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
             ckpt_key = f"ksweep_flat_{k_val}_{rep}"
             if resume and _has(ckpt_key):
                 data = _load(ckpt_key)
-                if data.get("dash_imp") is not None:
-                    partial_data[k_val]["dash_imp"].append(data["dash_imp"])
-                    partial_data[k_val]["dash_acc"].append(data["dash_acc"])
-                if data.get("sr_imp") is not None:
-                    partial_data[k_val]["sr_imp"].append(data["sr_imp"])
-                    partial_data[k_val]["sr_acc"].append(data["sr_acc"])
+                for m in methods_keys:
+                    if data.get(f"{m}_imp") is not None:
+                        partial_data[k_val][f"{m}_imp"].append(data[f"{m}_imp"])
+                        partial_data[k_val][f"{m}_acc"].append(data[f"{m}_acc"])
             else:
                 pending_pairs.append((k_val, rep))
 
@@ -4492,69 +4565,46 @@ def experiment_k_sweep_independence(resume=False, cleanup=False) -> dict:
         for per_pair in results_list:
             k_val = per_pair["k_val"]
             rep = per_pair["rep"]
-            if per_pair.get("dash_imp") is not None:
-                partial_data[k_val]["dash_imp"].append(per_pair["dash_imp"])
-                partial_data[k_val]["dash_acc"].append(per_pair["dash_acc"])
-            if per_pair.get("sr_imp") is not None:
-                partial_data[k_val]["sr_imp"].append(per_pair["sr_imp"])
-                partial_data[k_val]["sr_acc"].append(per_pair["sr_acc"])
+            for m in methods_keys:
+                if per_pair.get(f"{m}_imp") is not None:
+                    partial_data[k_val][f"{m}_imp"].append(per_pair[f"{m}_imp"])
+                    partial_data[k_val][f"{m}_acc"].append(per_pair[f"{m}_acc"])
             _save(f"ksweep_flat_{k_val}_{rep}", **{k: v for k, v in per_pair.items() if k not in ("k_val", "rep")})
         _shutdown_loky_workers()
 
     # Aggregate per k_val
+    method_labels = {"dash": "DASH", "rs": "RS", "sr": "SR"}
     results = {}
     for k_val in k_values:
-        dash_imp_runs = partial_data[k_val]["dash_imp"]
-        dash_acc_runs = partial_data[k_val]["dash_acc"]
-        sr_imp_runs = partial_data[k_val]["sr_imp"]
-        sr_acc_runs = partial_data[k_val]["sr_acc"]
+        results[k_val] = {}
+        for m in methods_keys:
+            imp_runs = partial_data[k_val][f"{m}_imp"]
+            acc_runs = partial_data[k_val][f"{m}_acc"]
 
-        if len(dash_imp_runs) >= 2:
-            try:
-                dash_stab, dash_se, _, _ = stability_bootstrap_ci(dash_imp_runs)
-            except ValueError:
-                dash_stab = importance_stability(dash_imp_runs)
-                dash_se = float("nan")
-        else:
-            dash_stab, dash_se = float("nan"), float("nan")
+            if len(imp_runs) >= 2:
+                try:
+                    stab, se, _, _ = stability_bootstrap_ci(imp_runs)
+                except ValueError:
+                    stab = importance_stability(imp_runs)
+                    se = float("nan")
+            else:
+                stab, se = float("nan"), float("nan")
 
-        if len(sr_imp_runs) >= 2:
-            try:
-                sr_stab, sr_se, _, _ = stability_bootstrap_ci(sr_imp_runs)
-            except ValueError:
-                sr_stab = importance_stability(sr_imp_runs)
-                sr_se = float("nan")
-        else:
-            sr_stab, sr_se = float("nan"), float("nan")
+            acc_mean = float(np.mean(acc_runs)) if acc_runs else float("nan")
+            acc_std = float(np.std(acc_runs, ddof=1)) if len(acc_runs) >= 2 else float("nan")
 
-        dash_acc_mean = float(np.mean(dash_acc_runs)) if dash_acc_runs else float("nan")
-        sr_acc_mean = float(np.mean(sr_acc_runs)) if sr_acc_runs else float("nan")
+            results[k_val][method_labels[m]] = {
+                "stability": stab,
+                "stability_se": se,
+                "accuracy_mean": acc_mean,
+                "accuracy_std": acc_std,
+                "n_successful": len(imp_runs),
+            }
 
-        results[k_val] = {
-            "DASH": {
-                "stability": dash_stab,
-                "stability_se": dash_se,
-                "accuracy_mean": dash_acc_mean,
-                "accuracy_std": float(np.std(dash_acc_runs, ddof=1)) if len(dash_acc_runs) >= 2 else float("nan"),
-                "n_successful": len(dash_imp_runs),
-            },
-            "SR": {
-                "stability": sr_stab,
-                "stability_se": sr_se,
-                "accuracy_mean": sr_acc_mean,
-                "accuracy_std": float(np.std(sr_acc_runs, ddof=1)) if len(sr_acc_runs) >= 2 else float("nan"),
-                "n_successful": len(sr_imp_runs),
-            },
-        }
-
-        log(
-            f"  K={k_val}  DASH: stab={_fmt(dash_stab)}±{_fmt(dash_se)}  acc={_fmt(dash_acc_mean)}"
-            f"  ({len(dash_imp_runs)}/{n_reps})"
-        )
-        log(
-            f"  K={k_val}  SR:   stab={_fmt(sr_stab)}±{_fmt(sr_se)}  acc={_fmt(sr_acc_mean)}"
-            f"  ({len(sr_imp_runs)}/{n_reps})"
-        )
+            log(
+                f"  K={k_val:>3}  {method_labels[m]:<5} stab={_fmt(stab)}±{_fmt(se)}  acc={_fmt(acc_mean)}"
+                f"  ({len(imp_runs)}/{n_reps})"
+            )
 
     _publish_results(results, f"{OUT}/tables/k_sweep_independence.json", "k_sweep_independence", N_REPS, t0)
 
