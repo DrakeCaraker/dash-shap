@@ -96,7 +96,7 @@ Three files in this directory have `config_sha: "backfilled"` in their `_meta` b
 - `first_mover_visualization.json`
 - `k_sweep_independence.json`
 
-These were produced on a SageMaker instance (commit `fffe764`) before the provenance
+These were produced on a SageMaker instance (commit `88b1bc3`) before the provenance
 infrastructure existed. The `_meta` block was added post-hoc. Specifically:
 
 | Field | Status | Meaning |
@@ -104,7 +104,7 @@ infrastructure existed. The `_meta` block was added post-hoc. Specifically:
 | `config_sha` | `"backfilled"` | Fingerprint reconstructed after the run, not captured at runtime |
 | `hardware` | `"SageMaker run — hardware details not captured at time of run"` | Instance type and RAM not recorded |
 | `elapsed_s` | `null` | Timing not captured (linear_sweep's 2151.7s is embedded in the data itself) |
-| `code_sha` | `fffe764` | Real commit SHA — the code is fully traceable |
+| `code_sha` | `88b1bc3` | Real commit SHA — the code is fully traceable |
 | `n_reps` | `50` | Confirmed from `len(acc_runs)` in the data |
 | `paper_config` | correct | Verified against `dash_shap/config.py` at time of backfill |
 

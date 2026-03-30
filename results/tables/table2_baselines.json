@@ -2,7 +2,7 @@
   "_meta": {
     "experiment": "table2_baselines",
     "timestamp": "2026-03-27T23:35:52.009718+00:00",
-    "code_sha": "c71565c6db1898c1dbeb969af99ef08b9648122f",
+    "code_sha": "629e5ebba4ba78c08e57f9be346529b6f8ec3cb6",
     "code_dirty": true,
     "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
     "n_reps": 50,

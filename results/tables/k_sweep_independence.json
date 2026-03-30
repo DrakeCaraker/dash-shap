@@ -2,7 +2,7 @@
   "_meta": {
     "experiment": "k_sweep_independence",
     "timestamp": "2026-03-23T00:00:00+00:00",
-    "code_sha": "fffe764",
+    "code_sha": "88b1bc34f8afb5c447cf697e1ffdd3956e1d0ada",
     "code_dirty": false,
     "config_sha": "backfilled",
     "n_reps": 50,
