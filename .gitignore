@@ -43,8 +43,8 @@ __pycache__/
 # docs/private/ is intentionally NOT gitignored — files there are encrypted at rest
 # (docs/TMLR_cover_letter_draft.md, docs/RESEARCH_DIRECTIONS.md, paper/REVIEW_v*.md moved to docs/private/)
 
-# Unpublished research strategy — local only, not versioned (too sensitive even for encrypted git)
-ROADMAP.md
+# Unpublished research strategy — root-level only (encrypted copy lives in docs/private/)
+/ROADMAP.md
 PRIVATE_RESEARCH_CONTEXT.md
 notebooks/results/
 results/PROVENANCE.md
