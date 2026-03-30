@@ -48,3 +48,4 @@ __pycache__/
 PRIVATE_RESEARCH_CONTEXT.md
 notebooks/results/
 results/PROVENANCE.md
+.ulam/
