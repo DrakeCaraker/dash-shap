@@ -313,6 +313,14 @@ across Rashomon-set models, demonstrating that importance rankings are
 inherently ambiguous when many near-optimal models exist.
 \citet{semenova2022existence} further characterize the Rashomon set's
 structure and its implications for model selection.
+\citet{bilodeau2024impossibility} prove impossibility results for
+complete and linear attribution methods (including SHAP and Integrated
+Gradients), showing they can provably fail to improve on random guessing
+for inferring model behavior on sufficiently rich model classes.
+\citet{chenrashomongb2024} provide the first systematic analysis of the
+Rashomon effect in gradient boosting specifically, with an
+information-theoretic characterization of the Rashomon set and a framework
+for mitigating predictive multiplicity.
 \citet{marx2023but} demonstrate that SHAP-based feature attributions
 are sensitive to reference distribution choices.
 \citet{covert2021explaining} provide a unified framework connecting
@@ -330,6 +338,24 @@ Our results challenge this recommendation: the single-ensemble approach
 (our ``Ensemble SHAP'' baseline) does not resolve the instability caused
 by correlated features and, when taken to its extreme (the Large Single
 Model), amplifies it.
+
+\paragraph{Explanation multiplicity.}
+\citet{hwang2026explanation} introduce \emph{explanation multiplicity}---
+the phenomenon of multiple internally valid but substantively different
+SHAP explanations for the same decision---and present methodology to
+disentangle sources due to model training/selection from stochasticity
+intrinsic to the explanation pipeline. They show that apparent stability
+depends on the metric: magnitude-based distances can remain near zero
+while rank-based measures reveal substantial churn in top-feature
+identity. Our work complements theirs by providing a mechanistic account
+of the model-training-induced component: first-mover bias explains
+\emph{why} retraining gradient-boosted models produces the rank-level
+instability that Hwang et~al.\ characterize. The FSI diagnostic detects
+this instability from a single model ensemble without requiring repeated
+runs. \citet{decker2024provably} propose optimal convex combinations of
+feature attributions to improve robustness or faithfulness; \dash{} takes
+a different approach, enforcing diversity at the model level rather than
+optimizing the aggregation of a fixed set of explanations.
 
 \paragraph{Stable explanations.}
 \citet{alvarez2018towards} propose metrics for explanation stability.
@@ -1735,6 +1761,30 @@ K.~Aas, M.~Jullum, and A.~L{\o}land.
 \newblock Explaining individual predictions when features are dependent:
   More accurate approximations to {S}hapley values.
 \newblock \emph{Artificial Intelligence}, 298:103502, 2021.
+
+\bibitem[Bilodeau et~al.(2024)]{bilodeau2024impossibility}
+B.~Bilodeau, N.~Jaques, P.~W.~Koh, and B.~Kim.
+\newblock Impossibility theorems for feature attribution.
+\newblock \emph{Proceedings of the National Academy of Sciences},
+  121(2):e2304406120, 2024.
+
+\bibitem[Chen et~al.(2024)]{chenrashomongb2024}
+H.~Chen, R.~Cheng, and H.~Jin.
+\newblock {RashomonGB}: Analyzing the {R}ashomon effect and mitigating
+  predictive multiplicity in gradient boosting.
+\newblock In \emph{Advances in Neural Information Processing Systems~37}, 2024.
+
+\bibitem[Decker et~al.(2024)]{decker2024provably}
+T.~Decker, A.~R.~Bhattarai, L.~Bloch, R.~Fuhlert, and T.~Wirtz.
+\newblock Provably better explanations with optimized aggregation of feature
+  attributions.
+\newblock In \emph{Proceedings of the 41st International Conference on Machine
+  Learning}, volume 235 of \emph{PMLR}, pages 10267--10286, 2024.
+
+\bibitem[Hwang et~al.(2026)]{hwang2026explanation}
+H.~Hwang, S.~Lee, L.~Rosenblatt, J.~Stoyanovich, and S.~E.~Whang.
+\newblock Explanation multiplicity in {SHAP}: Characterization and assessment.
+\newblock \emph{arXiv preprint arXiv:2601.12654}, 2026.
 
 \bibitem[Altmann et~al.(2010)]{altmann2010permutation}
 A.~Altmann, L.~Tolo{\v{s}}i, O.~Sander, and T.~Lengauer.
