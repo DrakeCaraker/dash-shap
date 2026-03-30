@@ -134,6 +134,44 @@ DASH dominates: +0.079 stability, +0.156 top-5, +0.074 DGP agreement, -0.067 equ
 
 Concentration: SB=0.212, LSM=0.213, DASH=0.210 (ideal=0.200).
 
+### California Housing (8 features, regression, 50 reps)
+
+```
+Method              Stability (±SE)    Top-k5  RMSE (±SE)       Ablation
+===========================================================================
+Single Best          0.969 ± 0.003    1.000   0.459 ± 0.007    1.108
+Single Best (M=200)  0.973 ± 0.003    1.000   0.452 ± 0.004    1.128
+Large Single Model   0.982 ± 0.003    1.000   0.593 ± 0.004    1.047
+Ensemble SHAP        0.989 ± 0.003    1.000   0.449 ± 0.004    1.166
+Random Forest        0.998 ± 0.001    1.000   0.517 ± 0.004    0.973
+Stochastic Retrain   0.977 ± 0.002    1.000   0.450 ± 0.005    1.123
+Random Selection     0.989 ± 0.003    1.000   0.452 ± 0.003    1.101
+Naive Top-N          0.991 ± 0.002    1.000   0.455 ± 0.003    1.128
+DASH (MaxMin)        0.978 ± 0.004    1.000   0.452 ± 0.004    1.128
+```
+
+Bootstrap stability tests (DASH vs): SB +0.009 p=0.063 (n.s.), SR +0.001 p=0.871 (n.s., TOST equiv=YES), RF -0.020 p<0.001 (***), Ensemble -0.011 p=0.011 (*), RS -0.011 p=0.004 (**), NTN -0.013 p=0.002 (**).
+
+All top-k5 = 1.000 (trivial with 8 features). DASH mid-pack on stability; RF dominates. DASH ≈ SR (TOST confirmed).
+
+### Breast Cancer (30 features, 21 pairs |r|>0.9, classification, 50 reps)
+
+```
+Method              Stability (±SE)    Top-k5  Ablation
+========================================================
+Single Best          0.376 ± 0.043    0.338   0.158
+Single Best (M=200)  0.339 ± 0.037    0.314   0.183
+Large Single Model   0.615 ± 0.044    0.415   0.110
+Ensemble SHAP        0.724 ± 0.015    0.581   0.177
+Random Forest        0.922 ± 0.004    1.000   0.005
+Stochastic Retrain   0.862 ± 0.010    0.732   0.137
+Random Selection     0.919 ± 0.004    0.913   0.178
+Naive Top-N          0.904 ± 0.005    0.738   0.127
+DASH (MaxMin)        0.925 ± 0.004    0.856   0.143
+```
+
+DASH is best on stability. Largest DASH-SR gap in any experiment (+0.063). RF near-DASH stability but ablation≈0 (stable through marginalization, not feature sensitivity). SB(M=200) < SB — model selection instability increases with population size under extreme collinearity. Bootstrap stability tests cut off in output — formal significance pending.
+
 ### Still Pending
 
 - Nonlinear sweep (in progress on SageMaker)
@@ -143,7 +181,7 @@ Concentration: SB=0.212, LSM=0.213, DASH=0.210 (ideal=0.200).
 - Background sensitivity
 - Asymmetric DGP
 - k_sweep_independence (broken, needs fix)
-- Real-world datasets (completed in run 20260326; clean re-run pending)
+- Superconductor (completed in run 20260326; clean re-run pending)
 
 ---
 

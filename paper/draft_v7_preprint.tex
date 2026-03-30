@@ -147,9 +147,9 @@ explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, b
 $= 0.977$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
-$0.53$ to $0.93$ ($+0.40$) over the standard Single Best, and from
-$0.32$ to $0.93$ ($+0.61$) over the training-budget-matched
-Single Best ($M{=}200$).
+$0.38$ to $0.93$ ($+0.55$) over Single Best, and from
+$0.34$ to $0.93$ ($+0.59$) over the training-budget-matched
+Single Best ($M{=}200$), outperforming even Stochastic Retrain by $+0.063$.
 
 \dash{} additionally provides two novel diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
@@ -1297,52 +1297,64 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 
 \begin{table}[htbp]
 \centering
-\caption{Real-world dataset results (50 repetitions each).
+\caption{Real-world dataset results (50 repetitions each unless noted).
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 $^\dagger$Matched training budget ($M{=}200$ models trained).
+$^*$Superconductor uses 20-rep data pending clean re-run.
 $\Delta$Stab.\ is relative to standard Single Best.
-All results sourced from \texttt{run\_experiments\_parallel.py} (50-rep SageMaker run).}
+Breast Cancer and California Housing sourced from clean 50-rep SageMaker run.}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
 \textbf{Dataset} & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{$\Delta$Stab.} & \textbf{RMSE} \\
 \midrule
-\multirow{3}{*}{Breast Cancer}
-  & Single Best              & $.534 \pm .040$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
-  & Single Best ($M{=}200$)$^\dagger$ & $.317 \pm .053$ & $-0.217$ & \multicolumn{1}{c}{---} \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.930} \pm .005$ & $+0.396$ & \multicolumn{1}{c}{---} \\
+\multirow{6}{*}{Breast Cancer}
+  & Single Best              & $.376 \pm .043$ & \multicolumn{1}{c}{---} & \multicolumn{1}{c}{---} \\
+  & Single Best ($M{=}200$)$^\dagger$ & $.339 \pm .037$ & $-0.037$ & \multicolumn{1}{c}{---} \\
+  & Stochastic Retrain       & $.862 \pm .010$ & $+0.486$ & \multicolumn{1}{c}{---} \\
+  & Random Selection         & $.919 \pm .004$ & $+0.543$ & \multicolumn{1}{c}{---} \\
+  & Random Forest            & $.922 \pm .004$ & $+0.546$ & \multicolumn{1}{c}{---} \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.925} \pm .004$ & $+0.549$ & \multicolumn{1}{c}{---} \\
 \addlinespace
 \midrule
 \addlinespace
-\multirow{3}{*}{Superconductor}
+\multirow{3}{*}{Superconductor$^*$}
   & Single Best            & $.830 \pm .020$ & \multicolumn{1}{c}{---} & $9.18 \pm 0.11$ \\
   & Large Single Model     & $.689 \pm .030$ & $-0.141$ & $9.34 \pm 0.09$ \\
   & \textbf{\dash{} (MaxMin)} & $\mathbf{.962} \pm .010$ & $+0.132$ & $\mathbf{9.15} \pm 0.08$ \\
 \addlinespace
 \midrule
 \addlinespace
-\multirow{2}{*}{Calif.\ Housing}
-  & Single Best            & $.967 \pm .010$ & \multicolumn{1}{c}{---} & $0.460 \pm 0.009$ \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.982} \pm .005$ & $+0.015$ & $\mathbf{0.450} \pm 0.005$ \\
+\multirow{4}{*}{Calif.\ Housing}
+  & Single Best            & $.969 \pm .003$ & \multicolumn{1}{c}{---} & $0.459 \pm 0.007$ \\
+  & Stochastic Retrain     & $.977 \pm .002$ & $+0.008$ & $0.450 \pm 0.005$ \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.978} \pm .004$ & $+0.009$ & $0.452 \pm 0.004$ \\
+  & Random Forest          & $\mathbf{.998} \pm .001$ & $+0.029$ & $0.517 \pm 0.004$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The Breast Cancer improvement is the largest across all experiments.
-Even the standard Single Best ($N_{\text{trials}}{=}30$) achieves only
-$0.534$ stability; the training-budget-matched variant ($M{=}200$) is
-worse still at $0.317$, because Breast Cancer's extreme collinearity
-(21 pairs with $|r| > 0.9$) makes model selection itself unstable---with
-200 hyperparameter configurations, the ``best'' model varies wildly across
-repetitions. Both baselines indicate that feature rankings are highly
-unstable across runs. The
-radius/perimeter/area triad creates extreme SHAP instability: a
-feature's importance can swing from first to fifth across runs. \dash{}
-consensus substantially stabilizes this, producing stable top
-features aligned with known geometric redundancy in the feature set---\texttt{mean concave points}
-(0.228), \texttt{worst area} (0.201), \texttt{worst perimeter}
-(0.201)---that are stable across repetitions.
+The Breast Cancer improvement is the largest across all experiments and
+the one real-world dataset where \dash{} clearly outperforms Stochastic
+Retrain ($0.925$ vs.\ $0.862$, $+0.063$)---the largest \dash{}-SR gap
+in any experiment. This contrasts with the synthetic linear sweep, where
+the two methods are statistically equivalent, and suggests that Breast
+Cancer's overlapping chain correlations (the radius/perimeter/area triad)
+require the feature-level diversity that \dash{}'s forced low
+\texttt{colsample\_bytree} and MaxMin selection provide.
+The training-budget-matched Single Best ($M{=}200$) achieves only $0.339$,
+\emph{worse} than the standard Single Best ($0.376$), because extreme
+collinearity makes model selection itself unstable---with 200
+hyperparameter configurations, the ``best'' model varies wildly across
+repetitions. Random Forest achieves comparable stability ($0.922$) via
+internal feature bagging, but its near-zero ablation score ($0.005$
+vs.\ \dash{}'s $0.143$) indicates that RF's attributions are largely
+invariant to feature removal---stable through marginalization rather than
+through accurate feature-level sensitivity. \dash{} consensus produces
+stable top features aligned with known geometric redundancy---\texttt{mean
+concave points} (0.228), \texttt{worst area} (0.201), \texttt{worst
+perimeter} (0.201)---that are stable across repetitions.
 
 \paragraph{Superconductor.}
 On the Superconductor dataset (81 features, 21,263 samples), \dash{}
@@ -1355,10 +1367,15 @@ poorest reproducibility---consistent with first-mover bias at scale.
 \paragraph{California Housing.}
 On California Housing (8~features, 20,640~samples), several feature
 pairs have $|r| > 0.7$ (\eg latitude/longitude, income/house value).
-\dash{} improves stability by $+0.015$ over Single Best while
-maintaining equivalent predictive RMSE. The improvement is smaller than
-for Breast Cancer and Superconductor, consistent with the milder degree
-of collinearity and the small feature space.
+\dash{} improves stability by $+0.009$ over Single Best, a difference
+that is not statistically significant ($p = 0.063$). \dash{} and
+Stochastic Retrain are statistically equivalent (TOST confirmed),
+consistent with the milder degree of collinearity and the small feature
+space. Aggregation-based methods (Random Selection, Ensemble SHAP)
+achieve higher stability on this dataset, suggesting that simple model
+averaging suffices when collinearity is mild. Random Forest achieves
+the highest stability ($0.998$) but with substantially worse RMSE
+($0.517$ vs.\ $0.452$).
 
 \subsection{Robustness and scope}
 \label{sec:robustness}
@@ -1673,7 +1690,7 @@ independence principle with forced feature restriction, diversity-aware
 model selection, and two novel diagnostic tools---the Feature Stability
 Index and Importance-Stability Plot---that detect first-mover bias
 without ground truth. On real-world datasets, \dash{} improves stability
-from $0.32$ to $0.93$ (Breast Cancer), from $0.83$ to $0.96$
+from $0.34$ to $0.93$ (Breast Cancer), from $0.83$ to $0.96$
 (Superconductor), and from $0.97$ to $0.98$ (California Housing).
 
 The code, data, and reproducible benchmarks are publicly available at
@@ -2069,9 +2086,9 @@ tests are deferred to the journal version. \dash{} passes all eleven:
   \item \textbf{Superconductor}: DASH stability $>$ SB $\to$ \textbf{PASS}
     ($0.962$ vs.\ $0.830$)
   \item \textbf{California Housing}: DASH stability $>$ SB $\to$ \textbf{PASS}
-    ($0.982$ vs.\ $0.967$)
+    ($0.978$ vs.\ $0.969$; $p = 0.063$ n.s.\ but positive direction)
   \item \textbf{Breast Cancer}: DASH stability $>$ SB $\to$ \textbf{PASS}
-    ($0.930$ vs.\ $0.317$)
+    ($0.925$ vs.\ $0.376$)
   \item \textbf{Variance decomposition}: DASH model-selection variance $<$ SB
     $\to$ \textbf{PASS} ($0.006$ vs.\ $0.023$)
 \end{enumerate}
