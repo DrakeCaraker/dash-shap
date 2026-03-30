@@ -443,7 +443,7 @@ concentration grows monotonically with $T$, confirming the first-mover
 prediction.  Independent ensemble of $M$ models averaged at matched
 total tree count (green circles): concentration remains flat regardless
 of per-model depth.  The divergence isolates residual dependency as the
-operative mechanism.  Mean $\pm$~SD across 20~repetitions.}
+operative mechanism.  Mean $\pm$~SD across 50~repetitions.}
 \label{fig:t_scaling}
 \end{figure}
 
@@ -714,7 +714,7 @@ bedrooms, latitude and longitude).
 We use relative $\varepsilon = 0.05$ for scale-appropriate filtering.
 
 \paragraph{Repetition procedure.}
-For synthetic data, each of the 20 repetitions regenerates the dataset
+For synthetic data, each of the 50 repetitions regenerates the dataset
 (same coefficients, new random draws) and retrains all models, capturing
 both data-sampling and model-selection variance. For real-world datasets,
 each repetition retrains all models with different random seeds on the
@@ -756,7 +756,7 @@ We compare 9 methods (Table~\ref{tab:methods}):
 \subsection{Evaluation metrics}
 
 \paragraph{Stability.}
-Mean pairwise Spearman correlation across $N_{\text{reps}} = 20$ repeated
+Mean pairwise Spearman correlation across $N_{\text{reps}} = 50$ repeated
 runs of each method:
 \begin{equation}
   \text{Stability} = \frac{2}{R(R-1)} \sum_{r<r'} \rho_S\bigl(
@@ -819,7 +819,7 @@ are trained independently, while LSM's trees are trained sequentially
 on progressively modified residuals.
 
 Table~\ref{tab:sweep} presents results for the four principal methods
-across $\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with 20 repetitions per
+across $\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with 50 repetitions per
 level. The remaining five baselines (Ensemble SHAP, Single Best $M{=}200$,
 LSM Tuned, Random Selection, Naive Top-$N$) are evaluated at
 $\rhovar = 0.9$ only (Table~\ref{tab:extended}), as their primary
@@ -836,7 +836,7 @@ immunity to the mechanism it is designed to break.
 \begin{table}[htbp]
 \centering
 \caption{The mechanism experiment: \dash{} vs.\ Single Best vs.\ Large
-Single Model across correlation levels (20 repetitions per $\rhovar$).
+Single Model across correlation levels (50 repetitions per $\rhovar$).
 Both \dash{} and LSM use the same low \texttt{colsample\_bytree}; the
 critical contrast for our hypothesis is that \dash{}'s models are trained independently while
 LSM trains trees sequentially. Bold indicates best per metric per $\rhovar$ level.
@@ -960,7 +960,7 @@ share one property: their explained models are trained independently.
 
 \begin{table}[htbp]
 \centering
-\caption{All methods at $\rhovar = 0.9$ (20 repetitions), grouped by
+\caption{All methods at $\rhovar = 0.9$ (50 repetitions), grouped by
 whether they achieve model independence. Bold indicates best per metric.
 $^\dagger$Matched training budget ($M{=}200$ models trained).
 Timing entries marked --- share infrastructure with other methods
@@ -1072,7 +1072,7 @@ an alternative measure of precision for this metric.
 \begin{table}[htbp]
 \centering
 \caption{Wilcoxon signed-rank tests with Holm--Bonferroni step-down correction
-(20~paired repetitions). Bold $p$-values are significant at adjusted
+(50~paired repetitions). Bold $p$-values are significant at adjusted
 $\alpha = 0.05$. Selected comparisons shown from 26 total tests;
 full results available in the code repository.}
 \label{tab:significance}
@@ -1149,6 +1149,20 @@ stability at $\rhovar = 0.9$ (Table~\ref{tab:nonlinear}), likely because
 diverse feature subsets explore distinct nonlinear interaction pathways
 that seed averaging, which fixes hyperparameters, cannot reach.
 
+\paragraph{Top-$k$ ranking stability.}
+Beyond overall rank correlation, we examine the stability of the top-$5$
+feature subset across repetitions (top-$k$ overlap). SR achieves higher
+top-$5$ ranking stability than \dash{} ($0.922$ vs.\ $0.863$ at
+$\rhovar = 0.9$; $p = 0.18$, n.s.), likely because fixed hyperparameters
+preserve the feature importance landscape across seeds while \dash{}'s
+diversity mechanism produces more varied individual-model rankings.
+However, \dash{} significantly outperforms all dependent methods on
+top-$k5$: $+0.317$ vs.\ Single Best, $+0.430$ vs.\ LSM, and $+0.488$
+vs.\ Random Forest (all $p < 0.001$). Diversity selection also helps:
+\dash{} exceeds Random Selection by $+0.036$ on top-$k5$, indicating
+that MaxMin selection improves not only equity but also the consistency
+of top-feature identification.
+
 \subsection{The effect scales with correlation}
 \label{sec:scaling}
 
@@ -1171,17 +1185,24 @@ carry sufficiently distinct signal that the first-mover advantage is
 weak. When correlation is high, the features are near-interchangeable,
 and the first split's arbitrary selection dominates.
 
-At $\rhovar = 0$, Single Best, Stochastic Retrain, and \dash{} cluster
-tightly (stability $0.972$--$0.975$), satisfying the safety desideratum:
-\dash{} does not degrade explanations when multicollinearity is absent.
-LSM already trails at $0.953 \pm 0.003$, and its gap widens monotonically
+At $\rhovar = 0$, all independent methods achieve stability $\geq 0.972$,
+with differences $\leq 0.003$. Stochastic Retrain is marginally higher
+($0.975$ vs.\ \dash{}'s $0.973$), a statistically detectable difference
+($p < 0.001$ by bootstrap test) but practically negligible---two orders
+of magnitude below the $0.1$ safety threshold. This satisfies the safety
+desideratum: \dash{} does not meaningfully degrade explanations when
+multicollinearity is absent. Notably, the SR--\dash{} gap narrows from
+$0.002$ at $\rhovar = 0$ (significant) to $< 0.001$ at $\rhovar = 0.9$
+(n.s.), consistent with diversity selection becoming more valuable as
+correlation intensifies.
+LSM already trails at $0.955 \pm 0.003$, and its gap widens monotonically
 with $\rhovar$.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\textwidth,alt={Line plots of stability, accuracy, and equity vs correlation level for all methods}]{correlation_sweep.png}
 \caption{Stability, accuracy, and equity as a function of within-group
-correlation $\rhovar$ (linear DGP, 20~repetitions per level). Independent
+correlation $\rhovar$ (linear DGP, 50~repetitions per level). Independent
 methods (\dash{}, Stochastic Retrain) are flat across correlation levels;
 dependent methods (Single Best, LSM) degrade monotonically.
 All seven methods shown; Table~\ref{tab:sweep} reports the four principal
@@ -1272,16 +1293,16 @@ sufficient to destabilize single-model explanations.
 
 \paragraph{Breast Cancer Wisconsin.}
 On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
-20 repetitions), \dash{} nearly triples stability:
+50 repetitions), \dash{} nearly triples stability:
 
 \begin{table}[htbp]
 \centering
-\caption{Real-world dataset results (20 repetitions each).
+\caption{Real-world dataset results (50 repetitions each).
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 $^\dagger$Matched training budget ($M{=}200$ models trained).
 $\Delta$Stab.\ is relative to standard Single Best.
-All results sourced from \texttt{demo\_benchmark\_6.ipynb}.}
+All results sourced from \texttt{run\_experiments\_parallel.py} (50-rep SageMaker run).}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
@@ -1455,6 +1476,24 @@ $z_1 z_2$), averaging their SHAP values introduces model-disagreement
 noise that is distinct from first-mover bias and not resolved by
 independence alone.
 
+\paragraph{Random forests as an independence control.}
+Random Forest (RF) provides a natural test of the independence principle
+from the model-family side: its trees are trained independently by
+construction (via bootstrap sampling and random feature subsets). In the
+linear correlation sweep, RF achieves stability competitive with
+\dash{} ($0.978$ vs.\ $0.977$ at $\rhovar = 0.9$). However, RF's
+top-$5$ ranking agreement is substantially lower ($0.375$ vs.\ $0.863$;
+$p < 0.001$, $d = +0.488$) and its predictive RMSE is significantly
+worse ($0.957$ vs.\ $0.594$). This pattern---high stability but poor
+top-feature identification---indicates that RF produces \emph{stable
+but systematically different} attributions. Independence ensures that
+arbitrary choices cancel upon averaging, yielding high stability; but
+if the base models are individually inaccurate (\eg due to high
+prediction error), the stable consensus may converge to an incorrect
+ranking. \dash{} achieves both stability and accurate attributions
+because its base models are individually performant XGBoost learners
+filtered for predictive quality before aggregation.
+
 \paragraph{Relationship to stability selection.}
 \dash{} shares a structural resemblance with stability selection
 \citep{meinshausen2010stability}: both train many models and aggregate
@@ -1552,21 +1591,10 @@ collinearity. We pursue this direction in companion work.
     Appendix~\ref{app:asymmetric} examines the asymmetric case where
     one feature is causally active and its correlate is a passive proxy,
     directly testing whether \dash{} over-equalizes.
-  \item \textbf{Confidence intervals.} With $N_{\text{reps}} = 20$, the
-    Wilcoxon test is underpowered for the small effect sizes between
-    \dash{} and Stochastic Retrain. Larger $N_{\text{reps}}$ would
-    strengthen the analysis.
   \item \textbf{Background dataset size.} All experiments use $B = 100$
     background samples for interventional TreeSHAP. For high-dimensional
     datasets with strong correlation structure, this may be insufficient
-    to capture the joint distribution faithfully. A sensitivity analysis
-    over $B$ is deferred to the journal version.
-  \item \textbf{Random forest baseline.} Random forests train trees
-    independently, predicting higher baseline explanation stability
-    without any DASH-like pipeline. Including an RF baseline would
-    provide a direct test of the independence principle on a model family
-    that is independent by construction. This comparison is planned for
-    the journal version.
+    to capture the joint distribution faithfully.
 \end{itemize}
 
 \subsection{Broader implications}
@@ -1576,13 +1604,15 @@ iterative optimization procedure that makes sequential, greedy feature
 selections---including some neural network training dynamics---may exhibit
 analogous path-dependent concentration of feature attributions. The
 independence principle established here provides a general framework for
-investigating and resolving such effects. Future work will explore
-whether the mechanism extends to random forests (where trees are
-already independent, predicting higher baseline stability), neural
-networks (where gradient-based optimization creates different but
-potentially analogous path dependencies), and whether partial orders
-on feature importance can replace point rankings as a more robust
-representation of explanation structure.
+investigating and resolving such effects. Our Random Forest results
+confirm that tree-level independence already yields high stability
+(Section~\ref{sec:discussion}), validating the principle on a model
+family that is independent by construction. Future work will explore
+whether the mechanism extends to neural networks (where gradient-based
+optimization creates different but potentially analogous path
+dependencies) and whether partial orders on feature importance can
+replace point rankings as a more robust representation of explanation
+structure.
 
 The neural network case warrants particular attention. Attribution
 instability under feature collinearity is well-documented for NNs:
@@ -1976,13 +2006,13 @@ figures are planned for the journal version.}
 
 \paragraph{Computational cost.}
 Table~\ref{tab:cost} reports wall-clock time for each method at
-$\rhovar = 0.9$ (20~repetitions, single-threaded timing).
+$\rhovar = 0.9$ (50~repetitions, single-threaded timing).
 \dash{}'s cost is dominated by training $M = 200$ models and computing
 $K \leq 30$ TreeSHAP explanations.
 
 \begin{table}[htbp]
 \centering
-\caption{Computational cost at $\rhovar = 0.9$ (20 repetitions).
+\caption{Computational cost at $\rhovar = 0.9$ (50 repetitions).
 Wall-clock times are hardware-dependent (Apple M-series, single node)
 and reported for relative comparison.}
 \label{tab:cost}
@@ -2070,7 +2100,7 @@ We use a two-feature asymmetric causal DGP:
 where $f_0$ is causally active and $f_1$ is a passive correlate.
 Ground-truth importance: $f_0 = 1.0$, $f_1 = 0.0$ (normalized).
 We sweep $\rho \in \{0.5, 0.7, 0.9, 0.95\}$ with $N = 5{,}000$ and
-$N_{\text{reps}} = 20$ repetitions.
+$N_{\text{reps}} = 50$ repetitions.
 
 \paragraph{Metrics.}
 For each method we report:
@@ -2096,7 +2126,7 @@ feature selection rather than the true causal asymmetry.
 
 \begin{table}[htbp]
 \centering
-\caption{Asymmetric causal DGP at $\rho = 0.9$, 20 repetitions.
+\caption{Asymmetric causal DGP at $\rho = 0.9$, 50 repetitions.
 ``Passive leak'' is mean attribution to the causally inert feature $f_1$
 (ground truth: 0.0). Lower is better for both bias and passive leak.}
 \label{tab:asymmetric}
