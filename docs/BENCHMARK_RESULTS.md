@@ -12,12 +12,138 @@
 
 ## v7 Results (TMLR — in progress)
 
-> ⚠️ **Status: PENDING** — `demo_benchmark_7_parallel.ipynb` has not yet completed its full run.
-> Paste results here as the notebook produces them. Do not cite these numbers in the TMLR draft until confirmed.
+> ⚠️ **Status: PARTIAL** — Linear sweep, overlapping, and first-mover visualization confirmed from clean 50-rep re-run.
+> Nonlinear sweep in progress. Ablation, variance decomposition, background sensitivity, asymmetric DGP still pending.
+> Numbers below are from the clean re-run (run 20260330) and confirmed against run 20260326.
 
 **Configuration:** M=200, K=30, N_REPS=50, EPSILON=0.08, DELTA=0.05, SEED=42
+**Source:** `run_experiments_parallel.py` (SageMaker ml.g5.16xlarge)
 
-*Results to be filled in when notebook completes.*
+---
+
+### Linear Sweep — Stability (50 reps per ρ level)
+
+```
+ρ       DASH    SB      SB(200) LSM     LSM(T)  SR      RS      RF      NTN
+=============================================================================
+0.0     0.9726  0.9715  0.9726  0.9552  0.9725  0.9749  0.9741  0.9417  0.9744
+0.5     0.9773  0.9741  0.9761  0.9671  0.9712  0.9790  0.9781  0.9787  0.9784
+0.7     0.9770  0.9674  0.9716  0.9583  0.9628  0.9782  0.9768  0.9798  0.9765
+0.9     0.9767  0.9577  0.9637  0.9381  0.9478  0.9776  0.9765  0.9776  0.9762
+0.95    0.9774  0.9515  0.9553  0.9267  0.9439  0.9795  0.9779  0.9756  0.9783
+```
+
+### Linear Sweep — Top-K5 (50 reps per ρ level)
+
+```
+ρ       DASH    SB      SB(200) LSM     LSM(T)  SR      RS      RF      NTN
+=============================================================================
+0.0     1.0000  1.0000  1.0000  0.8558  1.0000  1.0000  1.0000  0.9867  1.0000
+0.5     0.9867  0.9095  0.9604  0.5789  1.0000  1.0000  1.0000  0.4675  1.0000
+0.7     0.9478  0.8048  0.7496  0.4918  0.8744  0.9867  0.9604  0.4037  0.9736
+0.9     0.8628  0.5463  0.5628  0.4328  0.6938  0.9221  0.8268  0.3753  0.8270
+0.95    0.8147  0.5186  0.4595  0.3903  0.5635  0.8499  0.7729  0.3588  0.8081
+```
+
+### Linear Sweep — Equity (within-group CV, lower is better)
+
+```
+ρ       DASH    SB      SB(200) LSM     LSM(T)  SR      RS      RF      NTN
+=============================================================================
+0.0     0.1528  0.1634  0.1594  0.1697  0.1697  0.1689  0.1687  0.2174  0.1710
+0.5     0.1564  0.1790  0.1703  0.1871  0.1948  0.1689  0.1683  0.1786  0.1687
+0.7     0.1702  0.2034  0.1938  0.2134  0.2218  0.1779  0.1814  0.1709  0.1835
+0.9     0.1753  0.2323  0.2136  0.2579  0.2712  0.1797  0.1859  0.1666  0.1893
+0.95    0.1709  0.2361  0.2300  0.2767  0.2793  0.1592  0.1763  0.1720  0.1751
+```
+
+### Linear Sweep — RMSE
+
+```
+ρ       DASH    SB      LSM     SR      RS      RF      NTN
+=============================================================
+0.0     0.6055  0.6106  0.7720  0.5806  0.6056  0.9727  0.5988
+0.5     0.5959  0.6197  0.7679  0.5824  0.6055  1.0633  0.6009
+0.7     0.5949  0.6186  0.7579  0.5827  0.6069  1.0179  0.6022
+0.9     0.5906  0.6129  0.7332  0.5757  0.6010  0.9569  0.5944
+0.95    0.5906  0.6096  0.7276  0.5746  0.6007  0.9469  0.5934
+```
+
+### Significance Tests — Bootstrap Stability (DASH vs each, ρ=0.9)
+
+| Comparison | Diff | p-value | Verdict |
+|---|---|---|---|
+| vs SB | +0.0190 | <0.001 | **Significant** |
+| vs LSM | +0.0387 | <0.001 | **Significant** |
+| vs SR | -0.0009 | n.s. (0.40) | Not significant |
+| vs RS | +0.0003 | n.s. (0.62) | Not significant |
+| vs RF | -0.0009 | n.s. | Not significant |
+
+### Significance Tests — Equity (DASH vs each, ρ=0.9)
+
+| Comparison | Wilcoxon p | Cohen's d | Verdict |
+|---|---|---|---|
+| vs SB | 9.1e-11 | -1.468 | **Significant, large** |
+| vs LSM | 1.8e-15 | -2.943 | **Significant, huge** |
+| vs RS | 1.6e-6 | -0.370 | **Significant, medium** |
+| vs NTN | 4.9e-7 | -0.488 | **Significant, medium** |
+| vs SR | 0.44 | -0.133 | Not significant |
+
+### Significance Tests — Top-K5 (DASH vs each, ρ=0.9)
+
+| Comparison | d TopK5 | p-value | Verdict |
+|---|---|---|---|
+| vs SB | +0.3166 | <0.001 | **Significant** |
+| vs SB(200) | +0.3001 | <0.001 | **Significant** |
+| vs LSM | +0.4300 | <0.001 | **Significant** |
+| vs LSM(T) | +0.1690 | <0.001 | **Significant** |
+| vs SR | -0.0593 | 0.180 | Not significant |
+| vs RS | +0.0360 | 0.300 | Not significant |
+| vs RF | +0.4875 | <0.001 | **Significant** |
+| vs NTN | +0.0358 | 0.348 | Not significant |
+
+### Overlapping Correlation Structure (50 reps)
+
+| Method | Stability | Top-5 | DGP Agree | Equity | RMSE |
+|---|---|---|---|---|---|
+| Single Best | 0.8970 | 0.4392 | 0.7814 | 0.6645 | 0.5890 |
+| DASH (MaxMin) | **0.9762** | **0.5947** | **0.8556** | **0.5973** | 0.5753 |
+| DASH (Cluster) | 0.9754 | 0.5648 | 0.8370 | 0.6434 | 0.5753 |
+
+DASH dominates: +0.079 stability, +0.156 top-5, +0.074 DGP agreement, -0.067 equity over SB. This is the largest advantage observed in any synthetic experiment.
+
+### FSI Collinearity Validation
+
+| ρ | Mean FSI (signal) | Mean FSI (noise) | Ratio | β correlation |
+|---|---|---|---|---|
+| 0.0 | 0.2850 | 0.9053 | 0.31 | -0.995 |
+| 0.5 | 0.3370 | 1.2530 | 0.27 | -0.995 |
+| 0.7 | 0.3620 | 1.4235 | 0.25 | -0.995 |
+| 0.9 | 0.4203 | 1.6358 | 0.26 | -0.994 |
+| 0.95 | 0.4610 | 1.8427 | 0.25 | -0.991 |
+
+### First-Mover Visualization (Group 0 means)
+
+| Feature | SB | LSM | DASH |
+|---|---|---|---|
+| G0_f0 | 0.3244 | 0.3241 | 0.3120 |
+| G0_f1 | 0.3057 | 0.2872 | 0.3045 |
+| G0_f2 | 0.3347 | 0.2961 | 0.3284 |
+| G0_f3 | 0.3177 | 0.3169 | 0.3121 |
+| G0_f4 | 0.2995 | 0.2998 | 0.3065 |
+
+Concentration: SB=0.212, LSM=0.213, DASH=0.210 (ideal=0.200).
+
+### Still Pending
+
+- Nonlinear sweep (in progress on SageMaker)
+- Ablation studies
+- Variance decomposition (marginal and crossed)
+- First-mover bias isolation
+- Background sensitivity
+- Asymmetric DGP
+- k_sweep_independence (broken, needs fix)
+- Real-world datasets (completed in run 20260326; clean re-run pending)
 
 ---
 
