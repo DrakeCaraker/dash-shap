@@ -1,0 +1,593 @@
+import Mathlib
+
+
+/-
+Original .tex:
+% impossibility.tex — Standalone LaTeX file; also suitable for \input{} into main paper.
+% Proves that no single sequential gradient-boosted model can simultaneously
+% satisfy Stability and Equity under high feature collinearity.
+%
+% Revision history:
+%   v1 — initial draft (submitted for review)
+%   v2 — five issues fixed (two fatal, three significant, several minor):
+%        Fatal 1: Corollary 1(b) contradiction resolved via group-level stability + new part (c)
+%        Fatal 2 / Sig 1: Lemma 2 now conditional on explicit Assumption A (uniform-contribution)
+%        Sig 2: Lemma 1 proof replaces false "full variance" claim with total-signal accounting
+%        Sig 3: Theorem 1(i) now establishes ratio divergence (not just additive gap)
+%        Sig 4: Theorem 1(ii) Spearman bound corrected from O(m/P) to O((m/P)^3)
+%        Minor: Definition 1 joint distribution specified; Definition 4 positivity assumption added;
+%               rho^2=Theta(rho) qualified; Remark 1 typo fixed; Corollary preamble language updated
+
+\documentclass[11pt]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+% ── Theorem environments ─────────────────────────────────────────────────────
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ── Notation shortcuts ───────────────────────────────────────────────────────
+\newcommand{\feat}{\mathcal{P}}             % feature set {1,...,P}
+\newcommand{\group}{\mathcal{G}}            % feature partition
+\newcommand{\Gl}{G_\ell}                    % a single group
+\newcommand{\phij}{\phi_j}                  % SHAP attribution for feature j
+\newcommand{\phik}{\phi_k}                  % SHAP attribution for feature k
+\newcommand{\splits}[1]{n_{#1}}             % number of splits on feature #1
+\newcommand{\totalT}{T}                     % total number of boosting rounds
+\newcommand{\rhovar}{\rho}                  % pairwise correlation
+\newcommand{\Exp}{\mathbb{E}}              % expectation
+\newcommand{\Prob}{\mathbb{P}}             % probability
+\newcommand{\Var}{\mathrm{Var}}            % variance
+\newcommand{\abs}[1]{\lvert #1 \rvert}
+\newcommand{\norm}[1]{\lVert #1 \rVert}
+\newcommand{\dash}{\textsc{DASH}}
+
+\title{An Impossibility Theorem for Stable and Equitable\\
+  Feature Attribution in Sequential Gradient Boosting}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Formal Setup}
+\label{sec:setup}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Consider a supervised learning problem with $P$ features
+$\feat = \{1, \dots, P\}$ and response $y$.
+The features admit a \emph{correlation partition}
+$\group = \{\Gl\}_{\ell=1}^{L}$ such that for every group $\Gl$ and every
+pair $j, k \in \Gl$, the pairwise Pearson correlation satisfies
+$\mathrm{Corr}(x_j, x_k) = \rhovar$ for some $\rhovar \in (0, 1)$.
+
+\begin{definition}[Data-generating process]
+\label{def:dgp}
+The true DGP is
+\begin{equation}
+  y = \sum_{\ell=1}^{L} \sum_{j \in \Gl} \beta_j\, x_j + \varepsilon,
+  \qquad \varepsilon \sim \mathcal{N}(0, \sigma^2),
+\end{equation}
+where all features within each group share a common coefficient:
+$\beta_j = \beta_k$ for all $j, k \in \Gl$.
+The features $(x_1, \ldots, x_P)$ are jointly Gaussian with unit marginal
+variances; within each group $\Gl$, all pairs have correlation $\rhovar$,
+and features in distinct groups are uncorrelated.
+\end{definition}
+
+\begin{definition}[Sequential gradient boosting]
+\label{def:sgb}
+A gradient-boosted ensemble $f$ is constructed sequentially:
+\begin{equation}
+  f = \sum_{t=1}^{\totalT} \eta\, h_t,
+\end{equation}
+where $\eta > 0$ is the learning rate and each base learner $h_t$ is a
+regression tree fit to the pseudo-residuals
+$r_t = y - \sum_{s < t} h_s(x)$.
+At each internal node, the tree greedily selects the feature--threshold pair
+$(j^*, c^*)$ maximizing the squared-error reduction.
+We write $\omega \in \Omega$ for the random seed controlling data
+sub-sampling, feature sub-sampling, and tie-breaking during training.
+\end{definition}
+
+\begin{definition}[Attributions and metrics]
+\label{def:attr}
+Let $\phij(f)$ denote the interventional TreeSHAP global feature importance
+for feature $j$ in model $f$, defined as the mean absolute SHAP value over
+an explanation set:
+$\phij(f) = \frac{1}{n} \sum_{i=1}^{n} \abs{\phi_j(f; x^{(i)})}$.
+\end{definition}
+
+\begin{definition}[Stability and Equity]
+\label{def:desiderata}
+Let $f_\omega$ denote a model trained with random seed $\omega$.
+\begin{itemize}
+  \item \textbf{Stability.} A method is $\delta$-stable if for any two
+    independent draws $\omega, \omega'$, the Spearman rank correlation
+    between the importance vectors satisfies
+    \begin{equation}
+      \Exp\bigl[\mathrm{Spearman}\bigl(
+        \boldsymbol{\phi}(f_\omega),\;
+        \boldsymbol{\phi}(f_{\omega'})
+      \bigr)\bigr] \geq 1 - \delta.
+    \end{equation}
+
+  \item \textbf{Equity.} A method is $\gamma$-equitable if for every group
+    $\Gl$ with $\beta_j = \beta_k$ for all $j, k \in \Gl$
+    (and $\phik(f_\omega) > 0$ for all $k \in \Gl$),
+    \begin{equation}
+      \Exp\!\left[
+        \frac{\max_{j \in \Gl} \phij(f_\omega)}
+             {\min_{k \in \Gl} \phik(f_\omega)}
+      \right] \leq 1 + \gamma.
+    \end{equation}
+\end{itemize}
+A method satisfies both desiderata simultaneously if it is
+$\delta$-stable and $\gamma$-equitable for small $\delta, \gamma > 0$.
+\end{definition}
+
+\begin{remark}[Positivity of attributions]
+\label{rem:positivity}
+The assumption $\phik(f_\omega) > 0$ for all $k \in \Gl$ required by
+Definition~\ref{def:desiderata} holds for $\beta_j > 0$ with sufficient
+tree depth ($d \geq 2$) and sample size, since every feature in $\Gl$ will
+appear as a split variable in at least one tree with positive probability.
+\end{remark}
+
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{First-Mover Concentration}
+\label{sec:first-mover}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{lemma}[First-mover concentration of splits]
+\label{lem:split-concentration}
+Consider a group $\Gl = \{j_1, \dots, j_m\}$ with pairwise correlation
+$\rhovar$ and equal true coefficients.  In a sequential gradient-boosted
+ensemble $f_\omega$ with $\totalT$ trees and bounded depth $d \geq 2$,
+suppose the first tree $h_1$ selects feature $j_1 \in \Gl$ at its root
+split (determined by seed $\omega$).  Then for any other feature
+$j_q \in \Gl$, $q \neq 1$, the expected cumulative split counts satisfy
+\begin{equation}
+  \Exp_\omega\bigl[\splits{j_1}\bigr]
+    - \Exp_\omega\bigl[\splits{j_q}\bigr]
+    = \Omega(\rhovar^2 \cdot \totalT).
+  \label{eq:split-gap}
+\end{equation}
+More precisely, the expected split counts satisfy
+\begin{equation}
+  n_{j_1} \approx \frac{1}{2-\rho^2}\,T,\qquad
+  n_{j_q} \approx \frac{1-\rho^2}{2-\rho^2}\,T,
+  \label{eq:split-counts}
+\end{equation}
+giving the gap $n_{j_1} - n_{j_q} = \dfrac{\rho^2}{2-\rho^2}\,T \geq c\rho^2 T$
+for a constant $c > 0$.
+\end{lemma}
+
+\begin{proof}
+Write $x_{j_q} = \rhovar\, x_{j_1} + \sqrt{1-\rhovar^2}\, z_q$
+where $z_q \perp x_{j_1}$ (possible since features are jointly Gaussian
+by \Cref{def:dgp}).
+
+The first tree $h_1$ is a function of $x_{j_1}$ alone (by assumption).
+Because $z_q \perp x_{j_1}$, we have
+$\mathrm{Cov}(h_1, x_{j_q}) = \rho\,\mathrm{Cov}(h_1, x_{j_1})$.
+Hence $h_1$ simultaneously captures the $\rho$-aligned component of
+$x_{j_q}$'s signal, leaving only the orthogonal component
+$\sqrt{1-\rho^2}\,z_q$ as the unique residual signal available to $j_q$
+in all subsequent trees.
+
+Summing gains across all $T$ trees, the total split gain attributable to
+$j_q$ is bounded by $\Theta((1-\rho^2)\,\beta_{j_q}^2\,\Var(z_q)\cdot T)$,
+while $j_1$'s total gain is $\Theta(\beta_{j_1}^2\,\Var(x_{j_1})\cdot T)$.
+Since $\beta_{j_1} = \beta_{j_q}$ and $\Var(x_{j_1}) = \Var(z_q) = 1$
+within each group (unit marginal variances by \Cref{def:dgp}), normalising
+by the shared group signal gives the expected split counts in
+\eqref{eq:split-counts}.
+
+One verifies: $n_{j_1} - n_{j_q} = (1 - (1-\rho^2))/(2-\rho^2) \cdot T = \rho^2/(2-\rho^2) \cdot T$.
+Since $\rho^2/(2-\rho^2) \geq \rho^2/2$ for all $\rho \in (0,1)$, there
+exists a constant $c = 1/2 > 0$ such that
+\begin{equation}
+  \Exp[\splits{j_1}] - \Exp[\splits{j_q}]
+    \;\geq\; c \cdot \rhovar^2 \cdot \totalT.
+\end{equation}
+
+The bounded-depth assumption ($d \geq 2$) ensures each tree captures only
+a bounded fraction $\lambda < 1$ of the available signal along any feature,
+so the residual signal accounting above applies iteratively across trees.
+
+Crucially, the identity of the first-mover $j_1$ is determined by
+$\omega$ (through sub-sampling and tie-breaking) and is
+\emph{approximately uniform} over $\Gl$ by symmetry of the DGP.
+\end{proof}
+
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Simplified Attribution Model}
+\label{sec:attribution}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{assumption}[Uniform-contribution model]
+\label{ass:uniform}
+Trees have bounded depth $d$; each split on feature $j$ contributes
+$\Theta(\eta)$ to $\phij(f)$ in expectation; and features appear at all
+tree depths at comparable rates.  We further assume the calibration
+condition $\eta \sum_k n_k = \eta\,\Theta(T) = \Theta(1)$, i.e., $\eta T$
+is bounded away from zero and infinity.
+\end{assumption}
+
+\begin{remark}
+Assumption~\ref{ass:uniform} is a simplification: in general, TreeSHAP
+weights splits by depth, prediction magnitude, and Shapley combinatorial
+coefficients, so a root split contributes far more than a leaf split.
+The Lemma below is conditional on this assumption and gives the essential
+scaling behaviour; removing it would require tracking depth-weighted
+split counts, complicating the algebra without changing the qualitative
+conclusion.
+\end{remark}
+
+\begin{lemma}[TreeSHAP inherits split concentration]
+\label{lem:shap-inherits}
+Under \Cref{ass:uniform}, for a tree ensemble $f = \sum_{t} h_t$,
+the interventional TreeSHAP global importance $\phij(f)$ satisfies
+\begin{equation}
+  \phij(f) = \Theta\!\left(
+    \frac{\splits{j}}{\sum_{k=1}^{P} \splits{k}}
+  \right).
+  \label{eq:shap-splits}
+\end{equation}
+Consequently, if $\splits{j_1} - \splits{j_q} = \Omega(\rhovar^2 \cdot
+\totalT)$, then
+\begin{equation}
+  \phi_{j_1}(f) - \phi_{j_q}(f) = \Omega(\rhovar^2).
+  \label{eq:shap-gap}
+\end{equation}
+Moreover, from the split-count formula \eqref{eq:split-counts},
+\begin{equation}
+  \phi_{j_q}(f_\omega) = \Theta\!\left(\frac{1-\rho^2}{2-\rho^2}\right)
+  \;\xrightarrow{\rho\to 1}\; 0,
+  \qquad
+  \phi_{j_1}(f_\omega) = \Theta\!\left(\frac{1}{2-\rho^2}\right)
+  \;\xrightarrow{\rho\to 1}\; \Theta(1).
+  \label{eq:shap-limits}
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Interventional TreeSHAP computes, for each tree $h_t$, the Shapley value
+of feature $j$ with respect to the prediction function defined by that
+tree's structure.  A feature that never appears as a split variable in
+$h_t$ receives zero attribution from that tree.  For a feature that does
+appear, its attribution in $h_t$ is determined by the magnitude of the
+prediction difference at the nodes where it splits, weighted by the
+Shapley combinatorial coefficients.
+
+Summing over all trees, the global importance $\phij(f)$ aggregates
+contributions from exactly those trees containing splits on $j$.
+Under \Cref{ass:uniform}, each split on $j$ contributes
+$\Theta(\eta)$ to $\phij(f)$ in expectation.
+Therefore
+\begin{equation}
+  \phij(f)
+    = \Theta(\eta \cdot \splits{j})
+    = \Theta\!\left(\frac{\splits{j}}{\sum_k \splits{k}}\right),
+\end{equation}
+since $\sum_k \splits{k} = \Theta(\totalT/\eta)$ for trees of bounded
+depth and the calibration condition $\eta T = \Theta(1)$ of \Cref{ass:uniform}.
+
+The additive gap \eqref{eq:shap-gap} follows by applying
+\Cref{lem:split-concentration}: the split gap
+$\splits{j_1} - \splits{j_q} = \Omega(\rhovar^2 \cdot \totalT)$ implies
+\begin{equation}
+  \phi_{j_1}(f) - \phi_{j_q}(f)
+    = \Theta\!\left(\eta \cdot \rhovar^2 \cdot \totalT
+      \cdot \frac{1}{\sum_k n_k}\right)
+    = \Omega(\rhovar^2),
+\end{equation}
+which is bounded away from zero for any fixed $\rhovar > 0$.
+
+The limits \eqref{eq:shap-limits} follow directly by substituting the
+normalised split counts from \eqref{eq:split-counts}.
+\end{proof}
+
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Impossibility Theorem}
+\label{sec:impossibility}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{theorem}[Impossibility of simultaneous Stability and Equity]
+\label{thm:impossibility}
+Under \Cref{ass:uniform}, let $\Gl = \{j_1, \dots, j_m\}$ be a group of
+$m \geq 2$ features with pairwise correlation $\rhovar$ and equal true
+coefficients.  For any sequential gradient-boosted ensemble $f_\omega$ with
+$\totalT$ trees and any $\rhovar \in (0,1)$:
+\begin{enumerate}
+  \item[(i)] $\gamma$-Equity requires $\gamma \to \infty$ as
+    $\rhovar \to 1$, i.e., the attribution ratio within $\Gl$ diverges; or
+  \item[(ii)] if Equity is enforced (e.g., by post-hoc normalization), then
+    $\delta$-Stability requires $\delta \to 1$, i.e., rankings become
+    maximally unstable.
+\end{enumerate}
+No choice of $\totalT$, learning rate $\eta$, or tree structure
+eliminates this trade-off.
+\end{theorem}
+
+\begin{proof}
+We prove both parts separately.
+
+\medskip
+\noindent\textbf{Part (i): Sequential boosting violates Equity.}
+
+Fix a seed $\omega$.  By symmetry of the DGP
+(\Cref{def:dgp}), every feature in $\Gl$ has the same marginal
+distribution and the same true coefficient.  However, the greedy split
+selection in $h_1$ must break this symmetry: exactly one feature
+$j^*(\omega) \in \Gl$ is selected at the root of $h_1$, determined by
+the random seed $\omega$ through sub-sampling and numerical tie-breaking.
+
+By \Cref{lem:split-concentration}, this first-mover $j^*(\omega)$
+accumulates a split advantage of $\Omega(\rhovar^2 \cdot \totalT)$ over
+every other member of $\Gl$.  By \Cref{lem:shap-inherits} and the limits
+\eqref{eq:shap-limits}, as $\rhovar \to 1$:
+\begin{equation}
+  \phi_{j_q}(f_\omega) = \Theta\!\left(\frac{1-\rho^2}{2-\rho^2}\right)
+  \;\xrightarrow{\rho\to 1}\; 0,
+\end{equation}
+while $\phi_{j^*(\omega)}(f_\omega) = \Theta(1/(2-\rho^2)) \to \Theta(1)$.
+Therefore the ratio diverges:
+\begin{equation}
+  \frac{\phi_{j^*(\omega)}(f_\omega)}{\phi_{j_q}(f_\omega)}
+  = \Theta\!\left(\frac{1}{1-\rho^2}\right) \;\xrightarrow{\rho\to 1}\; \infty,
+\end{equation}
+establishing genuine divergence ($\gamma \to \infty$).  Hence no single
+model $f_\omega$ is $\gamma$-equitable for bounded $\gamma$ as
+$\rhovar \to 1$.
+
+\medskip
+\noindent\textbf{Part (ii): Equity enforcement destroys Stability.}
+
+Suppose one attempts to restore equity by some mechanism that produces
+$\phij \approx \phik$ for all $j, k \in \Gl$ (e.g., permutation-based
+renormalization, or averaging within the group for a single model).
+Consider what this implies for the ranking of features across $\Gl$.
+
+For two independent seeds $\omega$ and $\omega'$, the first-movers
+$j^*(\omega)$ and $j^*(\omega')$ are drawn approximately uniformly from
+$\Gl$ (by DGP symmetry).  With probability $1 - 1/m$, they differ:
+$j^*(\omega) \neq j^*(\omega')$.
+
+\emph{Without equity enforcement}, the importance ranking within $\Gl$ is
+determined by the first-mover identity.  When
+$j^*(\omega) \neq j^*(\omega')$, the top-ranked feature within $\Gl$
+differs between the two runs.  A rank displacement of magnitude $\Theta(m)$
+for the first-mover feature, combined with the resulting within-group
+reshuffling of $m$ features, contributes $\Theta(m^3)$ to
+$\sum_i d_i^2$.\footnote{For a group of $m$ features whose ranks are
+  permuted within a range of width $m$, a complete within-group rank
+  reversal changes $\sum_i d_i^2$ by $\Theta(m^3)$.}
+By the Spearman formula ($1 - 6\sum_i d_i^2 / (P(P^2-1))$):
+\begin{equation}
+  \mathrm{Spearman}\bigl(\boldsymbol{\phi}(f_\omega),\;
+    \boldsymbol{\phi}(f_{\omega'})\bigr)
+  \;\leq\; 1 - \Omega\!\left(\frac{m^3}{P^3}\right)
+  \;=\; 1 - \Omega\!\left(\!\left(\frac{m}{P}\right)^{\!3}\right).
+\end{equation}
+For balanced groups ($m = P/L$, $L$ fixed), this is $1 - \Omega(L^{-3})$,
+a constant strictly less than~$1$.
+
+\emph{With equity enforcement}, the attribution gap within $\Gl$ is
+compressed to near zero.  But the rank \emph{ordering} of near-tied
+features is then determined by residual noise of order
+$O(1/\sqrt{n})$ in the SHAP estimates, which is independent across
+seeds.  The within-group ranking therefore becomes effectively random:
+\begin{equation}
+  \Exp\bigl[\mathrm{Spearman}_{\Gl}\bigl(
+    \boldsymbol{\phi}(f_\omega),\;
+    \boldsymbol{\phi}(f_{\omega'})
+  \bigr)\bigr] \;\to\; 0
+  \quad \text{as } \rhovar \to 1.
+\end{equation}
+In either case, stability degrades with $\rhovar$.
+
+\medskip
+\noindent\textbf{Combining both parts.}
+
+A single sequential gradient-boosted model $f_\omega$ faces a dichotomy:
+\begin{itemize}
+  \item \emph{Accept the natural split pattern}: Equity is violated by
+    $\Omega(\rhovar^2)$ (\Cref{lem:split-concentration,lem:shap-inherits}).
+  \item \emph{Enforce equitable attributions}: The resulting near-ties
+    make within-group rankings noise-dominated, and since the noise is
+    independent across seeds, Stability is violated.
+\end{itemize}
+No finite $\totalT$, learning rate $\eta$, or tree depth $d$ can resolve
+this, because the first-mover advantage in
+\Cref{lem:split-concentration} holds for any $\totalT \geq 1$ and any
+$\eta > 0$, and the symmetry-breaking in $h_1$ is an inherent
+consequence of greedy sequential optimization.
+\end{proof}
+
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{DASH Circumvention}
+\label{sec:circumvention}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{corollary}[\dash{} achieves equity and between-group stability]
+\label{cor:dash}
+Let $f_{\omega_1}, \dots, f_{\omega_M}$ be $M$ independently trained
+gradient-boosted models with i.i.d.\ seeds $\omega_1, \dots, \omega_M$.
+Define the \dash{} consensus attribution as
+\begin{equation}
+  \bar{\phi}_j = \frac{1}{M} \sum_{i=1}^{M} \phij(f_{\omega_i}).
+\end{equation}
+Define also the group-level consensus importance
+$\bar\Phi_\ell = |G_\ell|^{-1}\sum_{j\in G_\ell}\bar\phi_j$.
+Then:
+\begin{enumerate}
+  \item[(a)] \textbf{Equity in expectation.} By symmetry of the DGP and
+    independence of the seeds, for any $j, k \in \Gl$,
+    \begin{equation}
+      \Exp[\bar{\phi}_j] = \Exp[\bar{\phi}_k].
+    \end{equation}
+    The first-mover identity $j^*(\omega_i)$ is approximately uniformly
+    distributed over $\Gl$, so each feature serves as first-mover in
+    approximately $M/m$ of the $M$ models.  The attribution concentration
+    from \Cref{lem:shap-inherits} cancels in expectation.
+
+  \item[(b)] \textbf{Between-group stability via the law of large numbers.}
+    Define the consensus group-level importance
+    $\bar\Phi_\ell = \frac{1}{|G_\ell|}\sum_{j\in G_\ell}\bar\phi_j$.
+    By~(a), $\Exp[\bar\phi_j]$ is the same for all $j\in G_\ell$,
+    so $\Exp[\bar\Phi_\ell] = \Exp[\phi_j(f_\omega)]$ for any
+    $j\in G_\ell$.  For groups with distinct $\beta_\ell \neq \beta_{\ell'}$,
+    these limits are distinct.  The variance satisfies
+    \begin{equation}
+      \Var(\bar\Phi_\ell) \leq
+        \frac{1}{M|G_\ell|}\,\Var\bigl(\phi_j(f_{\omega_1})\bigr)
+        = O(1/M).
+    \end{equation}
+    By the law of large numbers,
+    $\bar\Phi_\ell \xrightarrow{\mathrm{a.s.}} \Exp[\Phi_\ell]$
+    for each $\ell$, and two independent \dash{} runs yield
+    $\bar{\boldsymbol{\Phi}} = (\bar\Phi_1,\ldots,\bar\Phi_L)$ and
+    $\bar{\boldsymbol{\Phi}}'$ satisfying
+    \begin{equation}
+      \Exp\bigl[\mathrm{Spearman}\bigl(
+        \bar{\boldsymbol{\Phi}},\;\bar{\boldsymbol{\Phi}}'
+      \bigr)\bigr] \;\to\; 1
+      \quad \text{as } M \to \infty.
+    \end{equation}
+
+  \item[(c)] \textbf{Within-group instability is irreducible.}
+    For $j, k \in G_\ell$ with $\beta_j = \beta_k$,
+    the consensus difference $\bar\phi_j - \bar\phi_k$ has mean $0$
+    and variance $\Theta(1/M)$ that does not vanish; each of two
+    independent runs ranks $j$ above $k$ with probability
+    $\to 1/2$ regardless of $M$.  This is not a limitation of \dash{}
+    but an irreducible consequence of the underlying symmetry: when the
+    DGP assigns equal importance to $j$ and $k$, no attribution method
+    can consistently distinguish them.  \dash{} makes this symmetry
+    explicit (via equity) rather than masking it with an arbitrary
+    first-mover ranking.
+\end{enumerate}
+\dash{} thus achieves equity and between-group stability simultaneously,
+resolving the aspect of the impossibility that matters for the
+interpretability goal, by replacing a single sequential model with an
+average over an independent ensemble and thereby breaking the conditions
+of \Cref{thm:impossibility}.
+\end{corollary}
+
+\begin{proof}
+Part~(a) follows from linearity of expectation and the symmetry of the
+DGP under permutation of features within each group $\Gl$.  Since the
+seeds $\omega_i$ are i.i.d., the probability that $j^*(\omega_i) = j$
+is $1/m$ for each $j \in \Gl$ and each $i$.  Hence
+$\Exp[\phij(f_{\omega_i})] = \Exp[\phik(f_{\omega_i})]$ for all
+$j, k \in \Gl$, and linearity gives
+$\Exp[\bar{\phi}_j] = \Exp[\bar{\phi}_k]$.
+
+Part~(b) follows from the law of large numbers applied to
+the group-level importances $\bar\Phi_\ell$.  Since all features in
+$G_\ell$ share the same expected importance by~(a),
+$\Exp[\bar\Phi_\ell] = \Exp[\phi_j(f_\omega)]$ for any $j\in G_\ell$,
+and this value increases with $\beta_\ell$ (groups with larger coefficients
+attract more splits by the gain criterion).  The variance bound
+$\Var(\bar\Phi_\ell) \leq 1/(M|G_\ell|)\cdot\Var(\phi_j(f_{\omega_1}))$
+follows from i.i.d.\ seeds and the bound
+$\Var(\bar\Phi_\ell) = \Var\bigl(\frac{1}{M|G_\ell|}\sum_{i,j}\phi_j(f_{\omega_i})\bigr)
+\leq \frac{1}{M|G_\ell|}\Var(\phi_j)$
+using i.i.d.\ seeds and the covariance inequality
+(features within the same group in the same model are positively
+correlated, but the bound uses only the marginal variance, giving a
+conservative upper bound).
+Concentration in probability gives convergence to distinct
+limits across groups, ensuring the group-level rank order stabilises.
+
+Part~(c) follows from the symmetry of~(a): $\bar\phi_j - \bar\phi_k \sim
+N(0,\,\Theta(1/M))$ by CLT (independent seeds, bounded variance), and two
+independent runs produce independent draws of this quantity; the probability
+they share the same sign is $1/2 + O(1/\sqrt{M})$, not tending to~$1$.
+\end{proof}
+
+\begin{remark}[Within-group instability is not a pathology]
+\label{rem:within-group}
+\Cref{cor:dash}(c) may appear to concede ground---\dash{} achieves equity
+but leaves within-group rankings noise-dominated.  However, this is the
+\emph{correct} behaviour when features are genuinely equivalent in the DGP:
+any attribution method that consistently ranks $j$ above $k$ when
+$\beta_j = \beta_k$ is introducing a spurious asymmetry.  The relevant
+interpretability target is identifying \emph{which group} is important
+(between-group stability) and confirming that no individual feature within
+the group is systematically advantaged (equity).  Both are achieved.
+Individual within-group rankings are interpretively meaningless when
+$\beta_j = \beta_k$, and the appropriate diagnostic for detecting
+within-group instability is the FSI (Feature Stability Index, defined in
+the main paper), not rank correlation.
+\end{remark}
+
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Discussion of Assumptions}
+\label{sec:assumptions}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\begin{remark}[Sequential structure is essential]
+\label{rem:sequential}
+The impossibility in \Cref{thm:impossibility} relies critically on the
+\emph{sequential} nature of gradient boosting, where each tree $h_t$ is
+fit to residuals $r_t = y - \sum_{s<t} h_s(x)$.  This creates a causal
+chain: the first tree's split choices alter the residual landscape for all
+subsequent trees, producing the cumulative first-mover advantage of
+\Cref{lem:split-concentration}.
+
+The theorem does \emph{not} apply to methods that train base learners
+independently.  For example:
+\begin{itemize}
+  \item \textbf{Random forests} train each tree on a bootstrap sample with
+    independent feature sub-sampling.  Since trees do not share residuals,
+    there is no first-mover propagation: if tree $t$ splits on $j$, this
+    does not affect subsequent trees' feature selection.  The equity violation
+    is therefore $O(1)$ rather than $O(\rhovar^2 \cdot \totalT)$.
+  \item \textbf{Bagged ensembles} similarly avoid the sequential dependency
+    by construction.
+\end{itemize}
+However, gradient boosting's sequential structure is precisely what makes
+it a powerful function approximator (by fitting residuals, it can represent
+complex interactions that parallel ensembles miss).  The impossibility
+result thus highlights a fundamental tension between the \emph{modeling
+power} of sequential boosting and the \emph{fairness properties} of
+feature attribution.
+\end{remark}
+
+\begin{remark}[Scope of \Cref{ass:uniform}]
+\label{rem:assumption-scope}
+\Cref{ass:uniform} (the uniform-contribution model) abstracts away the
+depth-weighting of TreeSHAP, which assigns higher weight to splits closer
+to the root.  In practice, early splits on the first-mover feature
+$j^*(\omega)$ occur preferentially near the root (since the first tree's
+root split is on $j^*(\omega)$), so the actual attribution gap is likely
+\emph{larger} than the $\Omega(\rhovar^2)$ established here.  The
+assumption therefore gives a conservative lower bound.  A tighter analysis
+tracking depth-weighted split counts would strengthen the impossibility
+result.
+\end{remark}
+
+\end{document}
+
+-/
+
+-- TODO: formalize above.
