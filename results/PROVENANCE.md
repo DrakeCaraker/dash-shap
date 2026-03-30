@@ -104,3 +104,43 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/overlapping.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## nonlinear_sweep — 2026-03-30T09:40:12.537973+00:00
+- **code_sha**: `1c8f72767c6bc727ab49ce39b6623e235424f21a`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 23119.17
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/nonlinear_sweep.json`
+
+**⚠ DIRTY** — results from uncommitted changes
+## table2_baselines — 2026-03-30T10:33:47.375038+00:00
+- **code_sha**: `1c8f72767c6bc727ab49ce39b6623e235424f21a`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 3214.53
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/table2_baselines.json`
+
+**⚠ DIRTY** — results from uncommitted changes
+## real_california — 2026-03-30T15:28:19.638769+00:00
+- **code_sha**: `1c8f72767c6bc727ab49ce39b6623e235424f21a`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 17671.88
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/california_housing.json`
+
+**⚠ DIRTY** — results from uncommitted changes
+## real_breast_cancer — 2026-03-30T15:31:33.078155+00:00
+- **code_sha**: `1c8f72767c6bc727ab49ce39b6623e235424f21a`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 193.24
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/breast_cancer.json`
+
