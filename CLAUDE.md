@@ -220,13 +220,19 @@ Long-running SageMaker experiments have specific branch/provenance rules to prev
 - `/checkpoint-clear` — list and selectively delete checkpoint/pkl files
 - `/notebook-status` — summarize notebook states, flag large outputs, show canonical status
 - `/paper-context` — load full research context (EXPERIMENT_GUIDE, BENCHMARK_RESULTS, ROADMAP) for writing tasks
+- `/paper-context-arxiv` — load ArXiv/Zenodo v6 context for responding to ArXiv comments
 - `/sync-check` — verify PAPER_CONFIG consistency across `run_experiments.py`, notebooks 6 & 7, and CLAUDE.md
 - `/experiment-summary` — format results into markdown + LaTeX tables with provenance and regression checks
 - `/ci-fix` — autonomous CI fix loop: runs ruff/mypy/pytest incrementally, fixes failures by type, loops until green (max 5 iterations)
 - `/audit` — parallel four-dimension repo audit (notebooks, preprint parity, sensitive data, release readiness) → merged report in `docs/audit/`
+- `/vet` — deep self-auditing analysis loop: 3-round factual/reasoning/omissions protocol before presenting results
 - `/safe-refactor <target>` — test-gated refactoring: writes characterization tests, applies one change at a time, auto-rollbacks on failure
 - `/pr` — standardized branch→commit→push→PR workflow with lint gates and main-branch guard
 - `/self-improve` — analyze feedback memories and propose promotions to CLAUDE.md rules or hooks (promotion ladder: memory → rule → hook)
+- `/new-work` — branch hygiene and session scoping before code changes
+- `/health-check` — assess project AI-dev maturity and recommend improvements
+- `/bootstrap` — set up AI-assisted dev infrastructure (hooks, commands, settings)
+- `/run-tests` — run full pytest suite with verbose output and summary
 
 ### Hooks (fully automated)
 - **Pre-push** (git): blocks `.pkl` files and files >10MB (activate: `git config core.hooksPath .githooks`)
@@ -260,6 +266,9 @@ Proactively suggest these commands when the conditions are met. Explain briefly 
 - **Suggest `/paper-context`** when: the user asks about paper writing, results, or TMLR submission. Load it automatically.
 - **Suggest `/notebook-status`** when: the user is about to edit a notebook. Check canonical status first.
 - **Suggest `/checkpoint-clear`** when: session-start reports stale checkpoint files.
+- **Suggest `/vet`** when: presenting analysis results, making claims about experimental data, or drafting paper text. Say: *"Want me to audit these findings before we proceed?"*
+- **Suggest `/experiment-summary`** when: new experiment results arrive from SageMaker or notebooks. Say: *"New results available — want me to format them?"*
+- **Suggest `/sync-check`** when: PAPER_CONFIG values are changed, or before submission prep. Say: *"Config may have drifted — want me to check consistency?"*
 
 ## Research Program
 
