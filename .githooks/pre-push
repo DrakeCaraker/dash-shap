@@ -41,7 +41,7 @@ elif python3 -m mypy --version >/dev/null 2>&1; then
 fi
 
 if [ -n "$MYPY_CMD" ]; then
-    if ! $MYPY_CMD dash_shap/ --ignore-missing-imports --no-error-summary --quiet 2>&1; then
+    if ! $MYPY_CMD dash_shap/ --ignore-missing-imports --no-error-summary 2>&1; then
         echo "BLOCKED: mypy type errors found. Run 'make typecheck' to see details."
         exit 1
     fi
