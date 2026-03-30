@@ -74,3 +74,33 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/epsilon_sensitivity.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## linear_sweep — 2026-03-30T00:49:58.905076+00:00
+- **code_sha**: `fc78ce985b5e3eb9c169e8a60039f2c4e9aa6e05`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 22773.97
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/synthetic_linear_sweep.json`
+
+**⚠ DIRTY** — results from uncommitted changes
+## first_mover_visualization — 2026-03-30T01:24:11.745031+00:00
+- **code_sha**: `fc78ce985b5e3eb9c169e8a60039f2c4e9aa6e05`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 2051.48
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/first_mover_visualization.json`
+
+**⚠ DIRTY** — results from uncommitted changes
+## overlapping — 2026-03-30T03:14:53.360781+00:00
+- **code_sha**: `6495a5bf19abdbe217dd3b664092963cbf53d427`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 6641.61
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/overlapping.json`
+
