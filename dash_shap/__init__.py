@@ -1,6 +1,11 @@
 """DASH: Diversified Aggregation of SHAP for Stable Feature Importance Under Feature Collinearity."""
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version as _version
+
+    __version__ = _version("dash-shap")
+except Exception:
+    __version__ = "0.1.0"  # fallback for editable installs or uninstalled usage
 
 __all__ = [
     "DASHPipeline",
