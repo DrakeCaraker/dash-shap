@@ -144,3 +144,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/breast_cancer.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## real_superconductor — 2026-03-31T04:48:46.970440+00:00
+- **code_sha**: `67b346908137dce174eda72f656e59d3f01875ed`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 47833.68
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/superconductor.json`
+
