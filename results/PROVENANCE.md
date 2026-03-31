@@ -154,3 +154,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/superconductor.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## epsilon_sensitivity — 2026-03-31T06:11:27.043713+00:00
+- **code_sha**: `184418b834564a0d0f18d7333c9283f8a6c89285`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 4959.83
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/epsilon_sensitivity.json`
+

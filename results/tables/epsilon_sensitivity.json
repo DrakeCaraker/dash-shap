@@ -1,8 +1,8 @@
 {
   "_meta": {
     "experiment": "epsilon_sensitivity",
-    "timestamp": "2026-03-28T17:48:46.753800+00:00",
-    "code_sha": "9826fb1db2191cee9442d05e9dde4ec0a8d9e9d3",
+    "timestamp": "2026-03-31T06:11:27.043713+00:00",
+    "code_sha": "184418b834564a0d0f18d7333c9283f8a6c89285",
     "code_dirty": true,
     "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
     "n_reps": 50,
@@ -17,7 +17,7 @@
       "N_ESTIMATORS_ESHAP": 2000,
       "TAU_CLUSTER": 0.3
     },
-    "elapsed_s": 4950.29,
+    "elapsed_s": 4959.83,
     "output": "results/tables/epsilon_sensitivity.json",
     "hardware": {
       "cpu_count": 64,
