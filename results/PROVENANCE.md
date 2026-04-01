@@ -164,3 +164,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/epsilon_sensitivity.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## ablation — 2026-04-01T17:51:51.594017+00:00
+- **code_sha**: `4117dc60f8eb7bab2a53f99578e135ee810fd835`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 128424.31
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/ablation.json`
+
