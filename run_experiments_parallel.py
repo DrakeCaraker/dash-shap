@@ -3443,7 +3443,7 @@ def _run_asymmetric_rho(rho, method_names, n_asym_reps, n_jobs_inner, do_cleanup
         sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
         rho_imps["Single Best"].append(sb.global_importance_)
 
-        sr = StochasticRetrainBaseline(K=K, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
+        sr = StochasticRetrainBaseline(N=K, seed=rep_seed, n_jobs=n_jobs_inner, nthread=nthread)
         sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
         rho_imps["Stochastic Retrain"].append(sr.global_importance_)
 
