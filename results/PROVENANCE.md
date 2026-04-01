@@ -184,3 +184,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/variance_decomposition.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## variance_decomposition_crossed — 2026-04-01T22:18:44.053025+00:00
+- **code_sha**: `0cb7f92dee015884800d31d5b72d2b594c78f8fc`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 2150.93
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/variance_decomposition_crossed.json`
+
