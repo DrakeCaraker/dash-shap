@@ -1,0 +1,26 @@
+{
+  "_schema_version": "1.1",
+  "_collected_by": "alfred-pilot-telemetry",
+  "_privacy_notice": "No file paths, branch names, commit messages, project names, or PII/PHI collected.",
+  "anonymous_id": "d511eb10-c955-42b7-8cbc-0dd49f58cde9",
+  "persona": "ml-ds",
+  "coding_level": "beginner",
+  "code_complexity_level": 1,
+  "sessions": [
+    {
+      "session_number": 1,
+      "date": "2026-03-29",
+      "duration_bucket": "long",
+      "branch_type": "main",
+      "commands_used": [],
+      "graduated_this_session": [],
+      "feedback_memory_count": 5,
+      "bookmark_saved": true
+    }
+  ],
+  "aggregates": {
+    "total_sessions": 1,
+    "total_patterns_graduated": 0,
+    "days_active": 1
+  }
+}
