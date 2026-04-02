@@ -1,0 +1,24 @@
+{
+  "persona": "ml-ds",
+  "coding_level": "beginner",
+  "code_complexity_level": 1,
+  "bootstrapped_at": "2026-03-28T00:00:00Z",
+  "custom_role_description": "a combo of ML/Data Science, Research, and General software dev",
+  "custom_role_category": "ml-ds",
+  "patterns": {
+    "context_before_action": {"seen": 2, "graduated": false, "last_asked_why": false},
+    "scope_before_work": {"seen": 0, "graduated": false, "last_asked_why": false},
+    "save_points": {"seen": 0, "graduated": false, "last_asked_why": false},
+    "safe_experimentation": {"seen": 0, "graduated": false, "last_asked_why": false},
+    "one_change_one_test": {"seen": 0, "graduated": false, "last_asked_why": false},
+    "automated_recovery": {"seen": 0, "graduated": false, "last_asked_why": false},
+    "provenance": {"seen": 0, "graduated": false, "last_asked_why": false},
+    "self_improvement": {"seen": 0, "graduated": false, "last_asked_why": false}
+  },
+  "session_count": 0,
+  "incidents": {},
+  "github": {
+    "skipped": false,
+    "repo_url": "https://github.com/DrakeCaraker/dash-shap"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-03-28T14:00:00-07:00",
+  "task": "SageMaker TMLR experiment run (20260326) + CI automation + self-improve",
+  "progress": "SageMaker run in progress on ml.g5.16xlarge (64 vCPUs). 7/13 experiments complete (linear_sweep, nonlinear_sweep, table2_baselines, real_california, real_breast_cancer, real_superconductor, epsilon_sensitivity). Ablation running. Two mid-run bugs fixed (float-key PR #225, topk hashability PR #231). Multiple CI/tooling PRs merged (#224-#230). Open PRs: #225 (smoke test), #228 (self-improve hook fix), #229 (CI autofix pipeline), #230 (SageMaker runbook), #233 (self-improve rules #7/#8).",
+  "branch": "feat/smart-suggestions (local), results/sagemaker-run-20260326 (SageMaker)",
+  "files_modified": [],
+  "next_steps": [
+    "Monitor SageMaker: remaining experiments are ablation, variance_decomposition, variance_decomposition_crossed, first_mover_bias, background_sensitivity, asymmetric_dgp",
+    "After all experiments complete: run 'bash scripts/sagemaker_run.sh finish' on SageMaker",
+    "Merge open PRs: #225, #228, #229, #230, #233",
+    "After results PR merges to main: update REPRODUCE.md known limitations section (backfilled results replaced by full-provenance results)",
+    "Set ANTHROPIC_API_KEY secret + CLAUDE_ENABLED=true repo variable to activate CI autofix (PR #229)",
+    "Close PR #20 on Alfred repo (signals should go to alfred-collective, not public repo)",
+    "Set ALFRED_COLLECTIVE_KEY and run collective-sync.sh contribute to push signals to private repo"
+  ]
+}

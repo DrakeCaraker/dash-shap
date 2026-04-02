@@ -16,7 +16,15 @@ __all__ = [
     # Convenience exports
     "generate_synthetic_linear",
     "generate_synthetic_nonlinear",
+    # F5→F1→DASH stability workflow (from The Attribution Impossibility)
+    "screen",
+    "validate",
+    "consensus",
+    "report",
 ]
+
+# Lazy imports for the stability workflow
+from dash_shap.stability import screen, validate, consensus, report
 
 
 def __getattr__(name):
