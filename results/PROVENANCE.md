@@ -214,3 +214,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/first_mover_bias.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## background_sensitivity — 2026-04-02T00:53:16.494211+00:00
+- **code_sha**: `e5dc12c8b32f276b0e62e4f5d44f054dbfc6bc71`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 6445.65
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/background_sensitivity.json`
+
