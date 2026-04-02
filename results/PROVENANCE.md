@@ -194,3 +194,23 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/variance_decomposition_crossed.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## asymmetric_dgp — 2026-04-01T23:04:49.555234+00:00
+- **code_sha**: `41a04ce02aa711e69160191c9cfc1ea7c8949e95`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 2146.13
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/asymmetric_dgp.json`
+
+**⚠ DIRTY** — results from uncommitted changes
+## first_mover_bias — 2026-04-01T23:05:50.838364+00:00
+- **code_sha**: `41a04ce02aa711e69160191c9cfc1ea7c8949e95`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 61.28
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/first_mover_bias.json`
+

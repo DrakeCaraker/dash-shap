@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "experiment": "first_mover_bias",
+    "timestamp": "2026-04-01T23:05:50.838364+00:00",
+    "code_sha": "41a04ce02aa711e69160191c9cfc1ea7c8949e95",
+    "code_dirty": true,
+    "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": 61.28,
+    "output": "results/tables/first_mover_bias.json",
+    "hardware": {
+      "cpu_count": 64,
+      "hostname": "ip-10-10-23-214.eu-central-1.compute.internal",
+      "platform": "Linux-5.10.251-248.983.amzn2.x86_64-x86_64-with-glibc2.26",
+      "python": "3.10.20",
+      "ram_gb": 247.7,
+      "instance_type": "ml.g5.16xlarge"
+    }
+  },
+  "50": {
+    "single_concentration": 0.25716250929890894,
+    "single_concentration_std": 0.03350773522921979,
+    "independent_concentration": 0.28309069184167956,
+    "independent_concentration_std": 0.04063980546162539
+  },
+  "100": {
+    "single_concentration": 0.25456195273089366,
+    "single_concentration_std": 0.03064572034559351,
+    "independent_concentration": 0.26956820936213155,
+    "independent_concentration_std": 0.030071037043162545
+  },
+  "200": {
+    "single_concentration": 0.2525333971723798,
+    "single_concentration_std": 0.028127943781405085,
+    "independent_concentration": 0.2655415759777942,
+    "independent_concentration_std": 0.028977942148285554
+  },
+  "500": {
+    "single_concentration": 0.25164032917886703,
+    "single_concentration_std": 0.027211891667100977,
+    "independent_concentration": 0.2487078375050586,
+    "independent_concentration_std": 0.018803335262391224
+  },
+  "1000": {
+    "single_concentration": 0.25155149081998573,
+    "single_concentration_std": 0.02713699788983392,
+    "independent_concentration": 0.24161189600343924,
+    "independent_concentration_std": 0.01627188323366787
+  },
+  "2000": {
+    "single_concentration": 0.25154936936562267,
+    "single_concentration_std": 0.02713688610725142,
+    "independent_concentration": 0.2395635576964777,
+    "independent_concentration_std": 0.01576680479865137
+  }
+}
