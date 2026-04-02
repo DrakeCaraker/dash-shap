@@ -224,3 +224,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/background_sensitivity.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## k_sweep_independence — 2026-04-02T08:47:47.669691+00:00
+- **code_sha**: `24690e5637d277df3ab3104e8d74bcdae97cc1bd`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 28471.17
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/k_sweep_independence.json`
+
