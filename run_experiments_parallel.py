@@ -4877,7 +4877,7 @@ def experiment_colsample_ablation(resume=False, cleanup=False):
                     delta=DELTA,
                     selection_method="maxmin",
                     initial_configs=configs,
-                    n_jobs=1,
+                    n_jobs=seq_budget.n_inner,
                     nthread=seq_budget.nthread,
                     seed=rep_seed,
                     verbose=False,
@@ -4899,7 +4899,7 @@ def experiment_colsample_ablation(resume=False, cleanup=False):
                     K=K,
                     epsilon=EPSILON,
                     delta=DELTA,
-                    n_jobs=1,
+                    n_jobs=seq_budget.n_inner,
                     nthread=seq_budget.nthread,
                     seed=rep_seed,
                 )
@@ -4920,7 +4920,7 @@ def experiment_colsample_ablation(resume=False, cleanup=False):
             sr = StochasticRetrainBaseline(
                 N=K,
                 task="regression",
-                n_jobs=1,
+                n_jobs=seq_budget.n_inner,
                 nthread=seq_budget.nthread,
                 seed=rep_seed,
             )
@@ -4932,7 +4932,9 @@ def experiment_colsample_ablation(resume=False, cleanup=False):
             results[cond]["Stochastic Retrain"]["rmse_runs"].append(rmse_score(yte, sr_preds))
             del sr
 
-            sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=1, nthread=seq_budget.nthread)
+            sb = SingleBestBaseline(
+                n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=seq_budget.n_inner, nthread=seq_budget.nthread
+            )
             sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
             sb_imp = sb.global_importance_
             sb_preds = sb.model_.predict(Xte)
