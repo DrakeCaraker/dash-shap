@@ -4421,7 +4421,7 @@ def format_timing_table(sweep_results, rho=0.9):
 def experiment_extensions_sanity_check(resume=False, cleanup=False):
     """Lightweight (~2 min) check that Phase 0+1 extensions hold Paper 2 claims.
 
-    Runs one rep at rho=0.9 (M=50, K=15), then asserts:
+    Runs one rep at rho=0.9 (M=100, K=15, quantile filter), then asserts:
       1. Top-2 true features (f0, f5) are certified top-4 by Certification (Ext 9)
       2. Within-group π(f0 > f5) ≈ 0.5 ± 0.25 (features collinear, attribution split)
       3. Between-group π(f0 > noise_feat) > 0.7 (clear winner over noise feature)
@@ -4452,11 +4452,12 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     log(f"  Generating synthetic data: N=2000, P=20, rho={rho}")
     Xtr, ytr, Xv, yv, Xexp, _, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(N=2000, rho=rho, seed=rng_seed)
 
-    log("  Fitting DASHPipeline (M=50, K=15) ...")
+    log("  Fitting DASHPipeline (M=100, K=15, epsilon_mode=quantile) ...")
     pipe = DASHPipeline(
-        M=50,
+        M=100,
         K=15,
         epsilon=EPSILON,
+        epsilon_mode="quantile",
         delta=DELTA,
         seed=rng_seed,
         verbose=False,
