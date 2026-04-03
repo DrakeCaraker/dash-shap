@@ -4441,8 +4441,8 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     from dash_shap.extensions import (
         robust_certification,
         confidence_intervals,
-        partial_order,
     )
+    from dash_shap.extensions.partial_order import partial_order
     from dash_shap.core.result import DASHResult
 
     rho = 0.9
