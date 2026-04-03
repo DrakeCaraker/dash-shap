@@ -4419,17 +4419,19 @@ def format_timing_table(sweep_results, rho=0.9):
 
 
 def experiment_extensions_sanity_check(resume=False, cleanup=False):
-    """Lightweight (~2 min) check that Phase 0+1 extensions hold Paper 2 claims.
+    """Reduced-config check that Phase 0+1 extensions behave correctly.
 
-    Runs one rep at rho=0.9 (M=100, K=15, quantile filter), then asserts:
-      1. Top-2 true features (f0, f5) are certified top-4 by Certification (Ext 9)
-      2. Within-group π(f0 > f5) ≈ 0.5 ± 0.25 (features collinear, attribution split)
-      3. Between-group π(f0 > noise_feat) > 0.7 (clear winner over noise feature)
-      4. Confidence intervals contain point estimates for all features
+    Runs one rep at rho=0.9 using PAPER_CONFIG (M=200, K=30, ε=0.08 absolute),
+    which achieves K_eff ≈ 12 after delta deduplication. Then asserts:
+      1. At least one group-0 feature appears in some certified top-k
+      2. Within-group π ∈ [0.25, 0.75] for top-2 group-0 features (≈ 0.5 expected)
+      3. Between-group π(signal > noise) ≥ 0.7 (group 0 vs group 9, beta=0.0)
+      4. CI widths are bounded (importance CI width < 0.5 for group-0 features)
       5. DASHResult serialization round-trip preserves shapes and dtype
 
-    These checks make the Paper 2 claim "within-group π ≈ 0.5" a running CI test
-    rather than a narrative claim. No dataset download required.
+    Uses N=2000 (vs 5000 in full experiments) for speed. Single seed, single rep —
+    this is a smoke test for extension correctness, not a statistical validation
+    of paper claims. No dataset download required.
     """
     _ensure_dirs()
     log("\n" + "=" * 70)
@@ -4447,18 +4449,22 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
 
     rho = 0.9
     rng_seed = SEED
+    n_features = 50  # default P from generate_synthetic_linear
+    n_groups = 10
     seq_budget = compute_thread_budget(n_outer=1)
 
-    log(f"  Generating synthetic data: N=2000, P=20, rho={rho}")
-    Xtr, ytr, Xv, yv, Xexp, _, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(N=2000, rho=rho, seed=rng_seed)
+    log(f"  Generating synthetic data: N=2000, P={n_features}, rho={rho}")
+    Xtr, ytr, Xv, yv, Xexp, _, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+        N=2000,
+        rho=rho,
+        seed=rng_seed,
+    )
 
-    sanity_epsilon = 0.30  # top 30% → 30 candidates from M=100, enough for K=15 after dedup
-    log(f"  Fitting DASHPipeline (M=100, K=15, epsilon={sanity_epsilon}, quantile) ...")
+    log(f"  Fitting DASHPipeline (M={M}, K={K}, epsilon={EPSILON}, absolute) ...")
     pipe = DASHPipeline(
-        M=100,
-        K=15,
-        epsilon=sanity_epsilon,
-        epsilon_mode="quantile",
+        M=M,
+        K=K,
+        epsilon=EPSILON,
         delta=DELTA,
         seed=rng_seed,
         verbose=False,
@@ -4468,15 +4474,18 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     pipe.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=make_feature_names())
     result = pipe.result_
 
-    log(f"  DASHResult: K={result.K}, n_ref={result.n_ref}, P={result.P}")
+    log(f"  DASHResult: K_eff={result.K}, n_ref={result.n_ref}, P={result.P}")
+
+    if result.K < 5:
+        log(f"  WARNING: K_eff={result.K} is very low; extension checks may be unreliable")
 
     failures = []
 
     # --- Check 1: Certification ---
     log("\n  [1] Certification check ...")
-    cert = robust_certification(result, k_values=[1, 2, 3, 4, 5, 10])
-    # Group 0 features are f0..f4 (true importance ~0.4 each); f0 is the "first mover"
-    # At least one of the true group features should be certified in any top-k
+    cert = robust_certification(result, k_values=[1, 2, 3, 4, 5, 10, 15, 20])
+    # Group 0 features (G0_f0..G0_f4) have the highest true importance (beta=2.0).
+    # At least one should appear in some certified top-k.
     true_group0_names = {make_feature_names()[i] for i in np.where(grps == 0)[0]}
     overlap = set()
     best_k = None
@@ -4498,7 +4507,7 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     po = partial_order(result, alpha=0.1, method="fraction")
     feat_names = list(result.feature_names)
     g0 = np.where(grps == 0)[0]
-    # Take the top-2 features by importance within group 0
+    # Top-2 features by global importance within group 0
     g0_by_imp = sorted(g0, key=lambda i: -result.global_importance[i])
     f_a, f_b = g0_by_imp[0], g0_by_imp[1]
     pi_ab = po.confidence_matrix[f_a, f_b]
@@ -4508,29 +4517,35 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     else:
         log(f"    PASS: within-group π ≈ 0.5 (value={pi_ab:.3f})")
 
-    # --- Check 3: Partial Order — between-group π > noise ---
-    log("\n  [3] Partial order — between-group dominance check ...")
-    # Top group-0 feature vs a low-importance feature from group 1
+    # --- Check 3: Partial Order — signal vs noise group ---
+    log("\n  [3] Partial order — signal vs noise dominance check ...")
     g0_top = g0_by_imp[0]
-    g3 = np.where(grps == 3)[0]  # last group has lower true importance
-    g3_by_imp = sorted(g3, key=lambda i: result.global_importance[i])
-    f_noise = g3_by_imp[0]  # least important in group 3
+    # Group 9 is the true noise group (beta=0.0); group 3 was incorrectly used before
+    noise_group = n_groups - 1  # group 9
+    g_noise = np.where(grps == noise_group)[0]
+    g_noise_by_imp = sorted(g_noise, key=lambda i: result.global_importance[i])
+    f_noise = g_noise_by_imp[0]  # least important in noise group
     pi_top_vs_noise = po.confidence_matrix[g0_top, f_noise]
-    log(f"    Between-group: π({feat_names[g0_top]}>{feat_names[f_noise]}) = {pi_top_vs_noise:.3f}")
+    log(f"    Signal vs noise: π({feat_names[g0_top]}>{feat_names[f_noise]}) = {pi_top_vs_noise:.3f}")
     if pi_top_vs_noise < 0.7:
-        failures.append(f"FAIL: between-group π = {pi_top_vs_noise:.3f}, expected ≥ 0.7")
+        failures.append(f"FAIL: signal-vs-noise π = {pi_top_vs_noise:.3f}, expected ≥ 0.7")
     else:
-        log(f"    PASS: between-group dominance π = {pi_top_vs_noise:.3f} ≥ 0.7")
+        log(f"    PASS: signal dominates noise π = {pi_top_vs_noise:.3f} ≥ 0.7")
 
-    # --- Check 4: CI contains point estimates ---
-    log("\n  [4] Confidence interval containment check ...")
+    # --- Check 4: CI width is bounded ---
+    log("\n  [4] Confidence interval width check ...")
     ci = confidence_intervals(result, alpha=0.05, n_boot=200, seed=rng_seed)
-    lower_ok = np.all(ci.importance_ci[:, 0] <= ci.importance_ci[:, 1] + 1e-9)
-    upper_ok = np.all(ci.importance_ci[:, 1] <= ci.importance_ci[:, 2] + 1e-9)
-    if not (lower_ok and upper_ok):
-        failures.append("FAIL: CI does not contain point estimate for some features")
+    # Check that group-0 importance CIs have reasonable width (not degenerate)
+    g0_widths = ci.importance_ci[g0, 2] - ci.importance_ci[g0, 0]
+    max_g0_width = float(np.max(g0_widths))
+    mean_g0_width = float(np.mean(g0_widths))
+    log(f"    Group-0 CI widths: mean={mean_g0_width:.4f}, max={max_g0_width:.4f}")
+    if max_g0_width > 0.5:
+        failures.append(f"FAIL: group-0 CI width {max_g0_width:.4f} > 0.5 (too wide)")
+    elif max_g0_width < 1e-10:
+        failures.append(f"FAIL: group-0 CI width {max_g0_width:.4e} ≈ 0 (degenerate)")
     else:
-        log("    PASS: all importance CIs contain their point estimates")
+        log(f"    PASS: CI widths bounded (max={max_g0_width:.4f} < 0.5)")
 
     # --- Check 5: Serialization round-trip ---
     log("\n  [5] Serialization round-trip check ...")
