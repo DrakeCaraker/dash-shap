@@ -254,3 +254,13 @@ Each entry records the code SHA, config fingerprint, hardware, and elapsed time.
 - **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
 - **output**: `results/tables/colsample_ablation.json`
 
+**⚠ DIRTY** — results from uncommitted changes
+## linear_sweep — 2026-04-03T20:29:19.823242+00:00
+- **code_sha**: `db54bda54732a8c48841af4d636fb32a4dc33322`
+- **code_dirty**: True
+- **config_sha**: `7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42`
+- **n_reps**: 50
+- **elapsed_s**: 22877.06
+- **hardware**: 64 CPUs, 247.7 GB RAM, instance=ml.g5.16xlarge
+- **output**: `results/tables/synthetic_linear_sweep.json`
+
