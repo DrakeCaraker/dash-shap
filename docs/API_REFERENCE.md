@@ -33,6 +33,15 @@ from dash_shap.baselines import SingleBestBaseline
 sb = SingleBestBaseline(n_trials=50, seed=42)
 sb.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
 
+# Pattern B2: Compare against Stochastic Retrain (seed averaging)
+from dash_shap.baselines import StochasticRetrainBaseline
+sr = StochasticRetrainBaseline(N=30, seed=42, n_jobs=-1)
+sr.fit(X_train, y_train, X_val, y_val, X_ref=X_explain)
+
+# Pattern B3: Use DASH with non-XGBoost attributions (LIME, IG, etc.)
+pipe = DASHPipeline(M=100, K=20, epsilon=0.05)
+pipe.fit_from_attributions(attribution_matrices, val_scores)  # (M, N', P) array
+
 # (run multiple reps to compute stability across runs)
 from dash_shap.evaluation import importance_stability
 
@@ -48,7 +57,7 @@ fig = local_disagreement_map(pipe.all_shap_matrices_, observation_idx=0,
 |---|---|---|
 | `ValueError: Only N models passed filter` | epsilon too tight | Increase `epsilon` or use `epsilon_mode="quantile"` |
 | `UserWarning: Only N models passed filter (K=K)` | epsilon slightly tight | Same as above |
-| Fit takes > 20 min | M too large or n_jobs=1 | Set `n_jobs=-1`; reduce M for exploration |
+| Fit takes > 20 min | M too large or n_jobs=1 | Set `n_jobs=-1` (uses all cores for parallel SHAP computation); reduce M for exploration |
 | `import dash_shap` shadows Plotly Dash | Name collision in tests | Use `from dash_shap.core import ...` in test files |
 
 ---
@@ -83,6 +92,7 @@ pipeline = DASHPipeline(
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `fit(X_train, y_train, X_val, y_val, X_ref=None, feature_names=None)` | self | Runs all 5 stages. `X_ref` defaults to `X_val`. **Recommended:** pass a dedicated explain set (e.g., `X_explain`) as `X_ref`, separate from `X_test`, so that SHAP reference data and RMSE evaluation data do not overlap. |
+| `fit_from_attributions(attribution_matrices, val_scores, feature_names=None)` | self | Runs stages 2–5 on pre-computed `(M, n_ref, P)` attribution matrices. Works with neural nets, LIME, Integrated Gradients, or any attribution source — not XGBoost-specific. |
 | `get_fsi()` | `FeatureStabilityIndex` | Feature Stability Index object with quadrant labels. |
 | `plot_importance_stability(groups=None, **kwargs)` | matplotlib Figure | Generates the IS Plot. Pass `groups` to color by feature group. |
 | `get_importance_ranking()` | np.array | Feature indices sorted by descending importance. |
