@@ -4476,7 +4476,7 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     # Group 0 features are f0..f4 (true importance ~0.4 each); f0 is the "first mover"
     # At least one of the true group features should be certified top-4
     top4_names = set(cert.certified.get(4, []))
-    true_group0_names = {make_feature_names()[i] for i in grps[0]}
+    true_group0_names = {make_feature_names()[i] for i in np.where(grps == 0)[0]}
     overlap = top4_names & true_group0_names
     if not overlap:
         failures.append(f"FAIL: No group-0 features in certified top-4 (got {top4_names})")
@@ -4487,7 +4487,7 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     log("\n  [2] Partial order — within-group π check ...")
     po = partial_order(result, alpha=0.1, method="fraction")
     feat_names = list(result.feature_names)
-    g0 = grps[0]
+    g0 = np.where(grps == 0)[0]
     # Take the top-2 features by importance within group 0
     g0_by_imp = sorted(g0, key=lambda i: -result.global_importance[i])
     f_a, f_b = g0_by_imp[0], g0_by_imp[1]
@@ -4502,7 +4502,7 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     log("\n  [3] Partial order — between-group dominance check ...")
     # Top group-0 feature vs a low-importance feature from group 1
     g0_top = g0_by_imp[0]
-    g3 = grps[3]  # last group has lower true importance
+    g3 = np.where(grps == 3)[0]  # last group has lower true importance
     g3_by_imp = sorted(g3, key=lambda i: result.global_importance[i])
     f_noise = g3_by_imp[0]  # least important in group 3
     pi_top_vs_noise = po.confidence_matrix[g0_top, f_noise]
