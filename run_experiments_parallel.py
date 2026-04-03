@@ -5067,11 +5067,12 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
 
     nthread_xgb = nthread
     per_method: dict = {}
+    feature_names = [f"f{i}" for i in range(P_total)]
 
     def rmse_score(y_true, y_pred):
         return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
 
-    # ── DASH (population-sharing with RS) ──
+    # ── DASH ──
     t0 = time.time()
     dash_pipeline = DASHPipeline(
         M=M,
@@ -5085,7 +5086,7 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
         seed=rep_seed,
         verbose=False,
     )
-    dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=[f"f{i}" for i in range(P_total)])
+    dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=feature_names)
     per_method["DASH (MaxMin)"] = _rep_metrics(
         dash_pipeline.global_importance_,
         true_imp,
@@ -5095,11 +5096,11 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
         time.time() - t0,
     )
 
-    # ── Single Best ──
+    # ── Single Best (M=200) — reuses DASH population ──
     t0 = time.time()
-    sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=1, nthread=nthread_xgb)
-    sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
-    per_method["Single Best"] = _rep_metrics(
+    sb = SingleBestBaseline(n_trials=M, seed=rep_seed, n_jobs=1, nthread=nthread_xgb)
+    sb.fit_from_population(dash_pipeline.models_, dash_pipeline.val_scores_, Xexp, seed=rep_seed)
+    per_method["Single Best (M=200)"] = _rep_metrics(
         sb.global_importance_,
         true_imp,
         grps,
@@ -5107,8 +5108,51 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
         sb,
         time.time() - t0,
     )
+    del sb
 
-    # ── Stochastic Retrain ──
+    # ── Random Selection — reuses DASH population ──
+    t0 = time.time()
+    rs = RandomSelectionBaseline(
+        M=M,
+        K=K,
+        epsilon=EPSILON,
+        delta=DELTA,
+        n_jobs=1,
+        nthread=nthread_xgb,
+        seed=rep_seed,
+        verbose=False,
+    )
+    rs.fit_from_population(
+        dash_pipeline.models_,
+        dash_pipeline.val_scores_,
+        Xexp,
+        feature_names=feature_names,
+    )
+    per_method["Random Selection"] = _rep_metrics(
+        rs.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, rs.get_consensus_ensemble_predictions(Xte)),
+        rs,
+        time.time() - t0,
+    )
+    del rs
+
+    # ── Naive Top-N — reuses DASH population ──
+    t0 = time.time()
+    naive = NaiveAveragingBaseline(N=K, task="regression")
+    naive.fit_from_population(dash_pipeline.models_, dash_pipeline.val_scores_, Xexp)
+    per_method["Naive Top-N"] = _rep_metrics(
+        naive.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, naive.get_consensus_ensemble_predictions(Xte)),
+        naive,
+        time.time() - t0,
+    )
+    del naive
+
+    # ── Stochastic Retrain — independent training ──
     t0 = time.time()
     sr = StochasticRetrainBaseline(N=K, seed=rep_seed, n_jobs=1, nthread=nthread_xgb)
     sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
@@ -5122,7 +5166,7 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
     )
 
     # Clean up models to free memory
-    del dash_pipeline, sb, sr
+    del dash_pipeline, sr
 
     return rep, per_method, grps
 
@@ -5136,7 +5180,12 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
     C) ρ replication at P=200 (L=40): ρ ∈ {0.0, 0.5, 0.7, 0.9, 0.95}
 
     All use PAPER_CONFIG (M=200, K=30, N_REPS=50, ε=0.08).
-    Methods: DASH (MaxMin), Single Best, Stochastic Retrain.
+    Methods: DASH (MaxMin), Single Best (M=200), Random Selection, Naive Top-N,
+    Stochastic Retrain. SB/RS/Naive reuse DASH's population; SR trains independently.
+
+    Adaptive nthread: nthread=2 for P>=200, nthread=1 otherwise. XGBoost tree
+    building parallelizes over features, so nthread=2 gives meaningful speedup
+    at high P without reducing total core utilization.
     """
     from joblib import Parallel, delayed
 
@@ -5147,10 +5196,25 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
     log("=" * 70)
 
     group_size = 5
-    core_methods = ["DASH (MaxMin)", "Single Best", "Stochastic Retrain"]
-    nthread = 1  # sequential within rep, parallel across reps
+    core_methods = [
+        "DASH (MaxMin)",
+        "Single Best (M=200)",
+        "Random Selection",
+        "Naive Top-N",
+        "Stochastic Retrain",
+    ]
+    n_cpus = _os.cpu_count() or 1
 
     results = {}
+
+    def _nthread_for_p(p):
+        """Adaptive nthread: 2 for P>=200, 1 otherwise."""
+        return 2 if p >= 200 else 1
+
+    def _n_jobs_for_p(p):
+        """Halve parallelism when using nthread=2."""
+        nt = _nthread_for_p(p)
+        return max(1, n_cpus // (nt * 2)) if nt > 1 else -1
 
     # ── Sub-experiment A: Group scaling at ρ=0.9 ──
     log("\n--- Sub-experiment A: Group scaling (ρ=0.9) ---")
@@ -5159,11 +5223,13 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
 
     for n_groups in group_counts:
         P = n_groups * group_size
-        log(f"\n  L={n_groups}, P={P}:")
+        nt = _nthread_for_p(P)
+        nj = _n_jobs_for_p(P)
+        log(f"\n  L={n_groups}, P={P} (nthread={nt}, n_jobs={nj}):")
         t0 = time.time()
 
-        rep_results = Parallel(n_jobs=-1, verbose=0)(
-            delayed(_run_single_rep_highdim)(n_groups, group_size, rho_fixed, rep, core_methods, nthread=nthread)
+        rep_results = Parallel(n_jobs=nj, verbose=0)(
+            delayed(_run_single_rep_highdim)(n_groups, group_size, rho_fixed, rep, core_methods, nthread=nt)
             for rep in range(N_REPS)
         )
 
@@ -5179,11 +5245,14 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
     log("\n--- Sub-experiment B: Noise dilution (P=200, ρ=0.9) ---")
     # Condition (i): L=40, all signal → reuse A_L40_P200
     # Condition (ii): L=10 signal + 150 noise
-    log("  Condition (ii): L=10 signal + 150 noise features")
+    P_b = 200
+    nt_b = _nthread_for_p(P_b)
+    nj_b = _n_jobs_for_p(P_b)
+    log(f"  Condition (ii): L=10 signal + 150 noise features (nthread={nt_b}, n_jobs={nj_b})")
     t0 = time.time()
 
-    rep_results = Parallel(n_jobs=-1, verbose=0)(
-        delayed(_run_single_rep_highdim)(10, group_size, rho_fixed, rep, core_methods, n_noise=150, nthread=nthread)
+    rep_results = Parallel(n_jobs=nj_b, verbose=0)(
+        delayed(_run_single_rep_highdim)(10, group_size, rho_fixed, rep, core_methods, n_noise=150, nthread=nt_b)
         for rep in range(N_REPS)
     )
 
@@ -5198,13 +5267,22 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
     log("\n--- Sub-experiment C: ρ sweep at P=200 (L=40 groups) ---")
     rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
     n_groups_c = 40
+    P_c = n_groups_c * group_size
+    nt_c = _nthread_for_p(P_c)
+    nj_c = _n_jobs_for_p(P_c)
 
     for rho in rho_levels:
-        log(f"\n  ρ={rho}:")
+        # Skip ρ=0.9 — identical to Sub-A L=40 P=200 at ρ=0.9
+        if rho == rho_fixed:
+            results[f"C_P200_rho{rho}"] = results["A_L40_P200"]
+            log(f"\n  ρ={rho}: reused from Sub-A (A_L40_P200)")
+            continue
+
+        log(f"\n  ρ={rho} (nthread={nt_c}, n_jobs={nj_c}):")
         t0 = time.time()
 
-        rep_results = Parallel(n_jobs=-1, verbose=0)(
-            delayed(_run_single_rep_highdim)(n_groups_c, group_size, rho, rep, core_methods, nthread=nthread)
+        rep_results = Parallel(n_jobs=nj_c, verbose=0)(
+            delayed(_run_single_rep_highdim)(n_groups_c, group_size, rho, rep, core_methods, nthread=nt_c)
             for rep in range(N_REPS)
         )
 
@@ -5221,29 +5299,39 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
     log("=" * 70)
 
     log("\nSub-exp A: Group scaling (ρ=0.9)")
-    log(f"  {'P':>5}  {'Method':<22} {'Stability':>10} {'TopK5':>8} {'Equity':>8}")
+    log(f"  {'P':>5}  {'Method':<22} {'Stability':>10} {'TopK5':>8} {'Equity':>8} {'K_eff':>6}")
     for n_groups in group_counts:
         P = n_groups * group_size
         key = f"A_L{n_groups}_P{P}"
         for name in core_methods:
             r = results[key][name]
-            log(f"  {P:>5}  {name:<22} {r['stability']:>10.4f} {r['topk5_stability']:>8.4f} {r['equity_mean']:>8.4f}")
+            keff = r.get("k_eff_mean")
+            keff_s = f"{keff:>6.1f}" if keff is not None else "     -"
+            log(
+                f"  {P:>5}  {name:<22} {r['stability']:>10.4f} "
+                f"{r['topk5_stability']:>8.4f} {r['equity_mean']:>8.4f} {keff_s}"
+            )
 
     log("\nSub-exp B: Noise dilution (P=200, ρ=0.9)")
     log("  Condition (i): 40 groups, all signal [= A_L40_P200]")
     log("  Condition (ii): 10 signal groups + 150 noise features")
+    log(f"  {'Method':<22} {'Signal Only':>12} {'With Noise':>12} {'Δ':>8}")
     for name in core_methods:
         r_signal = results["A_L40_P200"][name]
         r_noise = results["B_L10_noise150_P200"][name]
-        log(f"  {name:<22} signal_only={r_signal['stability']:.4f}  with_noise={r_noise['stability']:.4f}")
+        delta = r_noise["stability"] - r_signal["stability"]
+        log(f"  {name:<22} {r_signal['stability']:>12.4f} {r_noise['stability']:>12.4f} {delta:>+8.4f}")
 
     log("\nSub-exp C: ρ sweep at P=200 (L=40)")
-    log(f"  {'ρ':>5}  {'DASH':>10} {'SB':>10} {'SR':>10}")
+    log(f"  {'ρ':>5}  {'DASH':>10} {'SB(200)':>10} {'RS':>10} {'Naive':>10} {'SR':>10}")
     for rho in rho_levels:
         r = results[f"C_P200_rho{rho}"]
         log(
             f"  {rho:>5.2f}  {r['DASH (MaxMin)']['stability']:>10.4f} "
-            f"{r['Single Best']['stability']:>10.4f} {r['Stochastic Retrain']['stability']:>10.4f}"
+            f"{r['Single Best (M=200)']['stability']:>10.4f} "
+            f"{r['Random Selection']['stability']:>10.4f} "
+            f"{r['Naive Top-N']['stability']:>10.4f} "
+            f"{r['Stochastic Retrain']['stability']:>10.4f}"
         )
 
     _publish_results(
