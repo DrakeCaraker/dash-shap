@@ -31,19 +31,19 @@ At high collinearity (ρ = 0.9, 50 features, 10 correlated groups, 20 repetition
 | Large Single Model | 0.938 | 0.967 | 0.262 |
 | **DASH (MaxMin)** | **0.977** | **0.988** | **0.176** |
 
-Stability on real-world datasets:
+Stability on real-world datasets (50 reps):
 
-| Dataset | Features | Single Best | DASH | Improvement |
-|---|---|---|---|---|
-| Breast Cancer | 30 (21 pairs \|r\| > 0.9) | 0.317* | 0.930 | **+0.614** |
-| Superconductor | 81 | 0.830 | 0.962 | +0.132 |
-| California Housing | 8 | 0.967 | 0.982 | +0.015 |
+| Dataset | Features | Single Best | DASH | SR | Improvement |
+|---|---|---|---|---|---|
+| Breast Cancer | 30 (21 pairs \|r\| > 0.9) | 0.376 | **0.925** | 0.862 | **+0.549** |
+| Superconductor† | 81 | 0.830 | 0.962 | — | +0.132 |
+| California Housing | 8 | 0.969 | 0.978 | 0.977 | +0.009 (n.s.) |
 
-*\*Tree-count-matched Single Best (M=200): trains 200 models, keeps the best. Standard Single Best uses default hyperparameter tuning.*
+*†Superconductor uses 20-rep data pending clean re-run. SR = Stochastic Retrain (seed averaging).*
 
-DASH stability is flat across correlation levels (0.972–0.977 from ρ = 0.0 to ρ = 0.95). All 11 pre-registered success criteria pass. Statistically significant at ρ ≥ 0.7 (Wilcoxon, Holm-Bonferroni corrected, Cohen's d > 1.0).
+DASH stability is flat across correlation levels (0.972–0.977 from ρ = 0.0 to ρ = 0.95). On Breast Cancer — the most extreme collinearity case — DASH outperforms Stochastic Retrain by +0.063, the largest DASH-SR gap in any experiment.
 
-*All results from [`demo_benchmark_6.ipynb`](notebooks/demo_benchmark_6.ipynb) (ArXiv canonical, 20 reps).*
+*Synthetic results from 50-rep clean SageMaker run. Real-world: Breast Cancer and California from 50-rep clean run; Superconductor from [v6 ArXiv](notebooks/demo_benchmark_6.ipynb) (20 reps). See [Benchmark Results](docs/BENCHMARK_RESULTS.md) for full tables.*
 
 Full results: **[Benchmark Results](docs/BENCHMARK_RESULTS.md)** | Methodology: **[Experiment Guide](EXPERIMENT_GUIDE.md)**
 
@@ -214,7 +214,7 @@ See **[REPRODUCE.md](REPRODUCE.md)** for the complete reproduction guide, includ
 pip install -r requirements.lock
 pip install -e .
 
-# Run all 19 experiments (~6–10 hours on 72-vCPU instance)
+# Run all 20 experiments (~6–10 hours on 72-vCPU instance)
 python run_experiments_parallel.py
 
 # Run a single experiment

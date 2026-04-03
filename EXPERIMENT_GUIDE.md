@@ -370,6 +370,24 @@ Run via `run_experiments_parallel.py --experiments extensions_sanity_check`. Out
 
 ---
 
+## Experiment 17: High-Dimensional Scaling
+
+Tests whether DASH's stability advantage persists as the feature dimension grows. Three sub-experiments designed for the TMLR paper appendix:
+
+**A) Group scaling** — Sweeps the number of correlated groups L ∈ {10, 20, 40, 80} with group size m=5, giving P ∈ {50, 100, 200, 400}. Fixed ρ=0.9. Uses the standard linear DGP with `np.linspace(2.0, 0.0, L)` for β values. Tests whether the independence mechanism scales with more correlated groups.
+
+**B) Noise dilution** — P=200 in two conditions: (i) L=40 groups, all signal (from sub-experiment A) and (ii) L=10 signal groups + 150 uncorrelated noise features (β=0). One comparison, not a sweep. Isolates whether DASH's scaling depends on P (total features) or L (number of correlated groups).
+
+**C) ρ replication at P=200** — Full ρ sweep {0.0, 0.5, 0.7, 0.9, 0.95} at P=200 (L=40 groups). Produces a table directly comparable to the main linear sweep. Tests whether the dose-response pattern from P=50 generalizes to higher dimensions.
+
+Methods: DASH (MaxMin), Single Best, Stochastic Retrain. N_REPS=50 per level.
+
+Expected: Top-k5 stability holds or improves (signal features still experience first-mover bias regardless of noise features). Full-rank Spearman may inflate at high P (noise features trivially stable). MaxMin min-distance may shrink (curse of dimensionality on cosine distance).
+
+Run via `run_experiments_parallel.py --experiments high_dimensional_scaling`. Output: `results/tables/high_dimensional_scaling.json`. Estimated: ~8-12 hours on SageMaker (ml.g5.16xlarge, 64 cores).
+
+---
+
 ## Success Criteria
 
 The notebook checks 11 automated criteria (Section 15):

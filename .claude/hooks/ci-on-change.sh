@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# Run make ci when dash_shap/ or tests/ Python files have been modified.
+# Run lint + fast tests when dash_shap/ or tests/ Python files have been modified.
+# Reads commands from alfred.yaml via alfred-config.sh (falls back to defaults).
 set -euo pipefail
 
 REPO="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 
 # Ensure user-installed binaries (ruff, mypy, etc.) are on PATH
 export PATH="$HOME/.local/bin:$HOME/Library/Python/3.9/bin:$PATH"
+
+# Read config from alfred.yaml (with defaults)
+source "$(dirname "$0")/alfred-config.sh"
 
 # Validate hook scripts have no syntax errors (catches stale variables, typos)
 for hook in "$REPO"/.claude/hooks/*.sh; do
@@ -19,16 +23,15 @@ changed=$(git -C "$REPO" status --porcelain 2>/dev/null \
   | grep -E '^(dash_shap|tests)/.*\.py$' || true)
 
 if [ -n "$changed" ]; then
-  # Fast local checks only — formatting and typecheck are handled by CI.
   echo "Source files modified — running lint + fast tests..."
-  if ! make -C "$REPO" lint 2>&1; then
+  # Run from repo root so make targets resolve correctly
+  if ! (cd "$REPO" && $ALFRED_LINT) 2>&1; then
     echo "Alfred: lint failed — run /ci-fix to auto-repair."
     exit 0
   fi
 
-  # Run fast tests only if xgboost is available (required by pipeline tests)
   if python3 -c "import xgboost" 2>/dev/null; then
-    if ! make -C "$REPO" test-fast 2>&1; then
+    if ! (cd "$REPO" && $ALFRED_TEST_FAST) 2>&1; then
       echo "Alfred: tests failed — run /ci-fix to auto-repair."
       exit 0
     fi
