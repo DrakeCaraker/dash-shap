@@ -147,8 +147,8 @@ explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, b
 $= 0.977$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
-$0.38$ to $0.93$ ($+0.55$) over Single Best, and from
-$0.34$ to $0.93$ ($+0.59$) over the training-budget-matched
+$0.376$ to $0.925$ ($+0.549$) over Single Best, and from
+$0.339$ to $0.925$ ($+0.586$) over the training-budget-matched
 Single Best ($M{=}200$), outperforming even Stochastic Retrain by $+0.063$.
 
 \dash{} additionally provides two novel diagnostic tools---the Feature
@@ -995,25 +995,25 @@ and were not independently measured.
 \dash{} $[0.975, 0.978]$ (non-overlapping).}
 \label{tab:extended}
 \small
-\begin{tabular}{llcccc}
+\begin{tabular}{llccccc}
 \toprule
 & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
-  \textbf{Equity (CV$\downarrow$)} & \textbf{Time (s)} \\
+  \textbf{Equity (CV$\downarrow$)} & \textbf{$K_{\text{eff}}$} & \textbf{Time (s)} \\
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
-  & Single Best          & $.958 \pm .003$ & .978 & .224 & \phantom{0}43.5 \\
-  & Single Best$^\dagger$ & $.964 \pm .002$ & .981 & .212 & 248.8 \\
-  & Large Single Model   & $.938 \pm .003$ & .967 & .262 & \phantom{00}6.4 \\
-  & LSM (Tuned)          & $.948 \pm .003$ & .972 & .272 & \phantom{0}88.9 \\
-  & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & --- \\
+  & Single Best          & $.958 \pm .003$ & .978 & .224 & 1 & \phantom{0}43.5 \\
+  & Single Best$^\dagger$ & $.964 \pm .002$ & .981 & .212 & 1 & 248.8 \\
+  & Large Single Model   & $.938 \pm .003$ & .967 & .262 & 1 & \phantom{00}6.4 \\
+  & LSM (Tuned)          & $.948 \pm .003$ & .972 & .272 & 1 & \phantom{0}88.9 \\
+  & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & 1 & --- \\
 \addlinespace
 \midrule
 \addlinespace
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
-  & Stochastic Retrain   & $.977 \pm .002$ & .988 & .182 & 233.5 \\
-  & Random Selection$^\dagger$ & $.976 \pm .001$ & .988 & .187 & 287.2 \\
-  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .187 & --- \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} & \textbf{.176} & 140.3 \\
+  & Stochastic Retrain   & $.977 \pm .002$ & .988 & .182 & 30 & 233.5 \\
+  & Random Selection$^\dagger$ & $.976 \pm .001$ & .988 & .187 & 30 & 287.2 \\
+  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .187 & 30 & --- \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} & \textbf{.176} & $\sim$12 & 140.3 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1327,9 +1327,8 @@ On the Breast Cancer dataset (30 features, 21 pairs with $|r| > 0.9$,
 Stability reported with $\pm$SE from BCa bootstrap. Bold indicates best.
 Breast Cancer is a classification task (RMSE not applicable).
 $^\dagger$Matched training budget ($M{=}200$ models trained).
-$^*$Superconductor uses 20-rep data pending clean re-run.
 $\Delta$Stab.\ is relative to standard Single Best.
-Breast Cancer and California Housing sourced from clean 50-rep SageMaker run.}
+All sourced from 50-rep SageMaker run (ml.g5.16xlarge).}
 \label{tab:realworld}
 \begin{tabular}{llccc}
 \toprule
@@ -1345,10 +1344,12 @@ Breast Cancer and California Housing sourced from clean 50-rep SageMaker run.}
 \addlinespace
 \midrule
 \addlinespace
-\multirow{3}{*}{Superconductor$^*$}
-  & Single Best            & $.830 \pm .020$ & \multicolumn{1}{c}{---} & $9.18 \pm 0.11$ \\
-  & Large Single Model     & $.689 \pm .030$ & $-0.141$ & $9.34 \pm 0.09$ \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.962} \pm .010$ & $+0.132$ & $\mathbf{9.15} \pm 0.08$ \\
+\multirow{5}{*}{Superconductor}
+  & Single Best            & $.840 \pm .014$ & \multicolumn{1}{c}{---} & $9.22 \pm 0.11$ \\
+  & Large Single Model     & $.721 \pm .008$ & $-0.119$ & $9.36 \pm 0.12$ \\
+  & Stochastic Retrain     & $.924 \pm .008$ & $+0.084$ & $9.16 \pm 0.09$ \\
+  & \dash{} (MaxMin)       & $.964 \pm .001$ & $+0.124$ & $9.17 \pm 0.09$ \\
+  & \textbf{Naive Top-N}   & $\mathbf{.976} \pm .001$ & $+0.136$ & $\mathbf{9.15} \pm 0.10$ \\
 \addlinespace
 \midrule
 \addlinespace
@@ -1384,11 +1385,17 @@ perimeter} (0.201)---that are stable across repetitions.
 
 \paragraph{Superconductor.}
 On the Superconductor dataset (81 features, 21,263 samples), \dash{}
-improves stability by $+0.132$ over Single Best and $+0.273$ over the
-Large Single Model, while achieving marginally better predictive RMSE.
-The LSM result is particularly striking: despite having the same total tree count
-as \dash{}, its sequential training produces the
-poorest reproducibility---consistent with first-mover bias at scale.
+improves stability by $+0.124$ over Single Best ($0.964$ vs.\ $0.840$)
+and $+0.243$ over the Large Single Model, while achieving comparable
+predictive RMSE. However, Random Selection ($0.968$) and Naive Top-N
+($0.976$) slightly exceed \dash{} ($p < 0.001$ for both), suggesting
+that MaxMin diversity selection provides diminishing returns when the
+natural feature diversity is already high. With 81~features, most models
+in the population already produce distinct attribution profiles, reducing
+the value of explicit diversity maximization.
+The LSM result remains striking: despite matching \dash{}'s total tree count,
+its sequential training produces the poorest reproducibility ($0.721$)---consistent
+with first-mover bias at scale.
 
 \paragraph{California Housing.}
 On California Housing (8~features, 20,640~samples), several feature
@@ -1733,7 +1740,7 @@ independence principle with forced feature restriction, diversity-aware
 model selection, and two novel diagnostic tools---the Feature Stability
 Index and Importance-Stability Plot---that detect first-mover bias
 without ground truth. On real-world datasets, \dash{} improves stability
-from $0.34$ to $0.93$ (Breast Cancer), from $0.83$ to $0.96$
+from $0.339$ to $0.925$ (Breast Cancer), from $0.83$ to $0.96$
 (Superconductor), and from $0.97$ to $0.98$ (California Housing).
 
 The code, data, and reproducible benchmarks are publicly available at
@@ -2104,8 +2111,10 @@ $K \leq 30$ TreeSHAP explanations.
 \begin{table}[htbp]
 \centering
 \caption{Computational cost at $\rhovar = 0.9$ (50 repetitions).
-Wall-clock times are hardware-dependent (Apple M-series, single node)
-and reported for relative comparison.}
+Wall-clock times are hardware-dependent (Apple M-series, single thread)
+and reported for relative comparison; absolute times on the SageMaker
+\texttt{ml.g5.16xlarge} instance are $\sim$12$\times$ higher due to
+\texttt{nthread=1} per-rep parallelism.}
 \label{tab:cost}
 \small
 \begin{tabular}{lcccc}
@@ -2208,38 +2217,36 @@ For each method we report:
 \paragraph{Results.}
 Table~\ref{tab:asymmetric} reports results at $\rho = 0.9$ (the
 primary evaluation condition in the main experiments).
-\dash{} correctly preserves the asymmetry: the passive-leak attribution
-to $f_1$ is comparable across all methods, and attribution bias for
-$f_0$ is not significantly elevated relative to Single Best or SR.
-This indicates that \dash{} does not over-equalize in the asymmetric
-case---independence-based averaging cancels noise in the arbitrary
-feature selection rather than the true causal asymmetry.
+\dash{} correctly preserves the causal asymmetry: all methods attribute
+substantially more importance to the causal feature $f_0$ than the
+passive correlate $f_1$. However, \dash{}'s passive leak (0.089) is
+higher than Single Best's (0.068), reflecting a trade-off inherent to
+ensemble averaging: some models in the ensemble attribute to $f_1$, and
+their contributions are not zeroed out by averaging. Stochastic Retrain
+shows a similar pattern (0.074). This trade-off increases with $\rho$
+(DASH passive leak rises from 0.046 at $\rho{=}0.5$ to 0.173 at
+$\rho{=}0.95$), and is the expected cost of the variance reduction
+that \dash{} provides.
 
 \begin{table}[htbp]
 \centering
 \caption{Asymmetric causal DGP at $\rho = 0.9$, 50 repetitions.
 ``Passive leak'' is mean attribution to the causally inert feature $f_1$
-(ground truth: 0.0). Lower is better for both bias and passive leak.}
+(ground truth: 0.0). Lower is better for both bias and passive leak.
+All methods achieve stability = 1.000 (deterministic DGP).}
 \label{tab:asymmetric}
 \small
 \begin{tabular}{lccc}
 \toprule
-\textbf{Method} & \textbf{Stability} & \textbf{Bias ($f_0$)} & \textbf{Passive leak} \\
+\textbf{Method} & \textbf{Stability} & \textbf{Bias ($f_0$)} & \textbf{Passive leak ($f_1$)} \\
 \midrule
-Single Best & --- & --- & --- \\
-Stochastic Retrain & --- & --- & --- \\
-\textbf{DASH (MaxMin)} & --- & --- & --- \\
-Large Single Model & --- & --- & --- \\
+Single Best & 1.000 & 0.068 & 0.068 \\
+Stochastic Retrain & 1.000 & 0.074 & 0.074 \\
+\textbf{DASH (MaxMin)} & 1.000 & 0.089 & 0.089 \\
+Large Single Model & 1.000 & 0.084 & 0.084 \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\noindent
-\textit{Note: Table~\ref{tab:asymmetric} will be populated when the
-asymmetric DGP experiment (\texttt{experiment\_asymmetric\_dgp} in
-\texttt{run\_experiments\_parallel.py}) is run as part of the final
-benchmark execution.  The code and DGP are already implemented; the
-notebook has not yet been re-executed for the TMLR submission.}
 
 
 \end{document}
