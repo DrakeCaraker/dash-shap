@@ -35,13 +35,14 @@ dash_shap/
     consensus.py    Stage 4: element-wise mean of K SHAP matrices
     diagnostics.py  Stage 5: FSI, IS plots, local disagreement maps
     pipeline.py     DASHPipeline orchestrator class
-  baselines/      Eight comparison baselines (single_best, large_single, ensemble_shap, etc.)
+  baselines/      Eleven comparison baselines (single_best, large_single, ensemble_shap, stochastic_retrain, random_selection, random_forest, naive_averaging, permutation_importance, nn_baselines, lightgbm_single)
   experiments/    Synthetic data generators (linear & nonlinear DGP)
   evaluation/     Metrics: stability, DGP agreement, equity, statistical tests
   utils/          I/O helpers, SHAP utilities
 notebooks/        Progressive experiment notebooks (demo_benchmark_{N}.ipynb)
 tests/            pytest suite (test_pipeline, test_baselines, test_evaluation, test_synthetic)
-docs/             API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md, RESEARCH_DIRECTIONS.md
+docs/             API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md, GETTING_STARTED.md, CI.md
+docs/private/     Encrypted: roadmap.md, research_directions.md, tmlr_update_plan, interim results
 docs/archive/     Historical documents (IMPLEMENTATION_PLAN.md, PEER_REVIEW.md)
 paper/            LaTeX source
 ```
@@ -50,7 +51,7 @@ paper/            LaTeX source
 
 - `dash_shap.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
 - `run_experiments.py` — CLI experiment runner (deprecated — use parallel runner; retained for historical provenance)
-- `run_experiments_parallel.py` — **sole actively maintained entry point** (18 experiments, ~3-5x faster via population sharing + parallel SHAP)
+- `run_experiments_parallel.py` — **sole actively maintained entry point** (19 experiments, ~3-5x faster via population sharing + parallel SHAP)
 - `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook
 - `notebooks/archive/demo_benchmark_7.ipynb` — **archived, superseded by parallel version**
 - `notebooks/demo_benchmark_7_parallel.ipynb` — **canonical (TMLR)** interactive benchmark notebook (uses `run_experiments_parallel`)
@@ -111,7 +112,7 @@ make coverage                                  # pytest with 70% coverage floor
 make rebase                                    # rebase on origin/main
 python run_experiments.py                      # DEPRECATED — use parallel runner
 python run_experiments.py --experiments linear_sweep  # DEPRECATED — use parallel runner
-python run_experiments_parallel.py             # all 18 experiments (sole maintained runner)
+python run_experiments_parallel.py             # all 19 experiments (sole maintained runner)
 python run_experiments_parallel.py --experiments linear_sweep
 python scripts/check_notebook_ids.py          # flag unnamed code cells before editing sessions
 ```
@@ -273,3 +274,7 @@ Proactively suggest these commands when the conditions are met. Explain briefly 
 ## Research Program
 
 Key claim: independence between models in the DASH population cancels path-dependent noise in feature attributions. See EXPERIMENT_GUIDE.md for full methodology and method descriptions.
+
+## Related Repositories
+
+- **[dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean)** — Lean 4 formalization of the attribution impossibility theorem (Paper 3, targeting NeurIPS 2026). Contains 36 Lean files with formal proofs that no feature ranking can simultaneously be faithful, stable, and complete under collinearity. Uses axioms verified by `paper/proofs/verify_lemma6_algebra.py` in this repo.

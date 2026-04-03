@@ -304,6 +304,72 @@ Run via `run_experiments.py --experiments background_sensitivity`. Output: `resu
 
 ---
 
+## Experiment 12: Asymmetric Causal DGP
+
+Tests whether DASH over-equalizes when one feature has all the signal. In a two-feature group where f0 is causal and f1 is a passive correlate (correlated with f0 but not directly influencing y), DASH should still attribute more importance to f0 — but the question is whether the equity mechanism dilutes this advantage inappropriately.
+
+Sweeps rho in {0.5, 0.7, 0.9, 0.95}. Measures stability, attribution bias for f0, and passive leak to f1. Rho levels run in parallel via joblib.
+
+Expected: DASH correctly attributes more importance to the causal feature (f0) than the passive correlate (f1) at all rho levels. The equity mechanism distributes credit within truly equitable groups but does not force equality when the DGP is asymmetric.
+
+Run via `run_experiments_parallel.py --experiments asymmetric_dgp`. Output: `results/tables/asymmetric_dgp.json`.
+
+---
+
+## Experiment 13: Crossed Variance Decomposition (ANOVA)
+
+Extends Experiment 7 with a fully crossed R×R design (7 data seeds × 7 model seeds = 49 cells) and two-way ANOVA to decompose importance variance into data-sampling, model-selection, and residual components. This replaces the 1-stability proxy from Experiment 7 with an exact decomposition.
+
+The marginal design in Experiment 7 confounds data and model variance. This crossed design separates them cleanly: each cell holds one factor fixed while varying the other.
+
+Expected: Model-selection variance dominates for Single Best (>50% of total). DASH reduces model-selection variance to <25% by averaging over independent models. Data-sampling variance is comparable across methods.
+
+Run via `run_experiments_parallel.py --experiments variance_decomposition_crossed`. Output: `results/tables/variance_decomposition_crossed.json`.
+
+---
+
+## Experiment 14: K Sweep Independence
+
+Ablation testing whether increasing K (number of selected models) provides diminishing returns consistent with the model-independence hypothesis. If the independence principle holds, stability should scale as O(1/K) — each additional independent model adds less marginal information.
+
+Sweeps K in {1, 3, 5, 10, 20, 30, 50} at rho=0.9.
+
+Expected: Logarithmically diminishing returns — the jump from K=1 to K=5 is large, K=10 to K=20 is modest, K=30 to K=50 is negligible. This validates the PAPER_CONFIG choice of K=30 as a practical sweet spot.
+
+Run via `run_experiments_parallel.py --experiments k_sweep_independence`. Output: `results/tables/k_sweep_independence.json`.
+
+**Note**: This experiment had a bug producing only 2/50 reps in earlier runs. Status tracked in BENCHMARK_RESULTS.md.
+
+---
+
+## Experiment 15: Colsample Ablation
+
+Tests whether forced low `colsample_bytree` is the operative mechanism driving DASH's stability advantage. Trains DASH and Random Selection under three colsample_bytree ranges, plus SR and SB controls. Uses a confound-free design: base hyperparameters (max_depth, learning_rate, subsample, etc.) are identical across ranges; only colsample_bytree varies.
+
+Three conditions: linear ρ=0.0 (safety — should show no difference), linear ρ=0.9 (main — should show that low colsample helps), nonlinear ρ=0.9 (mechanism — confirms under nonlinear DGP).
+
+Expected: Low colsample_bytree (0.1–0.5, DASH default) produces higher stability than high colsample_bytree (0.5–1.0) at ρ=0.9 but not at ρ=0.0. This isolates colsample restriction as the diversity mechanism.
+
+Run via `run_experiments_parallel.py --experiments colsample_ablation`. Output: `results/tables/colsample_ablation.json`.
+
+---
+
+## Experiment 16: Extensions Sanity Check
+
+Lightweight (~2 min) validation that the Phase 0+1 extensions framework holds Paper 2 claims. Runs one rep at rho=0.9 (M=50, K=15), then asserts:
+
+1. Top-2 true features are certified top-4 by the Certification extension
+2. Within-group π(f0 > f5) ≈ 0.5 ± 0.25 (features are collinear, attribution is split)
+3. Between-group π(f0 > noise) > 0.7 (clear winner over noise features)
+4. Confidence intervals contain point estimates for all features
+5. DASHResult serialization round-trip preserves shapes and dtypes
+
+These checks make the Paper 2 claim "within-group π ≈ 0.5" a running CI test rather than a narrative claim.
+
+Run via `run_experiments_parallel.py --experiments extensions_sanity_check`. Output: stdout assertions (no JSON).
+
+---
+
 ## Success Criteria
 
 The notebook checks 11 automated criteria (Section 15):
@@ -403,3 +469,19 @@ Table 4: Ablation results (M, K, epsilon, delta sensitivity).
 The Large Single Model result is the paper's mechanistic contribution. The variance decomposition provides directional evidence (with stated caveats) that model-selection randomness is the dominant source of instability and that DASH specifically reduces it.
 
 The overlapping structure result goes into Discussion confirming robustness beyond idealized settings. The nonlinear DGP result confirms generalization with a noted caveat about approximate ground truth. The epsilon sensitivity and ablation results demonstrate practical robustness to hyperparameter choices.
+
+The asymmetric DGP (Experiment 12) addresses a potential reviewer concern: "does DASH over-equalize?" The colsample ablation (Experiment 15) isolates the mechanism. The crossed variance decomposition (Experiment 13) provides the clean decomposition that the marginal design (Experiment 7) approximates.
+
+---
+
+## Documentation Deferred Items
+
+The following items were identified in a documentation audit (2026-03-31) and deferred for future sessions:
+
+| Item | File | Description | Priority |
+|------|------|-------------|----------|
+| `fit_from_population()` docs | docs/API_REFERENCE.md | Missing documentation for the parallel runner's population-sharing API | Medium |
+| StochasticRetrainBaseline example | docs/API_REFERENCE.md | No import example in Common Workflow section | Low |
+| n_jobs parameter docs | docs/API_REFERENCE.md | Incomplete explanation in Troubleshooting section | Low |
+| README Key Results table | README.md | Shows v6 (20-rep) numbers; v7 available for most experiments | Low (correctly cited as v6) |
+| success_criteria experiment | EXPERIMENT_GUIDE.md | Meta-experiment that runs linear_sweep then checks pass/fail; thin wrapper, may not need its own section | Low |

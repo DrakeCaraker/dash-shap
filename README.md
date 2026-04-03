@@ -214,7 +214,7 @@ See **[REPRODUCE.md](REPRODUCE.md)** for the complete reproduction guide, includ
 pip install -r requirements.lock
 pip install -e .
 
-# Run all 16 experiments (~6–10 hours on 72-vCPU instance)
+# Run all 19 experiments (~6–10 hours on 72-vCPU instance)
 python run_experiments_parallel.py
 
 # Run a single experiment
@@ -244,7 +244,7 @@ DASH is a five-stage pipeline:
 After fitting, `pipe.result_` is a `DASHResult` — a lightweight container for the
 K×N'×P SHAP tensor. The **extensions framework** (`dash_shap.extensions`) adds
 confidence intervals, partial orders, robust certification, and more on top of any
-`DASHResult`. See **[Extensions Framework](docs/EXTENSIONS.md)**.
+`DASHResult`. See the extensions module (`dash_shap/extensions/`) for details.
 
 The key insight: model independence — not model size or count — is what cancels the arbitrary noise. Stochastic Retrain (same hyperparameters, different seeds) achieves equivalent stability, confirming that independence is the operative principle. DASH adds diversity selection and diagnostics on top.
 
@@ -276,6 +276,19 @@ dash-shap/
 ├── FAQ.md              # Common questions and answers
 └── CONTRIBUTING.md     # How to contribute and add extensions
 ```
+
+---
+
+## Research Program
+
+DASH is Paper 1 of a five-paper research program on trustworthy feature attribution:
+
+| Paper | Topic | Venue | Repo |
+|---|---|---|---|
+| **1. DASH** (this repo) | Method + empirical validation | TMLR | [dash-shap](https://github.com/DrakeCaraker/dash-shap) |
+| **3. Attribution Impossibility** | Formally verified impossibility theorem (Lean 4) | NeurIPS 2026 | [dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean) |
+
+The impossibility theorem proves that no single-model feature ranking can simultaneously be faithful, stable, and complete when features are collinear — formalizing the theoretical foundation for why DASH's ensemble approach is necessary.
 
 ---
 
