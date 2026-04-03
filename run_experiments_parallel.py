@@ -4452,11 +4452,12 @@ def experiment_extensions_sanity_check(resume=False, cleanup=False):
     log(f"  Generating synthetic data: N=2000, P=20, rho={rho}")
     Xtr, ytr, Xv, yv, Xexp, _, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(N=2000, rho=rho, seed=rng_seed)
 
-    log("  Fitting DASHPipeline (M=100, K=15, epsilon_mode=quantile) ...")
+    sanity_epsilon = 0.30  # top 30% → 30 candidates from M=100, enough for K=15 after dedup
+    log(f"  Fitting DASHPipeline (M=100, K=15, epsilon={sanity_epsilon}, quantile) ...")
     pipe = DASHPipeline(
         M=100,
         K=15,
-        epsilon=EPSILON,
+        epsilon=sanity_epsilon,
         epsilon_mode="quantile",
         delta=DELTA,
         seed=rng_seed,
