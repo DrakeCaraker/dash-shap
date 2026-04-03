@@ -5027,6 +5027,238 @@ def experiment_colsample_ablation(resume=False, cleanup=False):
     return results
 
 
+###############################################################################
+# EXPERIMENT: High-Dimensional Scaling
+###############################################################################
+
+
+def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=0, nthread=1):
+    """Run core methods for one (n_groups, rep) pair at given rho.
+
+    Generates a linear DGP with n_groups correlated groups of size group_size,
+    plus n_noise uncorrelated features with beta=0. Reuses the standard
+    generate_synthetic_linear DGP when n_noise=0.
+
+    Returns (rep, per_method_dict, grps).
+    """
+    rep_seed = SEED + rep
+    P_signal = n_groups * group_size
+    P_total = P_signal + n_noise
+
+    if n_noise == 0:
+        # Standard DGP — same as linear sweep
+        Xtr, ytr, Xv, yv, Xexp, yexp, Xte, yte, grps, true_imp, _ = generate_synthetic_linear(
+            N=5000, P=P_signal, group_size=group_size, rho=rho, seed=rep_seed
+        )
+    else:
+        # Generate signal features normally
+        Xtr_s, ytr, Xv_s, yv, Xexp_s, yexp, Xte_s, yte, grps_s, true_imp_s, _ = generate_synthetic_linear(
+            N=5000, P=P_signal, group_size=group_size, rho=rho, seed=rep_seed
+        )
+        # Generate uncorrelated noise features
+        rng = np.random.RandomState(rep_seed + 99999)
+        N_tr, N_v, N_exp, N_te = len(Xtr_s), len(Xv_s), len(Xexp_s), len(Xte_s)
+        Xtr = np.hstack([Xtr_s, rng.randn(N_tr, n_noise)])
+        Xv = np.hstack([Xv_s, rng.randn(N_v, n_noise)])
+        Xexp = np.hstack([Xexp_s, rng.randn(N_exp, n_noise)])
+        Xte = np.hstack([Xte_s, rng.randn(N_te, n_noise)])
+        grps = np.concatenate([grps_s, np.arange(n_groups, n_groups + n_noise)])
+        true_imp = np.concatenate([true_imp_s, np.zeros(n_noise)])
+
+    nthread_xgb = nthread
+    per_method: dict = {}
+
+    def rmse_score(y_true, y_pred):
+        return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+
+    # ── DASH (population-sharing with RS) ──
+    t0 = time.time()
+    dash_pipeline = DASHPipeline(
+        M=M,
+        K=K,
+        epsilon=EPSILON,
+        delta=DELTA,
+        selection_method="maxmin",
+        task="regression",
+        n_jobs=1,
+        nthread=nthread_xgb,
+        seed=rep_seed,
+        verbose=False,
+    )
+    dash_pipeline.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, feature_names=[f"f{i}" for i in range(P_total)])
+    per_method["DASH (MaxMin)"] = _rep_metrics(
+        dash_pipeline.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, dash_pipeline.get_consensus_ensemble_predictions(Xte)),
+        dash_pipeline,
+        time.time() - t0,
+    )
+
+    # ── Single Best ──
+    t0 = time.time()
+    sb = SingleBestBaseline(n_trials=N_TRIALS_SB, seed=rep_seed, n_jobs=1, nthread=nthread_xgb)
+    sb.fit(Xtr, ytr, Xv, yv, X_ref=Xexp, seed=rep_seed)
+    per_method["Single Best"] = _rep_metrics(
+        sb.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, sb.model_.predict(Xte)),
+        sb,
+        time.time() - t0,
+    )
+
+    # ── Stochastic Retrain ──
+    t0 = time.time()
+    sr = StochasticRetrainBaseline(N=K, seed=rep_seed, n_jobs=1, nthread=nthread_xgb)
+    sr.fit(Xtr, ytr, Xv, yv, X_ref=Xexp)
+    per_method["Stochastic Retrain"] = _rep_metrics(
+        sr.global_importance_,
+        true_imp,
+        grps,
+        rmse_score(yte, sr.models_[0].predict(Xte)),
+        sr,
+        time.time() - t0,
+    )
+
+    # Clean up models to free memory
+    del dash_pipeline, sb, sr
+
+    return rep, per_method, grps
+
+
+def experiment_high_dimensional_scaling(resume=False, cleanup=False):
+    """High-dimensional scaling: does DASH's advantage persist as P grows?
+
+    Three sub-experiments for TMLR paper appendix:
+    A) Group scaling: L ∈ {10, 20, 40, 80} → P ∈ {50, 100, 200, 400}
+    B) Noise dilution: P=200 with L=10 signal groups + 150 noise features
+    C) ρ replication at P=200 (L=40): ρ ∈ {0.0, 0.5, 0.7, 0.9, 0.95}
+
+    All use PAPER_CONFIG (M=200, K=30, N_REPS=50, ε=0.08).
+    Methods: DASH (MaxMin), Single Best, Stochastic Retrain.
+    """
+    from joblib import Parallel, delayed
+
+    _ensure_dirs()
+    t0_global = time.time()
+    log("\n" + "=" * 70)
+    log("EXPERIMENT: High-Dimensional Scaling")
+    log("=" * 70)
+
+    group_size = 5
+    core_methods = ["DASH (MaxMin)", "Single Best", "Stochastic Retrain"]
+    nthread = 1  # sequential within rep, parallel across reps
+
+    results = {}
+
+    # ── Sub-experiment A: Group scaling at ρ=0.9 ──
+    log("\n--- Sub-experiment A: Group scaling (ρ=0.9) ---")
+    group_counts = [10, 20, 40, 80]
+    rho_fixed = 0.9
+
+    for n_groups in group_counts:
+        P = n_groups * group_size
+        log(f"\n  L={n_groups}, P={P}:")
+        t0 = time.time()
+
+        rep_results = Parallel(n_jobs=-1, verbose=0)(
+            delayed(_run_single_rep_highdim)(n_groups, group_size, rho_fixed, rep, core_methods, nthread=nthread)
+            for rep in range(N_REPS)
+        )
+
+        method_data = _init_method_data(core_methods)
+        for _, per_method, _ in rep_results:
+            _merge_rep(method_data, per_method)
+
+        level_results = _aggregate_method_data(method_data, core_methods)
+        results[f"A_L{n_groups}_P{P}"] = level_results
+        log(f"  L={n_groups} completed in {(time.time() - t0) / 60:.1f} min")
+
+    # ── Sub-experiment B: Noise dilution at P=200 ──
+    log("\n--- Sub-experiment B: Noise dilution (P=200, ρ=0.9) ---")
+    # Condition (i): L=40, all signal → reuse A_L40_P200
+    # Condition (ii): L=10 signal + 150 noise
+    log("  Condition (ii): L=10 signal + 150 noise features")
+    t0 = time.time()
+
+    rep_results = Parallel(n_jobs=-1, verbose=0)(
+        delayed(_run_single_rep_highdim)(10, group_size, rho_fixed, rep, core_methods, n_noise=150, nthread=nthread)
+        for rep in range(N_REPS)
+    )
+
+    method_data = _init_method_data(core_methods)
+    for _, per_method, _ in rep_results:
+        _merge_rep(method_data, per_method)
+
+    results["B_L10_noise150_P200"] = _aggregate_method_data(method_data, core_methods)
+    log(f"  Noise dilution completed in {(time.time() - t0) / 60:.1f} min")
+
+    # ── Sub-experiment C: ρ sweep at P=200 (L=40) ──
+    log("\n--- Sub-experiment C: ρ sweep at P=200 (L=40 groups) ---")
+    rho_levels = [0.0, 0.5, 0.7, 0.9, 0.95]
+    n_groups_c = 40
+
+    for rho in rho_levels:
+        log(f"\n  ρ={rho}:")
+        t0 = time.time()
+
+        rep_results = Parallel(n_jobs=-1, verbose=0)(
+            delayed(_run_single_rep_highdim)(n_groups_c, group_size, rho, rep, core_methods, nthread=nthread)
+            for rep in range(N_REPS)
+        )
+
+        method_data = _init_method_data(core_methods)
+        for _, per_method, _ in rep_results:
+            _merge_rep(method_data, per_method)
+
+        results[f"C_P200_rho{rho}"] = _aggregate_method_data(method_data, core_methods)
+        log(f"  ρ={rho} completed in {(time.time() - t0) / 60:.1f} min")
+
+    # ── Summary ──
+    log("\n" + "=" * 70)
+    log("High-Dimensional Scaling — Summary")
+    log("=" * 70)
+
+    log("\nSub-exp A: Group scaling (ρ=0.9)")
+    log(f"  {'P':>5}  {'Method':<22} {'Stability':>10} {'TopK5':>8} {'Equity':>8}")
+    for n_groups in group_counts:
+        P = n_groups * group_size
+        key = f"A_L{n_groups}_P{P}"
+        for name in core_methods:
+            r = results[key][name]
+            log(f"  {P:>5}  {name:<22} {r['stability']:>10.4f} {r['topk5_stability']:>8.4f} {r['equity_mean']:>8.4f}")
+
+    log("\nSub-exp B: Noise dilution (P=200, ρ=0.9)")
+    log("  Condition (i): 40 groups, all signal [= A_L40_P200]")
+    log("  Condition (ii): 10 signal groups + 150 noise features")
+    for name in core_methods:
+        r_signal = results["A_L40_P200"][name]
+        r_noise = results["B_L10_noise150_P200"][name]
+        log(f"  {name:<22} signal_only={r_signal['stability']:.4f}  with_noise={r_noise['stability']:.4f}")
+
+    log("\nSub-exp C: ρ sweep at P=200 (L=40)")
+    log(f"  {'ρ':>5}  {'DASH':>10} {'SB':>10} {'SR':>10}")
+    for rho in rho_levels:
+        r = results[f"C_P200_rho{rho}"]
+        log(
+            f"  {rho:>5.2f}  {r['DASH (MaxMin)']['stability']:>10.4f} "
+            f"{r['Single Best']['stability']:>10.4f} {r['Stochastic Retrain']['stability']:>10.4f}"
+        )
+
+    _publish_results(
+        results,
+        f"{OUT}/tables/high_dimensional_scaling.json",
+        "high_dimensional_scaling",
+        N_REPS,
+        t0_global,
+    )
+
+    elapsed = time.time() - t0_global
+    log(f"\n  High-dimensional scaling completed in {elapsed / 60:.1f} min")
+    return results
+
+
 EXPERIMENTS = {
     "linear_sweep": experiment_linear_sweep,
     "overlapping": experiment_overlapping,
@@ -5047,6 +5279,7 @@ EXPERIMENTS = {
     "colsample_ablation": experiment_colsample_ablation,
     "success_criteria": experiment_success_criteria,
     "extensions_sanity_check": experiment_extensions_sanity_check,
+    "high_dimensional_scaling": experiment_high_dimensional_scaling,
 }
 
 # Default run order (all experiments)
