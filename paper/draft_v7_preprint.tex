@@ -1561,7 +1561,9 @@ output representation: features that consistently swap rank across
 ensemble members can be treated as \emph{incomparable} rather than
 arbitrarily ordered, yielding a partial order on feature importance
 that more honestly reflects genuine attribution ambiguity under
-collinearity. We pursue this direction in companion work.
+collinearity. We pursue this direction in companion work
+\citep{caraker2026impossibility}, which formalizes the conditions under
+which partial orders are necessary rather than merely convenient.
 
 \subsection{Practical recommendations}
 
@@ -1656,6 +1658,21 @@ optimization creates different but potentially analogous path
 dependencies) and whether partial orders on feature importance can
 replace point rankings as a more robust representation of explanation
 structure.
+
+The empirical equivalence between \dash{} and Stochastic Retrain---and
+the monotonic degradation of dependent methods with
+$\rhovar$---is consistent with a formal impossibility result we
+establish in companion work \citep{caraker2026impossibility}: no
+single-model feature ranking can simultaneously be faithful (reflect
+the model's attributions), stable (consistent across equivalent models),
+and complete (rank all feature pairs) when features are collinear.
+This trilemma holds for any attribution method applied to any model
+class exhibiting the Rashomon property under correlation---not only
+gradient boosting. The present work provides the empirical foundation
+and constructive resolution; the companion theorem, mechanically
+verified in the Lean~4 proof assistant, proves that ensemble-based
+approaches like \dash{} are not merely effective but mathematically
+necessary for achieving both stability and equity.
 
 The neural network case warrants particular attention. Attribution
 instability under feature collinearity is well-documented for NNs:
@@ -1806,6 +1823,13 @@ T.~Chen and C.~Guestrin.
 \newblock XGBoost: A scalable tree boosting system.
 \newblock In \emph{Proceedings of the 22nd ACM SIGKDD International Conference
   on Knowledge Discovery and Data Mining}, pages 785--794, 2016.
+
+\bibitem[Caraker et~al.(2026b)]{caraker2026impossibility}
+D.~Caraker, B.~Arnold, and D.~Rhoads.
+\newblock The attribution impossibility: Faithful, stable, and complete
+  feature rankings cannot coexist under collinearity.
+\newblock Manuscript in preparation. Lean~4 formalization available at
+  \url{https://github.com/DrakeCaraker/dash-impossibility-lean}, 2026.
 
 \bibitem[Chen et~al.(2020)]{chen2020true}
 H.~Chen, J.~D. Janizek, S.~Lundberg, and S.-I. Lee.
