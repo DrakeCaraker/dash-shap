@@ -16,11 +16,31 @@
       "graduated_this_session": [],
       "feedback_memory_count": 5,
       "bookmark_saved": true
+    },
+    {
+      "session_number": 2,
+      "date": "2026-04-03",
+      "duration_bucket": "long",
+      "branch_type": "main",
+      "commands_used": [],
+      "graduated_this_session": [],
+      "feedback_memory_count": 5,
+      "bookmark_saved": true
+    },
+    {
+      "session_number": 3,
+      "date": "2026-04-04",
+      "duration_bucket": "short",
+      "branch_type": "fix",
+      "commands_used": [],
+      "graduated_this_session": [],
+      "feedback_memory_count": 5,
+      "bookmark_saved": true
     }
   ],
   "aggregates": {
-    "total_sessions": 1,
-    "total_patterns_graduated": 0,
-    "days_active": 1
+    "total_sessions": 3,
+    "total_patterns_graduated": 8,
+    "days_active": 3
   }
 }

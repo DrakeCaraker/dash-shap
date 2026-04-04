@@ -5098,11 +5098,14 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
         return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
 
     # ── DASH ──
+    # Use relative epsilon for high-dim: absolute ε=0.08 starves the filter
+    # as P grows because the RMSE scale shifts with dimensionality.
     t0 = time.time()
     dash_pipeline = DASHPipeline(
         M=M,
         K=K,
         epsilon=EPSILON,
+        epsilon_mode="relative",
         delta=DELTA,
         selection_method="maxmin",
         task="regression",
@@ -5141,6 +5144,7 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
         M=M,
         K=K,
         epsilon=EPSILON,
+        epsilon_mode="relative",
         delta=DELTA,
         n_jobs=1,
         nthread=nthread_xgb,
@@ -5204,7 +5208,9 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
     B) Noise dilution: P=200 with L=10 signal groups + 150 noise features
     C) ρ replication at P=200 (L=40): ρ ∈ {0.0, 0.5, 0.7, 0.9, 0.95}
 
-    All use PAPER_CONFIG (M=200, K=30, N_REPS=50, ε=0.08).
+    All use PAPER_CONFIG (M=200, K=30, N_REPS=50, ε=0.08 relative).
+    Uses epsilon_mode='relative' because absolute ε=0.08 starves the
+    performance filter as P grows (RMSE scale shifts with dimensionality).
     Methods: DASH (MaxMin), Single Best (M=200), Random Selection, Naive Top-N,
     Stochastic Retrain. SB/RS/Naive reuse DASH's population; SR trains independently.
 

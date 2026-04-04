@@ -65,6 +65,16 @@
                         "command": ".claude/hooks/self-improve-check.sh",
                         "timeout": 5,
                         "statusMessage": "Checking for improvement opportunities..."
+                    },
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/session-bookmark.sh",
+                        "timeout": 5
+                    },
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/pilot-telemetry.sh",
+                        "timeout": 5
                     }
                 ]
             }
