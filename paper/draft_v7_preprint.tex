@@ -1031,9 +1031,13 @@ methods partition cleanly into two tiers:
 \end{itemize}
 
 The gap between tiers ($\sim$0.01--0.04) dwarfs the gap within the
-independent tier ($\sim$0.001). This supports the view that the operative
-mechanism is independence between explained models, not any particular
-aggregation strategy or hyperparameter diversification.
+independent tier ($< 0.001$). Indeed, Stochastic Retrain achieves
+marginally higher stability than \dash{} at every $\rhovar$ level
+($\Delta \approx +0.001$, not significant), confirming that model
+independence---not \dash{}'s specific selection mechanism---is the
+primary driver of stability recovery. \dash{}'s contributions beyond
+independence are efficiency ($K_{\text{eff}} \approx 12$ vs.\ $K = 30$
+for SR) and equitable attribution spreading (see below).
 
 \paragraph{The role of diversity selection.}
 Within the independent tier, Random Selection ($0.976$) nearly matches
@@ -1055,20 +1059,29 @@ those who also require equitable attributions benefit from MaxMin
 diversity selection.
 
 \paragraph{Variance decomposition.}
-To directly quantify the role of model-selection randomness, we
-decompose explanation instability into two sources by alternately fixing
-the data seed or the model seed. When data is fixed and only model seeds
-vary (isolating model-selection variance), Single Best stability is
-$0.978$ while \dash{} achieves $0.995$---indicating that \dash{}
-nearly eliminates model-selection noise. Model-selection variance
-accounts for approximately $54\%$ of Single Best's total instability but only $24\%$
-of \dash{}'s, consistent with independence-based averaging cancelling the
-arbitrary feature choices that dominate single-model
-explanations.\footnote{These percentages use $1 - \text{stability}$ as
-a proxy for instability. Since stability is a mean pairwise Spearman
-correlation rather than a variance, the decomposition is approximate
-and should be interpreted as directional evidence rather than exact
-variance fractions.}
+To directly quantify the role of model-selection randomness, we conduct
+a fully crossed $7 \times 7$ factorial experiment (7 data seeds $\times$
+7 model seeds = 49 cells) and decompose total variance via two-way
+ANOVA. For Single Best, model selection accounts for $40.6\%$ of total
+variance---comparable to the $37.6\%$ from data sampling---confirming
+that model-selection noise is a dominant instability source. \dash{}
+shifts the variance budget decisively: data accounts for $73.6\%$ of
+total variance while model selection drops to $16.2\%$, a $60\%$
+reduction in the model-selection sum of squares ($0.636 \to 0.089$).
+The residual (interaction + noise) likewise decreases from $21.8\%$ to
+$10.2\%$. This is the most direct evidence that independence-based
+averaging cancels the arbitrary feature choices that dominate
+single-model explanations.
+
+As a complementary check, we also conduct a marginal decomposition by
+alternately fixing the data seed or the model seed. When data is fixed
+and only model seeds vary, Single Best stability is $0.978$ while
+\dash{} achieves $0.995$---indicating that \dash{} nearly eliminates
+model-selection noise.\footnote{The marginal decomposition uses
+$1 - \text{stability}$ as a proxy for instability. Since stability is a
+mean pairwise Spearman correlation rather than a variance, this is
+approximate and should be interpreted as directional evidence. The
+crossed ANOVA above provides exact variance fractions.}
 
 \paragraph{Statistical significance.}
 Table~\ref{tab:significance} reports Wilcoxon signed-rank tests with
@@ -1413,6 +1426,17 @@ the highest stability ($0.998$) but with substantially worse RMSE
 \subsection{Robustness and scope}
 \label{sec:robustness}
 
+\paragraph{Overlapping correlation structure.}
+The main synthetic DGP uses block-diagonal correlation. Real data rarely
+has such clean structure. To test robustness, we use a chain-correlation
+DGP where groups share features (A--B--C overlap). \dash{} achieves
+stability $0.976$ vs.\ Single Best $0.897$ ($+0.079$)---the largest
+stability advantage observed in any synthetic experiment---and also
+dominates on top-5 agreement ($+0.156$) and equity ($-0.067$). This
+confirms that \dash{}'s MaxMin selection is particularly effective when
+the correlation structure is complex, as it selects models that explore
+different parts of the overlapping feature space.
+
 \paragraph{Hyperparameter sensitivity.}
 \dash{} is robust to its hyperparameters. Across a $3\times$ range of
 $\varepsilon$ values ($0.03$ to $0.10$), stability varies by $< 0.005$
@@ -1724,12 +1748,16 @@ multicollinearity. Three lines of evidence support this finding:
     than the standard single-best workflow---despite matching \dash{}'s
     total tree count and feature restriction. This provides strong evidence that
     sequential dependency, not model capacity, is a major driver of instability.
-  \item \dash{} and Stochastic Retrain achieve identical
+  \item \dash{} and Stochastic Retrain achieve equivalent
     stability ($0.977$ at $\rhovar = 0.9$; accuracy $d = +0.05$,
-    equity $d = -0.21$, both n.s.),
+    equity $d = -0.21$, both n.s.; TOST confirmed),
     despite differing in every design choice except model independence.
     This supports the view that independence between explained models is the
-    operative mechanism.
+    operative mechanism. \dash{}'s diversity-aware selection achieves this
+    with $K_{\text{eff}} \approx 12$ models (vs.\ $K = 30$ for SR) and
+    provides significantly more equitable attribution spreading within
+    correlated groups ($p < 0.001$ vs.\ Random Selection at every
+    $\rhovar$ level).
   \item The effect scales with correlation: dependent methods degrade
     monotonically as $\rhovar$ increases, while independent methods
     remain flat. This matches the mechanistic prediction.
