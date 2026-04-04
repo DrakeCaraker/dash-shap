@@ -5098,14 +5098,16 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
         return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
 
     # ── DASH ──
-    # Use relative epsilon for high-dim: absolute ε=0.08 starves the filter
-    # as P grows because the RMSE scale shifts with dimensionality.
+    # Use quantile epsilon for high-dim: absolute ε starves the filter as P
+    # grows (RMSE scale shifts), and relative makes it worse when RMSE < 1.
+    # Quantile ε=0.20 keeps top 20% = 40 models out of M=200, always ≥ K=30.
+    HIGHDIM_EPSILON = 0.20
     t0 = time.time()
     dash_pipeline = DASHPipeline(
         M=M,
         K=K,
-        epsilon=EPSILON,
-        epsilon_mode="relative",
+        epsilon=HIGHDIM_EPSILON,
+        epsilon_mode="quantile",
         delta=DELTA,
         selection_method="maxmin",
         task="regression",
@@ -5143,8 +5145,8 @@ def _run_single_rep_highdim(n_groups, group_size, rho, rep, methods, *, n_noise=
     rs = RandomSelectionBaseline(
         M=M,
         K=K,
-        epsilon=EPSILON,
-        epsilon_mode="relative",
+        epsilon=HIGHDIM_EPSILON,
+        epsilon_mode="quantile",
         delta=DELTA,
         n_jobs=1,
         nthread=nthread_xgb,
@@ -5208,9 +5210,10 @@ def experiment_high_dimensional_scaling(resume=False, cleanup=False):
     B) Noise dilution: P=200 with L=10 signal groups + 150 noise features
     C) ρ replication at P=200 (L=40): ρ ∈ {0.0, 0.5, 0.7, 0.9, 0.95}
 
-    All use PAPER_CONFIG (M=200, K=30, N_REPS=50, ε=0.08 relative).
-    Uses epsilon_mode='relative' because absolute ε=0.08 starves the
-    performance filter as P grows (RMSE scale shifts with dimensionality).
+    All use PAPER_CONFIG (M=200, K=30, N_REPS=50) with epsilon_mode='quantile'
+    (ε=0.20, keeping top 20% = 40 models). Absolute ε starves the filter as P
+    grows (RMSE scale shifts); relative is worse when RMSE < 1. Quantile
+    guarantees ≥K candidates regardless of score distribution.
     Methods: DASH (MaxMin), Single Best (M=200), Random Selection, Naive Top-N,
     Stochastic Retrain. SB/RS/Naive reuse DASH's population; SR trains independently.
 

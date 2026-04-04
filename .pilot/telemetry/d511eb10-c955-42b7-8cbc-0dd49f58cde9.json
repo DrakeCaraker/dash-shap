@@ -30,7 +30,7 @@
     {
       "session_number": 3,
       "date": "2026-04-04",
-      "duration_bucket": "short",
+      "duration_bucket": "medium",
       "branch_type": "fix",
       "commands_used": [],
       "graduated_this_session": [],
