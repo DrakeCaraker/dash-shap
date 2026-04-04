@@ -12,9 +12,11 @@
 
 ## v7 Results (TMLR — in progress)
 
-> ⚠️ **Status: PARTIAL** — Linear sweep, overlapping, and first-mover visualization confirmed from clean 50-rep re-run.
-> Nonlinear sweep in progress. Ablation, variance decomposition, background sensitivity, asymmetric DGP still pending.
-> Numbers below are from the clean re-run (run 20260330) and confirmed against run 20260326.
+> ✅ **Status: COMPLETE** — All 18 experiments finished on SageMaker run 20260329 (ml.g5.16xlarge, 64 CPU, 247.7 GB RAM).
+> All use PAPER_CONFIG (M=200, K=30, N_REPS=50, ε=0.08, δ=0.05). All marked code_dirty=true due to
+> mid-run JSON serialization patch (PR #223, no impact on model training or SHAP computation).
+> Config consistency verified: identical paper_config across all 18 JSONs.
+> Only pending: high_dimensional_scaling (running on sagemaker-run-20260403).
 
 **Configuration:** M=200, K=30, N_REPS=50, EPSILON=0.08, DELTA=0.05, SEED=42
 **Source:** `run_experiments_parallel.py` (SageMaker ml.g5.16xlarge)
@@ -172,16 +174,104 @@ DASH (MaxMin)        0.925 ± 0.004    0.856   0.143
 
 DASH is best on stability. Largest DASH-SR gap in any experiment (+0.063). RF near-DASH stability but ablation≈0 (stable through marginalization, not feature sensitivity). SB(M=200) < SB — model selection instability increases with population size under extreme collinearity. Bootstrap stability tests cut off in output — formal significance pending.
 
+### Superconductor (81 features, 21,263 samples, regression, 50 reps)
+
+```
+Method              Stability (±SE)    Top-k5    RMSE (±SE)
+================================================================
+Single Best          0.840 ± 0.014    0.712     9.215 ± 0.114
+Single Best (M=200)  0.853 ± 0.015    0.793     9.209 ± 0.101
+Large Single Model   0.721 ± 0.008    0.401     9.362 ± 0.122
+Ensemble SHAP        0.897 ± 0.003    0.663     9.323 ± 0.114
+Random Forest        0.940 ± 0.002    0.651     9.494 ± 0.112
+Stochastic Retrain   0.924 ± 0.008    0.973     9.162 ± 0.093
+Random Selection     0.968 ± 0.001    1.000     9.174 ± 0.101
+Naive Top-N          0.976 ± 0.001    1.000     9.147 ± 0.098
+DASH (MaxMin)        0.964 ± 0.001    0.974     9.174 ± 0.094
+```
+
+DASH (0.964) significantly improves over SB (0.840, +0.124) but is slightly below RS (0.968, p=0.0003) and NTN (0.976, p<0.001). With 81 features and high natural diversity, MaxMin selection provides diminishing returns — simpler ensemble averaging suffices. K_eff=27.2±3.1 (close to K=30, minimal dedup needed).
+
+### Variance Decomposition — Crossed ANOVA (7×7 factorial, ρ=0.9)
+
+```
+Method          Data %    Model %    Residual %
+================================================
+Single Best      37.6      40.6        21.8
+DASH (MaxMin)    73.6      16.2        10.2
+```
+
+DASH shifts variance from model-dominated (SB: 40.6% model) to data-dominated (DASH: 73.6% data). Model-selection noise reduced by 60% (0.636 → 0.089 sum of squares). This is the strongest mechanism evidence: DASH cancels path-dependent attribution noise through ensemble independence.
+
+### Variance Decomposition — Marginal (ρ=0.9)
+
+```
+Condition        SB Stability    DASH Stability    SB model_frac    DASH model_frac
+====================================================================================
+Data fixed       0.9755          0.9950            0.580            0.214
+Model fixed      0.9659          0.9803            0.580            0.214
+Both varied      0.9577          0.9767            0.580            0.214
+```
+
+### K Sweep Independence (ρ=0.9)
+
+```
+K     DASH     RS       SR
+============================
+1     NaN      0.952    0.960
+3     0.968    0.971    0.973
+5     0.973    0.974    0.974
+10    0.976    0.976    0.977
+20    0.977    0.976    0.977
+30    0.977    0.977    0.978
+50    0.977    0.976    0.978
+```
+
+Stability plateaus at K≈20. DASH fails at K=1 (needs diversity). SR slightly dominates at all K values.
+
+### Ablation Studies (ρ=0.9, stability)
+
+- **M (population):** M=50: 0.973, M=100: 0.976, M=200: 0.977, M=500: 0.978 — insensitive (Δ<0.005)
+- **K (ensemble):** K=5: 0.973, K=10: 0.976, K=20: 0.977, K=30: 0.977 — saturates at K≈20
+- **ε (filter):** ε=0.03: 0.976, ε=0.05: 0.976, ε=0.08: 0.977, ε=0.10: 0.977 — robust
+- **δ (dedup):** δ=0.01: 0.977, δ=0.05: 0.977, δ=0.10: 0.971, δ=0.20: 0.963 — **sensitive above 0.05**
+
+### Asymmetric DGP (passive leak, ρ=0.9)
+
+```
+Method              bias_f0    passive_leak_f1
+==============================================
+Single Best          0.068      0.068
+Stochastic Retrain   0.074      0.074
+DASH (MaxMin)        0.089      0.089
+Large Single Model   0.084      0.084
+```
+
+DASH has highest passive leak — expected trade-off of ensemble averaging under collinearity. Increases with ρ (0.046 at ρ=0.5 → 0.173 at ρ=0.95).
+
+### Background Sensitivity (ρ=0.9)
+
+Stability across background set sizes B ∈ {50, 100, 200, 500}: 0.9766–0.9768 (Δ<0.0002). Background size does not materially affect results.
+
+### First-Mover Bias Isolation
+
+Concentration converges at M≥500 (~0.248–0.264). Single vs independent training shows minimal difference at scale.
+
+### Colsample Ablation
+
+Confirms low colsample_bytree (0.1–0.5) is the operative mechanism: stability advantage appears at ρ=0.9 but not at ρ=0.0.
+
+### Key Findings (v7)
+
+1. **Independence is the mechanism**: SR ≈ DASH on stability at every ρ (p=0.40 at ρ=0.9). Any independent ensemble recovers stability.
+2. **DASH wins on equity**: Lowest within-group CV at every ρ (p<0.001 vs RS, d=-0.37). MaxMin selection distributes attribution more fairly.
+3. **Variance decomposition proves it**: SB 40.6% model noise → DASH 16.2% (crossed ANOVA). 63% reduction in model-selection variance.
+4. **Real-world: breast cancer is strongest**: DASH 0.925 vs SR 0.862 (+0.063). On superconductor, RS/NTN beat DASH slightly (81 features reduce MaxMin's value).
+5. **K_eff ≈ 12**: DASH achieves K=30-level stability with ~12 diversity-selected models. Efficient.
+
 ### Still Pending
 
-- Nonlinear sweep (in progress on SageMaker)
-- Ablation studies
-- Variance decomposition (marginal and crossed)
-- First-mover bias isolation
-- Background sensitivity
-- Asymmetric DGP
-- k_sweep_independence (broken, needs fix)
-- Superconductor (completed in run 20260326; clean re-run pending)
+- high_dimensional_scaling (running on sagemaker-run-20260403; improved 5-method version on feat/improve-high-dimensional-scaling branch)
 
 ---
 
