@@ -854,7 +854,7 @@ stability of any method at every correlation level, despite matching
 \dash{}'s total tree count and feature restriction. This is consistent
 with the first-mover bias hypothesis: sequential residual dependency concentrates
 importance on arbitrary features, and the effect worsens with
-correlation severity (LSM stability degrades from $0.953$ at
+correlation severity (LSM stability degrades from $0.955$ at
 $\rhovar = 0$ to $0.925$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
 stability is effectively flat ($0.972$--$0.977$), demonstrating
 immunity to the mechanism it is designed to break.
@@ -1001,11 +1001,11 @@ and were not independently measured.
   \textbf{Equity (CV$\downarrow$)} & \textbf{$K_{\text{eff}}$} & \textbf{Time (s)} \\
 \midrule
 \multirow{5}{*}{\rotatebox{90}{\scriptsize Dependent}}
-  & Single Best          & $.958 \pm .003$ & .978 & .224 & 1 & \phantom{0}43.5 \\
-  & Single Best$^\dagger$ & $.964 \pm .002$ & .981 & .212 & 1 & 248.8 \\
-  & Large Single Model   & $.938 \pm .003$ & .967 & .262 & 1 & \phantom{00}6.4 \\
-  & LSM (Tuned)          & $.948 \pm .003$ & .972 & .272 & 1 & \phantom{0}88.9 \\
-  & Ensemble SHAP        & $.956 \pm .003$ & .977 & .237 & 1 & --- \\
+  & Single Best          & $.958 \pm .002$ & .978 & .232 & 1 & \phantom{0}43.5 \\
+  & Single Best$^\dagger$ & $.964 \pm .001$ & .981 & .214 & 1 & 248.8 \\
+  & Large Single Model   & $.938 \pm .002$ & .968 & .258 & 1 & \phantom{00}6.4 \\
+  & LSM (Tuned)          & $.948 \pm .002$ & .973 & .271 & 1 & \phantom{0}88.9 \\
+  & Ensemble SHAP        & $.956 \pm .001$ & .977 & .236 & 1 & --- \\
 \addlinespace
 \midrule
 \addlinespace
@@ -1090,7 +1090,7 @@ $\rhovar$ levels. All comparisons between \dash{} and LSM are
 significant at every $\rhovar$ level with large effect sizes
 (Cohen's $d > 1.4$). \dash{} vs.\ Single Best becomes significant at
 $\rhovar \geq 0.7$ for both accuracy ($d = +0.98$) and equity
-($d = -1.07$). The \dash{} vs.\ Stochastic Retrain comparison is
+($d = -1.03$). The \dash{} vs.\ Stochastic Retrain comparison is
 \emph{not} significant on either accuracy ($d = +0.05$) or equity
 ($d = -0.13$), consistent with the independence principle.
 We additionally apply two one-sided $t$-tests (TOST) to evaluate
@@ -1125,15 +1125,15 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d
 \midrule
 0.7  & DASH vs SB  & Accuracy & \textbf{0.031} & $+$0.98 \\
 0.7  & DASH vs LSM & Accuracy & \textbf{0.002} & $+$1.97 \\
-0.7  & DASH vs SB  & Equity   & \textbf{0.018} & $-$1.07 \\
-0.7  & DASH vs LSM & Equity   & \textbf{$<$0.001} & $-$1.96 \\
+0.7  & DASH vs SB  & Equity   & \textbf{$<$0.001} & $-$1.03 \\
+0.7  & DASH vs LSM & Equity   & \textbf{$<$0.001} & $-$1.78 \\
 \addlinespace
 0.9  & DASH vs SB  & Accuracy & \textbf{0.010} & $+$1.59 \\
 0.9  & DASH vs LSM & Accuracy & \textbf{$<$0.001} & $+$3.42 \\
-0.9  & DASH vs SB  & Equity   & \textbf{0.015} & $-$1.27 \\
-0.9  & DASH vs LSM & Equity   & \textbf{$<$0.001} & $-$3.03 \\
+0.9  & DASH vs SB  & Equity   & \textbf{$<$0.001} & $-$1.47 \\
+0.9  & DASH vs LSM & Equity   & \textbf{$<$0.001} & $-$2.94 \\
 0.9  & DASH vs SR  & Accuracy & n.s. (0.926) & $+$0.05 \\
-0.9  & DASH vs SR  & Equity   & n.s. (0.622) & $-$0.21 \\
+0.9  & DASH vs SR  & Equity   & n.s. (0.44) & $-$0.13 \\
 \addlinespace
 0.95 & DASH vs SB  & Accuracy & \textbf{$<$0.001} & $+$2.07 \\
 0.95 & DASH vs LSM & Accuracy & \textbf{$<$0.001} & $+$4.41 \\
@@ -1211,7 +1211,7 @@ of top-feature identification.
 Table~\ref{tab:sweep} (Section~\ref{sec:mechanism_result}) reveals a
 dose-response relationship: as $\rhovar$ increases, first-mover bias
 intensifies for dependent methods while independent methods remain
-immune. LSM stability degrades monotonically from $0.953$ at $\rhovar=0$
+immune. LSM stability degrades monotonically from $0.955$ at $\rhovar=0$
 to $0.925$ at $\rhovar=0.95$---a $2.9\%$ decline. Single Best follows
 the same pattern ($0.973 \to 0.951$, a $2.3\%$ decline). \dash{}'s
 stability is effectively flat ($0.972$--$0.977$), fluctuating by less
