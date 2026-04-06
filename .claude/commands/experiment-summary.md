@@ -84,12 +84,12 @@ Flag any experiment that has JSON data but no figure (or vice versa) — this in
 
 ## Step 5: Regression check
 
-Compare key metrics from the JSON tables against the canonical numbers from `demo_benchmark_6.ipynb` (also in `CLAUDE.md` "Key Results"):
-- rho=0.9: DASH stability=0.977, Single Best=0.958, LSM=0.938
-- rho=0.95: DASH stability=0.977, Single Best=0.951, LSM=0.925
-- Breast Cancer: DASH stability=0.930, Single Best (M=200)=0.317
-- Superconductor: DASH stability=0.962, Single Best=0.830, LSM=0.689
-- California Housing: DASH stability=0.982, Single Best=0.967
+Compare key metrics from the JSON tables against the canonical v7 numbers (also in `CLAUDE.md` "Key Results"):
+- rho=0.9: DASH stability=0.9767, Single Best=0.9577, LSM=0.9381
+- rho=0.95: DASH stability=0.9774, Single Best=0.9515, LSM=0.9267
+- Breast Cancer: DASH stability=0.925, SB=0.376, SR=0.862
+- Superconductor: DASH stability=0.964, SB=0.840, LSM=0.721
+- California Housing: DASH stability=0.978, SB=0.969
 
 Flag any metric that decreased by >0.005 from these reference values.
 

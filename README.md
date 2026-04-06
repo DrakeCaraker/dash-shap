@@ -23,27 +23,27 @@ This instability comes from a specific mechanism — **sequential residual depen
 
 ## Key Results
 
-At high collinearity (ρ = 0.9, 50 features, 10 correlated groups, 20 repetitions):
+At high collinearity (ρ = 0.9, 50 features, 10 correlated groups, 50 repetitions):
 
-| Method | Stability | DGP Agreement | Equity (CV) |
+| Method | Stability | Top-K5 | Equity (CV) |
 |---|---|---|---|
-| Single Best | 0.958 | 0.978 | 0.224 |
-| Large Single Model | 0.938 | 0.967 | 0.262 |
-| **DASH (MaxMin)** | **0.977** | **0.988** | **0.176** |
+| Single Best | 0.958 | 0.546 | 0.232 |
+| Large Single Model | 0.938 | 0.433 | 0.258 |
+| **DASH (MaxMin)** | **0.977** | **0.863** | **0.175** |
 
 Stability on real-world datasets (50 reps):
 
 | Dataset | Features | Single Best | DASH | SR | Improvement |
 |---|---|---|---|---|---|
 | Breast Cancer | 30 (21 pairs \|r\| > 0.9) | 0.376 | **0.925** | 0.862 | **+0.549** |
-| Superconductor† | 81 | 0.830 | 0.962 | — | +0.132 |
+| Superconductor | 81 | 0.840 | **0.964** | 0.924 | +0.124 |
 | California Housing | 8 | 0.969 | 0.978 | 0.977 | +0.009 (n.s.) |
 
-*†Superconductor uses 20-rep data pending clean re-run. SR = Stochastic Retrain (seed averaging).*
+*SR = Stochastic Retrain (seed averaging).*
 
-DASH stability is flat across correlation levels (0.972–0.977 from ρ = 0.0 to ρ = 0.95). On Breast Cancer — the most extreme collinearity case — DASH outperforms Stochastic Retrain by +0.063, the largest DASH-SR gap in any experiment.
+DASH stability is flat across correlation levels (0.973–0.977 from ρ = 0.0 to ρ = 0.95). On Breast Cancer — the most extreme collinearity case — DASH outperforms Stochastic Retrain by +0.063, the largest DASH-SR gap in any experiment.
 
-*Synthetic results from 50-rep clean SageMaker run. Real-world: Breast Cancer and California from 50-rep clean run; Superconductor from [v6 ArXiv](notebooks/demo_benchmark_6.ipynb) (20 reps). See [Benchmark Results](docs/BENCHMARK_RESULTS.md) for full tables.*
+*All results from 50-rep SageMaker run (PAPER_CONFIG: M=200, K=30, ε=0.08, δ=0.05). See [Benchmark Results](docs/BENCHMARK_RESULTS.md) for full tables.*
 
 Full results: **[Benchmark Results](docs/BENCHMARK_RESULTS.md)** | Methodology: **[Experiment Guide](EXPERIMENT_GUIDE.md)**
 
@@ -60,7 +60,7 @@ Full results: **[Benchmark Results](docs/BENCHMARK_RESULTS.md)** | Methodology: 
 | 3 | [Tutorial 1: The Problem](notebooks/tutorial_01_the_problem.ipynb) | See SHAP ranking instability on Breast Cancer before DASH is introduced |
 | 4 | [Tutorial 2: How DASH Works](notebooks/tutorial_02_dash_walkthrough.ipynb) | 5-stage walkthrough on Breast Cancer — inspect intermediate outputs at each stage |
 | 5 | [Tutorial 3: Reading Results](notebooks/tutorial_03_interpreting_outputs.ipynb) | IS plot, FSI, local disagreement maps — quadrant action guide with clinical feature names |
-| 6 | [Tutorial 4: Parameter Exploration](notebooks/tutorial_04_simulation.ipynb) | Sweep ρ, M, K, epsilon; understand why the Breast Cancer +0.614 result happens |
+| 6 | [Tutorial 4: Parameter Exploration](notebooks/tutorial_04_simulation.ipynb) | Sweep ρ, M, K, epsilon; understand why the Breast Cancer +0.549 result happens |
 
 **Already familiar with SHAP?**
 
@@ -83,7 +83,7 @@ Use DASH when:
 
 - **Features are correlated** — The stability advantage is statistically significant at ρ ≥ 0.7 and grows with correlation severity. At ρ = 0.9, DASH improves stability from 0.958 to 0.977 over the single-best baseline.
 - **Explanation stability matters** — In regulated, high-stakes, or scientific settings where explanations must be reproducible across model retrains.
-- **Equitable credit distribution is needed** — DASH distributes importance proportionally across correlated feature groups (within-group CV = 0.176) rather than concentrating it on an arbitrary group member.
+- **Equitable credit distribution is needed** — DASH distributes importance proportionally across correlated feature groups (within-group CV = 0.175) rather than concentrating it on an arbitrary group member.
 - **You need to audit explanations without ground truth** — DASH's Feature Stability Index (FSI) and Importance-Stability (IS) plots detect which specific features are affected by first-mover bias. Quadrant II features (high importance, high instability) should be interpreted as collinear cluster members rather than individually important features.
 
 ### When simpler alternatives suffice
@@ -94,7 +94,7 @@ Use DASH when:
 
 | Method | Stability | Equity | Diagnostics | Notes |
 |---|---|---|---|---|
-| **Single Best Model** | Unstable under collinearity (0.317 on Breast Cancer) | Poor — concentrates credit arbitrarily | None | Standard workflow; unreliable when features are correlated |
+| **Single Best Model** | Unstable under collinearity (0.376 on Breast Cancer) | Poor — concentrates credit arbitrarily | None | Standard workflow; unreliable when features are correlated |
 | **Large Single Model** | *Worst* of all methods tested | Worst | None | More sequential trees *amplifies* first-mover bias — do not scale up single models |
 | **Stochastic Retrain** | Equivalent to DASH (~0.977) | Moderate | None | Sufficient when only stability matters; lacks equity and diagnostics |
 | **Stability Selection** | N/A (feature selection, not explanation) | N/A | N/A | Complementary: perturbs *data* and selects features; DASH perturbs *models* and distributes credit. Use both together. |

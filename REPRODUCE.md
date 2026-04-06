@@ -6,6 +6,35 @@ This document explains how to reproduce the experimental results in:
 
 ---
 
+## Result Version Tags
+
+Each experimental version is tagged for exact reproducibility. Use `git checkout <tag>` to access the code and results at that point.
+
+| Tag | Version | N_REPS | Venue | Canonical Source | Status |
+|---|---|---|---|---|---|
+| `results/v7-tmlr` | v7 | 50 | TMLR | `run_experiments_parallel.py` on SageMaker ml.g5.16xlarge | **COMPLETE** (18/18 core experiments) |
+| `results/v6-arxiv` | v6 | 20 | ArXiv/Zenodo | `notebooks/demo_benchmark_6.ipynb` | **FROZEN** |
+
+**Run provenance tags** (mark the start of each SageMaker run):
+
+| Tag | Description |
+|---|---|
+| `run-tmlr-20260329-start` | Start of the authoritative v7 TMLR run (50 reps, 18 experiments) |
+| `run-tmlr-20260403-start` | Start of high-dimensional scaling run (appendix, pending) |
+| `run-tmlr-20260326-start` | Start of interim run (superseded by 20260329) |
+| `run-tmlr-20260323-start` | Start of first SageMaker run (superseded) |
+
+**Archive tags** (intermediate results, not for citation):
+
+| Tag | Description |
+|---|---|
+| `archive/sagemaker-20260326` | Interim: 7/13 experiments complete |
+| `archive/sagemaker-20260323` | Early: partial results |
+
+To verify a tag's metadata: `git tag -v <tag>` (annotated tags) or `git log -1 <tag>` (all tags).
+
+---
+
 ## For TMLR Reviewers
 
 This section assumes no prior familiarity with the repository. Follow the steps in order.
