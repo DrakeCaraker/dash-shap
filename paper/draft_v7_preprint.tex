@@ -254,6 +254,18 @@ producing a more reproducible importance ranking. Specifically, \dash{}:
     local disagreement maps) for auditing explanation reliability.
 \end{enumerate}
 
+\noindent \dash{} operates at two layers.
+The \emph{core operation}---averaging attributions across independently
+trained models---is proved to be the minimum-variance unbiased
+estimator (Cram\'er--Rao bound) and is Pareto-optimal among all stable
+attribution methods \citep{caraker2026impossibility}.  This core
+operation requires only model independence; even simple seed averaging
+(Stochastic Retrain) implements it.
+The \emph{pipeline} (Stages~1--5) adds diversity enforcement,
+performance filtering, and stability diagnostics that improve
+finite-sample equity and provide actionable audit output beyond what
+plain averaging offers.
+
 We make five contributions:
 \begin{itemize}
   \item \textbf{Mechanistic framing.} Feature selection bias in ensemble methods
@@ -602,6 +614,13 @@ We use greedy max-min dissimilarity selection:
 This ensures each selected model is maximally different from all previously
 selected models in its feature utilization pattern, without requiring
 knowledge of the feature correlation structure.
+The companion paper \citep{caraker2026impossibility} formalizes a
+\emph{balanced ensemble} condition: within each collinear group, every
+feature serves as first-mover equally often, guaranteeing exact
+within-group equity.  Forced low \texttt{colsample\_bytree} (Stage~1)
+and MaxMin selection approximate this balance at smaller $M$ than
+simple seed averaging, which achieves it only asymptotically via the
+law of large numbers.
 
 \paragraph{Alternative: Deduplication selection.}
 A simpler variant removes near-duplicate models (pairwise Spearman
@@ -1185,6 +1204,13 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d
 \end{table}
 
 \paragraph{The SR equivalence isolates the operative mechanism.}
+Stochastic Retrain implements the same core operation as
+\dash{}---averaging attributions across independently trained
+models---differing only in how independence is achieved (seed diversity
+vs.\ hyperparameter diversity).  The companion paper
+\citep{caraker2026impossibility} proves this averaging is the unique
+minimum-variance unbiased estimator; the equivalence below confirms
+that practical independence, not pipeline engineering, drives stability.
 We find that model independence alone---even in its simplest form (seed
 averaging, no diversity optimization)---largely resolves first-mover
 bias in the linear regime.  Stochastic Retrain achieves marginally
@@ -1308,6 +1334,15 @@ A key practical question is: \emph{how can a practitioner know whether
 their explanations suffer from first-mover bias?} Ground-truth importance
 is never available in practice. \dash{}'s Stage~5 diagnostics address this
 by quantifying explanation disagreement across the ensemble.
+The companion paper \citep{caraker2026impossibility} introduces
+complementary formal tests: a single-model split-frequency $Z$-test
+that screens for instability from one model (no retraining), and a
+multi-model attribution $Z$-test that confirms instability with
+controlled type~I error.  The FSI and IS~Plot below are exploratory
+diagnostics that visualize the instability landscape; the $Z$-tests
+provide formal hypothesis testing.  The recommended workflow
+combines both: screen $\to$ confirm $\to$ resolve (via \dash{})
+$\to$ audit (via FSI/IS~Plot).
 
 \paragraph{Feature Stability Index (FSI).}
 The FSI (Eq.~\ref{eq:fsi}) measures the ratio of cross-model SHAP
