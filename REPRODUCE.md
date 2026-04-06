@@ -19,7 +19,7 @@ Each experimental version is tagged for exact reproducibility. Use `git checkout
 
 | Tag | Description |
 |---|---|
-| `run-tmlr-20260329-start` | Start of the authoritative v7 TMLR run (50 reps, 18 experiments) |
+| `run-tmlr-20260329-start` | Start of the authoritative v7 TMLR run (50 reps, 17 default experiments) |
 | `run-tmlr-20260403-start` | Start of high-dimensional scaling run (appendix, pending) |
 | `run-tmlr-20260326-start` | Start of interim run (superseded by 20260329) |
 | `run-tmlr-20260323-start` | Start of first SageMaker run (superseded) |
@@ -156,7 +156,7 @@ bash scripts/sagemaker_run.sh smoke
 bash scripts/sagemaker_run.sh branch
 
 # 6. Launch experiments in a named screen session
-#    Detaches automatically. All 13 experiments run with --resume.
+#    Detaches automatically. All 17 default experiments run with --resume.
 bash scripts/sagemaker_run.sh run
 
 # 7. Check progress (safe anytime, from any terminal)
@@ -234,7 +234,7 @@ If you have the existing partial results and want to run only the remaining expe
 
 ### Continuation run (run only what's missing)
 
-The 18 experiments are listed in `DEFAULT_ORDER` at the bottom of `run_experiments_parallel.py`. Three are already complete:
+The 17 default experiments are listed in `DEFAULT_ORDER` at the bottom of `run_experiments_parallel.py`. Three are already complete:
 - `linear_sweep` ✓
 - `first_mover_visualization` ✓
 - `k_sweep_independence` ✓
@@ -250,7 +250,7 @@ python run_experiments_parallel.py --experiments \
   background_sensitivity first_mover_bias
 ```
 
-### Full clean run (all 18 from scratch)
+### Full clean run (all 17 from scratch)
 
 If you want every result with full provenance from a single commit:
 ```bash
