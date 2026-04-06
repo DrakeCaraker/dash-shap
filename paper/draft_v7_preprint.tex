@@ -144,14 +144,17 @@ method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
 chain, supporting the view that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
-$= 0.977$, while the standard
+$\approx 0.977$--$0.978$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
 $0.376$ to $0.925$ ($+0.549$) over Single Best, and from
 $0.339$ to $0.925$ ($+0.586$) over the training-budget-matched
 Single Best ($M{=}200$), outperforming even Stochastic Retrain by $+0.063$.
+Under nonlinear data-generating processes, the stability advantage
+emerges at $\rhovar \geq 0.7$; at lower correlation, simpler methods
+suffice.
 
-\dash{} additionally provides two novel diagnostic tools---the Feature
+\dash{} additionally provides two diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
 first-mover bias without ground truth and can be applied independently
 of the full \dash{} pipeline, enabling practitioners to audit
@@ -251,7 +254,7 @@ producing a more reproducible importance ranking. Specifically, \dash{}:
     local disagreement maps) for auditing explanation reliability.
 \end{enumerate}
 
-We make four contributions:
+We make five contributions:
 \begin{itemize}
   \item \textbf{Mechanistic framing.} Feature selection bias in ensemble methods
     is well known \citep{strobl2007bias, hooker2019please}; we articulate
@@ -279,7 +282,8 @@ We make four contributions:
     the pipeline applicable to any attribution method (LIME, Integrated
     Gradients, neural network SHAP) that produces feature-level
     attribution vectors.  This positions \dash{} as a general-purpose
-    stability layer for model explanation rather than an XGBoost-specific tool.
+    stability layer for model explanation rather than an XGBoost-specific tool
+    (validated on LIME attributions in Appendix~\ref{app:lime_demo}).
 \end{itemize}
 
 \noindent On synthetic data, our ``accuracy'' metric evaluates agreement with a
@@ -457,6 +461,8 @@ concentration. Figure~\ref{fig:t_scaling} provides a direct test:
 varying $T$ while holding all other factors constant, concentration
 grows monotonically for a single sequential model and remains flat for
 $M$ independently trained models averaged at the same total tree budget.
+Appendix~\ref{app:twotree} provides a minimal analytical model of this
+gain bias.
 
 \begin{figure}[htbp]
 \centering
@@ -716,7 +722,7 @@ and a sinusoidal component:
 \end{equation}
 
 We sweep $\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with $N_{\text{reps}}
-= 20$ repetitions at each level, regenerating data (same coefficients, new
+= 50$ repetitions at each level, regenerating data (same coefficients, new
 random draws) for each repetition.
 
 \subsection{Real-world datasets}
@@ -855,8 +861,8 @@ stability of any method at every correlation level, despite matching
 with the first-mover bias hypothesis: sequential residual dependency concentrates
 importance on arbitrary features, and the effect worsens with
 correlation severity (LSM stability degrades from $0.955$ at
-$\rhovar = 0$ to $0.925$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
-stability is effectively flat ($0.972$--$0.977$), demonstrating
+$\rhovar = 0$ to $0.927$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
+stability is effectively flat ($0.973$--$0.977$), demonstrating
 immunity to the mechanism it is designed to break.
 
 \begin{table}[htbp]
@@ -931,7 +937,7 @@ Three patterns support the first-mover bias hypothesis:
     residual dependency is a primary driver of first-mover bias.
   \item \textbf{The effect scales with correlation.}
     LSM stability degrades from $0.955$ to $0.927$ as $\rhovar$ increases
-    from $0$ to $0.95$. \dash{} stability is flat ($0.972$--$0.977$).
+    from $0$ to $0.95$. \dash{} stability is flat ($0.973$--$0.977$).
     First-mover bias is specifically a collinearity problem.
   \item \textbf{Equity degrades in the same pattern.}
     LSM's within-group CV worsens from $0.170$ to $0.277$, consistent with
@@ -1069,9 +1075,46 @@ shifts the variance budget decisively: data accounts for $73.6\%$ of
 total variance while model selection drops to $16.2\%$, a $60\%$
 reduction in the model-selection sum of squares ($0.636 \to 0.089$).
 The residual (interaction + noise) likewise decreases from $21.8\%$ to
-$10.2\%$. This is the most direct evidence that independence-based
-averaging cancels the arbitrary feature choices that dominate
-single-model explanations.
+$10.2\%$. Table~\ref{tab:anova} reports the full ANOVA decomposition
+with $F$-statistics. Both data and model effects are highly significant
+for both methods ($p < 10^{-5}$). The key contrast is between methods:
+Single Best's model $F = 11.2$ slightly exceeds its data $F = 10.3$
+(model-dominated), while \dash{}'s data $F = 43.4$ dwarfs its model
+$F = 9.5$ (data-dominated). This shift confirms that
+independence-based averaging cancels the arbitrary feature choices that
+dominate single-model explanations.
+
+\begin{table}[htbp]
+\centering
+\caption{Two-way ANOVA for the $7 \times 7$ crossed variance
+decomposition ($\rhovar = 0.9$). Sum of squares are aggregated across
+$P = 50$ features; $F$-statistics use the residual (interaction +
+noise) as the error term.\protect\footnotemark{}
+Both data and model effects are significant for both
+methods; the critical contrast is that \dash{} shifts from
+model-dominated (SB) to data-dominated variance.}
+\label{tab:anova}
+\small
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Method} & \textbf{Source} & \textbf{SS} & \textbf{df} & $F$ & $p$ \\
+\midrule
+\multirow{3}{*}{Single Best}
+  & Data     & 0.588 & 6  & 10.3 & $1.2 \times 10^{-6}$ \\
+  & Model    & 0.636 & 6  & 11.2 & $5.1 \times 10^{-7}$ \\
+  & Residual & 0.341 & 36 & ---  & --- \\
+\addlinespace
+\multirow{3}{*}{\dash{} (MaxMin)}
+  & Data     & 0.405 & 6  & 43.4 & $4.9 \times 10^{-15}$ \\
+  & Model    & 0.089 & 6  & \phantom{0}9.5 & $2.8 \times 10^{-6}$ \\
+  & Residual & 0.056 & 36 & ---  & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+\footnotetext{Because each cell contains one $P$-dimensional importance
+vector and the SS are summed across features, these $F$-tests are an
+aggregate summary rather than a per-feature multivariate test.
+Per-feature ANOVA tables are available in the code repository.}
 
 As a complementary check, we also conduct a marginal decomposition by
 alternately fixing the data seed or the model seed. When data is fixed
@@ -1146,7 +1189,7 @@ We find that model independence alone---even in its simplest form (seed
 averaging, no diversity optimization)---largely resolves first-mover
 bias in the linear regime.  Stochastic Retrain achieves marginally
 higher stability point estimates than \dash{} at most $\rhovar$ levels
-($0.975$--$0.980$ vs.\ $0.972$--$0.977$), and the non-significant
+($0.975$--$0.980$ vs.\ $0.973$--$0.977$), and the non-significant
 differences on accuracy ($d = +0.05$, $p = 0.926$) and equity
 ($d = -0.13$, $p = 0.44$) confirm this equivalence statistically.
 \emph{This equivalence is the strongest evidence for our central claim}:
@@ -1158,6 +1201,12 @@ benefits---nonlinear robustness (Section~\ref{sec:nonlinear}), equitable
 attribution (below), ground-truth-free diagnostics
 (Section~\ref{sec:diagnostics}), and computational efficiency---that
 simple seed averaging does not provide.
+The companion paper \citep{caraker2026impossibility} proves that
+\dash{} consensus averaging is Pareto-optimal among all attribution
+aggregation methods: it achieves the Cram\'er--Rao variance bound
+$\sigma^2/M$ and no method can simultaneously achieve zero
+within-group unfaithfulness and higher between-group stability for the
+same ensemble size.
 
 SR achieves marginally higher stability point estimates at most
 $\rhovar$ levels, though these differences are small ($\leq 0.003$) and
@@ -1212,9 +1261,9 @@ Table~\ref{tab:sweep} (Section~\ref{sec:mechanism_result}) reveals a
 dose-response relationship: as $\rhovar$ increases, first-mover bias
 intensifies for dependent methods while independent methods remain
 immune. LSM stability degrades monotonically from $0.955$ at $\rhovar=0$
-to $0.925$ at $\rhovar=0.95$---a $2.9\%$ decline. Single Best follows
-the same pattern ($0.973 \to 0.951$, a $2.3\%$ decline). \dash{}'s
-stability is effectively flat ($0.972$--$0.977$), fluctuating by less
+to $0.927$ at $\rhovar=0.95$---a $2.9\%$ decline. Single Best follows
+the same pattern ($0.972 \to 0.952$, a $2.1\%$ decline). \dash{}'s
+stability is effectively flat ($0.973$--$0.977$), fluctuating by less
 than $0.5\%$ across the entire correlation range.
 
 The equity metric shows the same scaling. LSM's within-group CV worsens
@@ -1271,6 +1320,40 @@ radius/perimeter/area triad that are less frequently selected as
 instability. The FSI gradient across correlated features
 identifies collinear groups without computing the correlation matrix,
 providing an unsupervised collinearity diagnostic.
+
+\paragraph{Quantitative validation of FSI.}
+On synthetic data with known ground truth, FSI cleanly separates signal
+features (those in groups with $\beta_g > 0$) from noise features
+($\beta_g = 0$) at every correlation level (Table~\ref{tab:fsi_validation}).
+Signal features have consistently lower FSI (more stable attributions)
+than noise features, with the ratio declining from $0.31$ at $\rhovar = 0$
+to $0.25$ at $\rhovar = 0.95$---indicating that FSI becomes a sharper
+discriminator as collinearity increases. The Spearman correlation between
+FSI and ground-truth importance magnitude is $\rhovar_S \approx -0.995$
+($p < 0.001$) at every level, confirming that FSI ordering nearly
+perfectly recovers the true importance ordering without access to ground
+truth.
+
+\begin{table}[htbp]
+\centering
+\caption{FSI validation on synthetic data (50 repetitions per $\rhovar$).
+Mean FSI for signal features ($\beta_g > 0$) vs.\ noise features
+($\beta_g = 0$).  $\beta$~Spearman is the rank correlation between FSI
+and ground-truth importance magnitude across all 50~features.}
+\label{tab:fsi_validation}
+\small
+\begin{tabular}{ccccc}
+\toprule
+$\rhovar$ & Mean FSI (signal) & Mean FSI (noise) & Ratio & $\beta$~Spearman \\
+\midrule
+0.0  & 0.285 & 0.905 & 0.31 & $-$0.995 \\
+0.5  & 0.337 & 1.253 & 0.27 & $-$0.995 \\
+0.7  & 0.362 & 1.424 & 0.25 & $-$0.995 \\
+0.9  & 0.420 & 1.636 & 0.26 & $-$0.994 \\
+0.95 & 0.461 & 1.843 & 0.25 & $-$0.991 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Importance-Stability (IS) Plot.}
 The IS Plot partitions features into four quadrants by median
@@ -1395,9 +1478,13 @@ internal feature bagging, but its near-zero ablation score ($0.005$
 vs.\ \dash{}'s $0.143$) indicates that RF's attributions are largely
 invariant to feature removal---stable through marginalization rather than
 through accurate feature-level sensitivity. \dash{} consensus produces
-stable top features aligned with known geometric redundancy---\texttt{mean
-concave points} (0.228), \texttt{worst area} (0.201), \texttt{worst
-perimeter} (0.201)---that are stable across repetitions.
+stable top features aligned with known geometric
+redundancy---\texttt{mean concave points} (0.228), \texttt{worst area}
+(0.201), \texttt{worst perimeter} (0.201)---that are stable across
+repetitions.  These rankings are consistent with the clinical literature:
+concavity features reflect nuclear contour irregularity, a hallmark of
+malignancy, while area and perimeter capture tumor size
+\citep{street1993nuclear}.
 
 \paragraph{Superconductor.}
 On the Superconductor dataset (81 features, 21,263 samples), \dash{}
@@ -1457,6 +1544,7 @@ Retrain is $1.7\times$ more expensive than \dash{}, as it computes SHAP
 for all $K = 30$ models rather than only the diverse subset.
 
 \paragraph{Nonlinear DGP: scope boundary.}
+\label{sec:nonlinear}
 Under the nonlinear DGP (Table~\ref{tab:nonlinear}), all methods
 degrade (stability drops from $\sim$0.93 to $\sim$0.88), but the
 first-mover bias mechanism still operates: \dash{} outperforms Single
@@ -1557,12 +1645,18 @@ independence alone.
 \paragraph{Random forests as an independence control.}
 Random Forest (RF) provides a natural test of the independence principle
 from the model-family side: its trees are trained independently by
-construction (via bootstrap sampling and random feature subsets). In the
+construction (via bootstrap sampling and random feature subsets).
+The companion impossibility analysis \citep{caraker2026impossibility}
+predicts this theoretically: RF's attribution ratio converges as
+$O(1/\sqrt{T})$, in contrast to gradient boosting's divergent
+$1/(1 - \rhovar^2)$---independence between trees prevents the
+compounding that drives first-mover concentration. In the
 linear correlation sweep, RF achieves stability competitive with
-\dash{} ($0.978$ vs.\ $0.977$ at $\rhovar = 0.9$). However, RF's
+\dash{} ($0.978$ vs.\ $0.977$ at $\rhovar = 0.9$), consistent with
+this prediction. However, RF's
 top-$5$ ranking agreement is substantially lower ($0.375$ vs.\ $0.863$;
 $p < 0.001$, $d = +0.488$) and its predictive RMSE is significantly
-worse ($0.957$ vs.\ $0.594$). This pattern---high stability but poor
+worse ($0.957$ vs.\ $0.591$). This pattern---high stability but poor
 top-feature identification---indicates that RF produces \emph{stable
 but systematically different} attributions. Independence ensures that
 arbitrary choices cancel upon averaging, yielding high stability; but
@@ -1626,17 +1720,61 @@ which partial orders are necessary rather than merely convenient.
     amplifies, rather than resolves, explanation instability.
 \end{enumerate}
 
+\paragraph{Model governance considerations.}
+In regulated settings (\eg banking model risk management under SR~11-7,
+or transparency obligations under the EU~AI~Act), \dash{} is best
+understood as an \emph{explanation auditing layer} rather than a
+replacement for the production model. The deployed system still trains
+and serves a single XGBoost model; \dash{} runs offline during model
+validation to assess whether that model's SHAP-based feature rankings
+are trustworthy. The $M$-model population is an audit instrument---
+analogous to stress-testing a model under varied specifications---not a
+deployed ensemble. For model risk documentation, we recommend recording:
+(1)~the production model's SHAP rankings alongside the \dash{} consensus
+rankings, (2)~the FSI values and IS~Plot quadrant assignments as evidence
+of explanation reliability or instability, and (3)~specific features
+flagged as Quadrant~II members, which should be reported as collinear
+groups rather than individually ranked.
+
+\paragraph{Expected improvement magnitude.}
+The Breast Cancer result ($+0.549$ over Single Best) reflects extreme
+collinearity (21~feature pairs with $|r| > 0.9$). On datasets with
+moderate collinearity---California Housing ($|r| \approx 0.7$, 8
+features)---the stability improvement is $+0.009$ (not significant),
+and \dash{}'s primary value is the diagnostic output rather than the
+stability gain. Practitioners should calibrate expectations
+accordingly: improvements of $+0.01$--$0.05$ on stability are typical
+for moderately correlated datasets, with larger gains reserved for
+settings with heavy collinearity.
+
 \subsection{Limitations}
 
 \begin{itemize}
-  \item \textbf{Scope.} The default pipeline targets XGBoost and
-    TreeSHAP. Extension to other model families (\eg neural networks
-    with KernelSHAP) would require adapting the diversity selection
-    criteria to non-tree-based importance measures. The
-    \texttt{fit\_from\_attributions()} interface partially relaxes this
-    constraint: any attribution method producing feature-level vectors
-    can plug into the diversity selection and consensus stages without
-    retraining.
+  \item \textbf{Scope of the independence principle.} The empirical
+    validation in this paper covers interventional TreeSHAP on XGBoost.
+    The companion impossibility theorem
+    \citep{caraker2026impossibility} proves that the underlying
+    instability---and the necessity of ensemble-based resolution---holds
+    for \emph{any} attribution method on \emph{any} model class
+    exhibiting the Rashomon property under correlation, providing a
+    theoretical basis for expecting the independence principle to
+    generalize.  However, direct empirical validation on other
+    configurations (conditional SHAP, LightGBM, CatBoost, neural
+    networks with KernelSHAP) remains future work.  The
+    \texttt{fit\_from\_attributions()} interface partially bridges this
+    gap: any attribution method producing feature-level vectors can
+    plug into \dash{}'s aggregation stages without retraining
+    (validated on LIME in Appendix~\ref{app:lime_demo}).
+    The conditional SHAP case warrants particular attention: although
+    conditional approaches account for feature dependencies in the
+    reference distribution \citep{aas2021explaining}, the companion
+    paper proves that switching to conditional SHAP does \emph{not}
+    escape the impossibility when features have equal causal effects
+    \citep{caraker2026impossibility}---the instability is a property of
+    the Rashomon set, not the attribution method.  However, the
+    practical dynamics of instability under conditional SHAP may differ
+    from the interventional setting, and empirical validation remains
+    open.
   \item \textbf{Interventional SHAP under correlation.} DASH uses
     interventional TreeSHAP, which conditions on marginal rather than
     conditional feature distributions. Under high correlation, this
@@ -1769,7 +1907,7 @@ multicollinearity. Three lines of evidence support this finding:
 
 \dash{} (Diversified Aggregation of SHAP) operationalizes the
 independence principle with forced feature restriction, diversity-aware
-model selection, and two novel diagnostic tools---the Feature Stability
+model selection, and two diagnostic tools---the Feature Stability
 Index and Importance-Stability Plot---that detect first-mover bias
 without ground truth. On real-world datasets, \dash{} improves stability
 from $0.339$ to $0.925$ (Breast Cancer), from $0.840$ to $0.964$
@@ -1785,13 +1923,13 @@ The code, data, and reproducible benchmarks are publicly available at
 All code, data generators, hyperparameter configurations, and evaluation
 metrics are publicly available at
 \url{https://github.com/DrakeCaraker/dash-shap}. The complete benchmark
-can be reproduced via \texttt{python run\_experiments.py} with fixed
+can be reproduced via \texttt{python run\_experiments\_parallel.py} with fixed
 random seeds ($\text{SEED} = 42$). The authoritative interactive
-notebook \texttt{notebooks/demo\_benchmark\_6.ipynb} provides a
-checkpointed walkthrough of all experiments; all tables and figures in
-this paper are sourced from that notebook. Hardware-dependent timing
-results (Table~\ref{tab:cost}) were measured on Apple M-series silicon,
-single node, and are reported for relative comparison only.
+notebook \texttt{notebooks/demo\_benchmark\_7\_parallel.ipynb} provides a
+checkpointed walkthrough of all experiments. The canonical results were
+produced on AWS SageMaker (\texttt{ml.g5.16xlarge}, 64~vCPU, 248~GB~RAM);
+hardware-dependent timing results (Table~\ref{tab:cost}) were measured on
+Apple M-series silicon, single node, and are reported for relative comparison only.
 
 % ===========================================================================
 \section*{Acknowledgments}
@@ -1966,6 +2104,13 @@ J.~Paillard, D.~Chen, and R.~Bhatt.
 \newblock On computing {SHAP} values for ensemble models.
 \newblock \emph{arXiv preprint arXiv:2502.01327}, 2025.
 
+\bibitem[Ribeiro et~al.(2016)]{ribeiro2016lime}
+M.~T. Ribeiro, S.~Singh, and C.~Guestrin.
+\newblock ``{W}hy should {I} trust you?'': Explaining the predictions of any
+  classifier.
+\newblock In \emph{Proceedings of the 22nd ACM SIGKDD International Conference
+  on Knowledge Discovery and Data Mining}, pages 1135--1144, 2016.
+
 \bibitem[Semenova et~al.(2022)]{semenova2022existence}
 L.~Semenova, C.~Rudin, and R.~Parr.
 \newblock On the existence of simpler machine learning models.
@@ -1984,6 +2129,12 @@ D.~Slack, S.~Hilgard, E.~Jia, S.~Singh, and H.~Lakkaraju.
   explanation methods.
 \newblock In \emph{AAAI/ACM Conference on AI, Ethics, and Society}, pages
   180--186, 2020.
+
+\bibitem[Street et~al.(1993)]{street1993nuclear}
+W.~N. Street, W.~H. Wolberg, and O.~L. Mangasarian.
+\newblock Nuclear feature extraction for breast tumor diagnosis.
+\newblock In \emph{IS\&T/SPIE International Symposium on Electronic Imaging},
+  pages 861--870, 1993.
 
 \bibitem[Strobl et~al.(2007)]{strobl2007bias}
 C.~Strobl, A.-L. Boulesteix, A.~Zeileis, and T.~Hothorn.
@@ -2077,9 +2228,9 @@ H.~Zou and T.~Hastie.
 
 Full per-repetition importance vectors, significance test results, and
 ablation data are available in JSON format from the experimental runner.
-Running \texttt{python run\_experiments.py} reproduces all tables and
+Running \texttt{python run\_experiments\_parallel.py} reproduces all tables and
 figures. The authoritative notebook
-\texttt{notebooks/demo\_benchmark\_6.ipynb} provides a checkpointed
+\texttt{notebooks/demo\_benchmark\_7\_parallel.ipynb} provides a checkpointed
 walkthrough of all experiments with intermediate results cached for
 rapid re-execution.
 
@@ -2280,5 +2431,127 @@ Large Single Model & 1.000 & 0.084 & 0.084 \\
 \end{tabular}
 \end{table}
 
+
+\section{Two-Tree Analytical Example}
+\label{app:twotree}
+
+To build intuition for first-mover bias, we analyze the simplest possible
+case: two-step linear boosting on correlated features. The companion
+paper \citep{caraker2026impossibility} proves the formal result---the
+attribution ratio is exactly $1/(1-\rhovar^2)$ for gradient boosting
+under the proportionality axiom---and verifies it in Lean~4. Here we
+provide an accessible derivation that isolates the core mechanism.
+
+\paragraph{Setup.}
+Let $A, B$ be two features with $\text{Cov}(A, B) = \rho$,
+$\text{Var}(A) = \text{Var}(B) = 1$, and target $y = A + \varepsilon$.
+Consider linear boosting with learning rate $\eta$: at each step we
+fit $y$ (or its residual) by regressing on a single feature and updating
+the model with the fitted value scaled by $\eta$.
+
+\paragraph{Step~1.}
+Suppose the first step selects feature $A$.  The fitted coefficient is
+$\hat{\beta}_1 = \text{Cov}(y, A)/\text{Var}(A) = 1$, so the model
+after step~1 is $f_1(x) = \eta A$.  The residual is
+$r_1 = y - \eta A = (1 - \eta) A + \varepsilon$.
+
+\paragraph{Step~2.}
+Now consider the gain from each feature on the residual $r_1$:
+\begin{align}
+  \text{Gain}(A) &= \bigl[\text{Cov}(r_1, A)\bigr]^2 / \text{Var}(A) = (1 - \eta)^2, \\
+  \text{Gain}(B) &= \bigl[\text{Cov}(r_1, B)\bigr]^2 / \text{Var}(B) = \rho^2(1 - \eta)^2.
+\end{align}
+Since $\rho < 1$, feature $A$ has strictly higher gain on the residual:
+$\text{Gain}(A) / \text{Gain}(B) = 1/\rho^2$.  The second step selects
+$A$ again.  After two steps, the model is $f_2(x) = \eta(2 - \eta) A$:
+\emph{only feature $A$ is used}, and all SHAP credit goes to $A$.
+
+\paragraph{From gain bias to concentration.}
+The gain ratio $1/\rho^2 \approx 1.23$ at $\rhovar = 0.9$ demonstrates
+the mechanism: after one step, the residual structure encodes which
+feature was used, creating a bias toward re-selecting that feature.
+
+This simple linear model is deliberately minimal.  Two features and
+linear gain are sufficient to isolate the residual-bias mechanism, but
+they do not capture the full concentration dynamics of tree-based
+boosting.  In particular, when the DGP is symmetric
+($y = \beta \bar{z}_g + \varepsilon$ with $\bar{z}_g = (A + B)/2$,
+the paper's main setting), linear boosting alternates between $A$
+and~$B$ at each step---the unused feature always has marginally higher
+gain---so no net concentration arises in this idealization.
+
+In actual XGBoost, three additional factors break this alternation and
+enable the concentration observed in Figure~\ref{fig:t_scaling}:
+(1)~threshold-based splits create nonlinear gain functions that do not
+alternate as cleanly as linear regression gains;
+(2)~multi-depth trees create interaction structure where a feature used
+at the root influences which features are useful at child nodes; and
+(3)~\texttt{colsample\_bytree} restricts the available feature set per
+tree, so the feature that accumulates slightly more early splits
+(by chance) builds a residual advantage that compounds over hundreds
+of trees.  The interplay of these stochastic and structural effects is
+what produces the monotonically growing concentration in
+Figure~\ref{fig:t_scaling}---the linear gain-bias derived above provides
+the seed, and tree-specific dynamics amplify it.
+
+\paragraph{Independence resolves the compounding.}
+Because independently trained models make their first-mover selections
+independently, the compounding runs in different directions for different
+models.  When their SHAP vectors are averaged:
+\begin{equation}
+  \bar{\phi}_A \approx \tfrac{1}{K}\sum_{k=1}^{K} \phi_A^{(k)},
+\end{equation}
+models that concentrated on $A$ and models that concentrated on $B$
+cancel each other's arbitrary choices. With $K$ independent models, the
+variance of the consensus importance due to first-mover effects decays
+as $O(1/K)$, explaining the stability plateau at $K \approx 20$
+observed in the $K$-sweep experiment.
+
+This example identifies the residual gain-bias seed ($1/\rho^2$)
+and the cancellation principle ($O(1/K)$ variance decay).
+Figure~\ref{fig:t_scaling} confirms the empirical predictions:
+(1)~concentration grows monotonically with $T$ for a single sequential
+model, and (2)~independent ensembles remain flat regardless of
+per-model tree count.
+
+
+\section{Attribution-Agnostic Interface Validation}
+\label{app:lime_demo}
+
+The \texttt{fit\_from\_attributions()} interface (contribution~5 in
+Section~\ref{sec:introduction}) decouples \dash{}'s aggregation stages
+(filtering, diversity selection, consensus, diagnostics) from the
+attribution method. We validate this claim by applying \dash{} to LIME
+\citep{ribeiro2016lime} attributions on the Breast Cancer dataset.
+
+\paragraph{Procedure.}
+We train $M = 30$ XGBoost classifiers with randomly sampled
+hyperparameters (same search space as the main experiments,
+\texttt{colsample\_bytree} $\in \{0.2, 0.3, 0.4, 0.5\}$).
+For each model, we compute LIME attributions for $N' = 30$ observations
+from the held-out explain set, producing an $(M, N', P)$ attribution
+tensor. We then call
+\texttt{pipe.fit\_from\_attributions(attributions, val\_scores)} with
+$K = 10$ and relative $\varepsilon = 0.05$.
+
+\paragraph{Results.}
+\dash{} successfully executes all four post-population stages on the
+LIME tensor. The consensus top features---\texttt{worst concave points}
+(0.104), \texttt{worst texture} (0.102), \texttt{worst area} (0.086),
+\texttt{worst perimeter} (0.073)---draw from the same clinically
+relevant feature families (concavity, area, perimeter) as the
+TreeSHAP-based rankings in Table~\ref{tab:realworld}, confirming that
+the diagnostic framework generalizes across attribution methods.
+MaxMin diversity selection yields $K_{\text{eff}} = 3$ (low because all
+30 models achieve identical validation accuracy on this dataset,
+limiting diversity in the filtered pool).
+
+This demonstrates that \dash{}'s stages 2--5 can operate on any
+$(M, N', P)$ attribution tensor, regardless of whether it was produced
+by TreeSHAP, LIME, Integrated Gradients, or any other feature-level
+attribution method. The independence principle---that averaging over
+independently trained models cancels arbitrary attribution
+choices---applies to any attribution method that is sensitive to model
+specification, not only TreeSHAP.
 
 \end{document}
