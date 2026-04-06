@@ -856,7 +856,7 @@ with the first-mover bias hypothesis: sequential residual dependency concentrate
 importance on arbitrary features, and the effect worsens with
 correlation severity (LSM stability degrades from $0.955$ at
 $\rhovar = 0$ to $0.927$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
-stability is effectively flat ($0.972$--$0.977$), demonstrating
+stability is effectively flat ($0.973$--$0.977$), demonstrating
 immunity to the mechanism it is designed to break.
 
 \begin{table}[htbp]
@@ -931,7 +931,7 @@ Three patterns support the first-mover bias hypothesis:
     residual dependency is a primary driver of first-mover bias.
   \item \textbf{The effect scales with correlation.}
     LSM stability degrades from $0.955$ to $0.927$ as $\rhovar$ increases
-    from $0$ to $0.95$. \dash{} stability is flat ($0.972$--$0.977$).
+    from $0$ to $0.95$. \dash{} stability is flat ($0.973$--$0.977$).
     First-mover bias is specifically a collinearity problem.
   \item \textbf{Equity degrades in the same pattern.}
     LSM's within-group CV worsens from $0.170$ to $0.277$, consistent with
@@ -1177,7 +1177,7 @@ We find that model independence alone---even in its simplest form (seed
 averaging, no diversity optimization)---largely resolves first-mover
 bias in the linear regime.  Stochastic Retrain achieves marginally
 higher stability point estimates than \dash{} at most $\rhovar$ levels
-($0.975$--$0.980$ vs.\ $0.972$--$0.977$), and the non-significant
+($0.975$--$0.980$ vs.\ $0.973$--$0.977$), and the non-significant
 differences on accuracy ($d = +0.05$, $p = 0.926$) and equity
 ($d = -0.13$, $p = 0.44$) confirm this equivalence statistically.
 \emph{This equivalence is the strongest evidence for our central claim}:
@@ -1244,8 +1244,8 @@ dose-response relationship: as $\rhovar$ increases, first-mover bias
 intensifies for dependent methods while independent methods remain
 immune. LSM stability degrades monotonically from $0.955$ at $\rhovar=0$
 to $0.927$ at $\rhovar=0.95$---a $2.9\%$ decline. Single Best follows
-the same pattern ($0.973 \to 0.951$, a $2.3\%$ decline). \dash{}'s
-stability is effectively flat ($0.972$--$0.977$), fluctuating by less
+the same pattern ($0.972 \to 0.952$, a $2.1\%$ decline). \dash{}'s
+stability is effectively flat ($0.973$--$0.977$), fluctuating by less
 than $0.5\%$ across the entire correlation range.
 
 The equity metric shows the same scaling. LSM's within-group CV worsens
@@ -1627,7 +1627,7 @@ linear correlation sweep, RF achieves stability competitive with
 \dash{} ($0.978$ vs.\ $0.977$ at $\rhovar = 0.9$). However, RF's
 top-$5$ ranking agreement is substantially lower ($0.375$ vs.\ $0.863$;
 $p < 0.001$, $d = +0.488$) and its predictive RMSE is significantly
-worse ($0.957$ vs.\ $0.594$). This pattern---high stability but poor
+worse ($0.957$ vs.\ $0.591$). This pattern---high stability but poor
 top-feature identification---indicates that RF produces \emph{stable
 but systematically different} attributions. Independence ensures that
 arbitrary choices cancel upon averaging, yielding high stability; but
