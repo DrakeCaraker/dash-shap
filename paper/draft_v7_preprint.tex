@@ -279,7 +279,8 @@ We make five contributions:
     the pipeline applicable to any attribution method (LIME, Integrated
     Gradients, neural network SHAP) that produces feature-level
     attribution vectors.  This positions \dash{} as a general-purpose
-    stability layer for model explanation rather than an XGBoost-specific tool.
+    stability layer for model explanation rather than an XGBoost-specific tool
+    (validated on LIME attributions in Appendix~\ref{app:lime_demo}).
 \end{itemize}
 
 \noindent On synthetic data, our ``accuracy'' metric evaluates agreement with a
@@ -457,6 +458,8 @@ concentration. Figure~\ref{fig:t_scaling} provides a direct test:
 varying $T$ while holding all other factors constant, concentration
 grows monotonically for a single sequential model and remains flat for
 $M$ independently trained models averaged at the same total tree budget.
+Appendix~\ref{app:twotree} provides a minimal analytical model of this
+gain bias.
 
 \begin{figure}[htbp]
 \centering
@@ -1082,7 +1085,9 @@ dominate single-model explanations.
 \centering
 \caption{Two-way ANOVA for the $7 \times 7$ crossed variance
 decomposition ($\rhovar = 0.9$). Sum of squares are aggregated across
-$P = 50$ features. Both data and model effects are significant for both
+$P = 50$ features; $F$-statistics use the residual (interaction +
+noise) as the error term.\protect\footnotemark{}
+Both data and model effects are significant for both
 methods; the critical contrast is that \dash{} shifts from
 model-dominated (SB) to data-dominated variance.}
 \label{tab:anova}
@@ -1103,6 +1108,10 @@ model-dominated (SB) to data-dominated variance.}
 \bottomrule
 \end{tabular}
 \end{table}
+\footnotetext{Because each cell contains one $P$-dimensional importance
+vector and the SS are summed across features, these $F$-tests are an
+aggregate summary rather than a per-feature multivariate test.
+Per-feature ANOVA tables are available in the code repository.}
 
 As a complementary check, we also conduct a marginal decomposition by
 alternately fixing the data seed or the model seed. When data is fixed
@@ -1460,9 +1469,13 @@ internal feature bagging, but its near-zero ablation score ($0.005$
 vs.\ \dash{}'s $0.143$) indicates that RF's attributions are largely
 invariant to feature removal---stable through marginalization rather than
 through accurate feature-level sensitivity. \dash{} consensus produces
-stable top features aligned with known geometric redundancy---\texttt{mean
-concave points} (0.228), \texttt{worst area} (0.201), \texttt{worst
-perimeter} (0.201)---that are stable across repetitions.
+stable top features aligned with known geometric
+redundancy---\texttt{mean concave points} (0.228), \texttt{worst area}
+(0.201), \texttt{worst perimeter} (0.201)---that are stable across
+repetitions.  These rankings are consistent with the clinical literature:
+concavity features reflect nuclear contour irregularity, a hallmark of
+malignancy, while area and perimeter capture tumor size
+\citep{street1993nuclear}.
 
 \paragraph{Superconductor.}
 On the Superconductor dataset (81 features, 21,263 samples), \dash{}
@@ -2047,6 +2060,13 @@ J.~Paillard, D.~Chen, and R.~Bhatt.
 \newblock On computing {SHAP} values for ensemble models.
 \newblock \emph{arXiv preprint arXiv:2502.01327}, 2025.
 
+\bibitem[Ribeiro et~al.(2016)]{ribeiro2016lime}
+M.~T. Ribeiro, S.~Singh, and C.~Guestrin.
+\newblock ``{W}hy should {I} trust you?'': Explaining the predictions of any
+  classifier.
+\newblock In \emph{Proceedings of the 22nd ACM SIGKDD International Conference
+  on Knowledge Discovery and Data Mining}, pages 1135--1144, 2016.
+
 \bibitem[Semenova et~al.(2022)]{semenova2022existence}
 L.~Semenova, C.~Rudin, and R.~Parr.
 \newblock On the existence of simpler machine learning models.
@@ -2065,6 +2085,12 @@ D.~Slack, S.~Hilgard, E.~Jia, S.~Singh, and H.~Lakkaraju.
   explanation methods.
 \newblock In \emph{AAAI/ACM Conference on AI, Ethics, and Society}, pages
   180--186, 2020.
+
+\bibitem[Street et~al.(1993)]{street1993nuclear}
+W.~N. Street, W.~H. Wolberg, and O.~L. Mangasarian.
+\newblock Nuclear feature extraction for breast tumor diagnosis.
+\newblock In \emph{IS\&T/SPIE International Symposium on Electronic Imaging},
+  pages 861--870, 1993.
 
 \bibitem[Strobl et~al.(2007)]{strobl2007bias}
 C.~Strobl, A.-L. Boulesteix, A.~Zeileis, and T.~Hothorn.
@@ -2361,5 +2387,123 @@ Large Single Model & 1.000 & 0.084 & 0.084 \\
 \end{tabular}
 \end{table}
 
+
+\section{Two-Tree Analytical Example}
+\label{app:twotree}
+
+To build intuition for first-mover bias, we analyze the simplest possible
+case: two-step linear boosting on perfectly correlated features.
+
+\paragraph{Setup.}
+Let $A, B$ be two features with $\text{Cov}(A, B) = \rho$,
+$\text{Var}(A) = \text{Var}(B) = 1$, and target $y = A + \varepsilon$.
+Consider linear boosting with learning rate $\eta$: at each step we
+fit $y$ (or its residual) by regressing on a single feature and updating
+the model with the fitted value scaled by $\eta$.
+
+\paragraph{Step~1.}
+Suppose the first step selects feature $A$.  The fitted coefficient is
+$\hat{\beta}_1 = \text{Cov}(y, A)/\text{Var}(A) = 1$, so the model
+after step~1 is $f_1(x) = \eta A$.  The residual is
+$r_1 = y - \eta A = (1 - \eta) A + \varepsilon$.
+
+\paragraph{Step~2.}
+Now consider the gain from each feature on the residual $r_1$:
+\begin{align}
+  \text{Gain}(A) &= \bigl[\text{Cov}(r_1, A)\bigr]^2 / \text{Var}(A) = (1 - \eta)^2, \\
+  \text{Gain}(B) &= \bigl[\text{Cov}(r_1, B)\bigr]^2 / \text{Var}(B) = \rho^2(1 - \eta)^2.
+\end{align}
+Since $\rho < 1$, feature $A$ has strictly higher gain on the residual:
+$\text{Gain}(A) / \text{Gain}(B) = 1/\rho^2$.  The second step selects
+$A$ again.  After two steps, the model is $f_2(x) = \eta(2 - \eta) A$:
+\emph{only feature $A$ is used}, and all SHAP credit goes to $A$.
+
+\paragraph{From gain bias to concentration.}
+The gain ratio $1/\rho^2 \approx 1.23$ at $\rhovar = 0.9$ demonstrates
+the mechanism: after one step, the residual structure encodes which
+feature was used, creating a bias toward re-selecting that feature.
+
+This simple linear model is deliberately minimal.  Two features and
+linear gain are sufficient to isolate the residual-bias mechanism, but
+they do not capture the full concentration dynamics of tree-based
+boosting.  In particular, when the DGP is symmetric
+($y = \beta \bar{z}_g + \varepsilon$ with $\bar{z}_g = (A + B)/2$,
+the paper's main setting), linear boosting alternates between $A$
+and~$B$ at each step---the unused feature always has marginally higher
+gain---so no net concentration arises in this idealization.
+
+In actual XGBoost, three additional factors break this alternation and
+enable the concentration observed in Figure~\ref{fig:t_scaling}:
+(1)~threshold-based splits create nonlinear gain functions that do not
+alternate as cleanly as linear regression gains;
+(2)~multi-depth trees create interaction structure where a feature used
+at the root influences which features are useful at child nodes; and
+(3)~\texttt{colsample\_bytree} restricts the available feature set per
+tree, so the feature that accumulates slightly more early splits
+(by chance) builds a residual advantage that compounds over hundreds
+of trees.  The interplay of these stochastic and structural effects is
+what produces the monotonically growing concentration in
+Figure~\ref{fig:t_scaling}---the linear gain-bias derived above provides
+the seed, and tree-specific dynamics amplify it.
+
+\paragraph{Independence resolves the compounding.}
+Because independently trained models make their first-mover selections
+independently, the compounding runs in different directions for different
+models.  When their SHAP vectors are averaged:
+\begin{equation}
+  \bar{\phi}_A \approx \tfrac{1}{K}\sum_{k=1}^{K} \phi_A^{(k)},
+\end{equation}
+models that concentrated on $A$ and models that concentrated on $B$
+cancel each other's arbitrary choices. With $K$ independent models, the
+variance of the consensus importance due to first-mover effects decays
+as $O(1/K)$, explaining the stability plateau at $K \approx 20$
+observed in the $K$-sweep experiment.
+
+This example identifies the residual gain-bias seed ($1/\rho^2$)
+and the cancellation principle ($O(1/K)$ variance decay).
+Figure~\ref{fig:t_scaling} confirms the empirical predictions:
+(1)~concentration grows monotonically with $T$ for a single sequential
+model, and (2)~independent ensembles remain flat regardless of
+per-model tree count.
+
+
+\section{Attribution-Agnostic Interface Validation}
+\label{app:lime_demo}
+
+The \texttt{fit\_from\_attributions()} interface (contribution~5 in
+Section~\ref{sec:introduction}) decouples \dash{}'s aggregation stages
+(filtering, diversity selection, consensus, diagnostics) from the
+attribution method. We validate this claim by applying \dash{} to LIME
+\citep{ribeiro2016lime} attributions on the Breast Cancer dataset.
+
+\paragraph{Procedure.}
+We train $M = 30$ XGBoost classifiers with randomly sampled
+hyperparameters (same search space as the main experiments,
+\texttt{colsample\_bytree} $\in \{0.2, 0.3, 0.4, 0.5\}$).
+For each model, we compute LIME attributions for $N' = 30$ observations
+from the held-out explain set, producing an $(M, N', P)$ attribution
+tensor. We then call
+\texttt{pipe.fit\_from\_attributions(attributions, val\_scores)} with
+$K = 10$ and relative $\varepsilon = 0.05$.
+
+\paragraph{Results.}
+\dash{} successfully executes all four post-population stages on the
+LIME tensor. The consensus top features---\texttt{worst concave points}
+(0.104), \texttt{worst texture} (0.102), \texttt{worst area} (0.086),
+\texttt{worst perimeter} (0.073)---draw from the same clinically
+relevant feature families (concavity, area, perimeter) as the
+TreeSHAP-based rankings in Table~\ref{tab:realworld}, confirming that
+the diagnostic framework generalizes across attribution methods.
+MaxMin diversity selection yields $K_{\text{eff}} = 3$ (low because all
+30 models achieve identical validation accuracy on this dataset,
+limiting diversity in the filtered pool).
+
+This demonstrates that \dash{}'s stages 2--5 can operate on any
+$(M, N', P)$ attribution tensor, regardless of whether it was produced
+by TreeSHAP, LIME, Integrated Gradients, or any other feature-level
+attribution method. The independence principle---that averaging over
+independently trained models cancels arbitrary attribution
+choices---applies to any attribution method that is sensitive to model
+specification, not only TreeSHAP.
 
 \end{document}
