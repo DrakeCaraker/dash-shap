@@ -813,6 +813,10 @@ runs of each method:
   \text{Stability} = \frac{2}{R(R-1)} \sum_{r<r'} \rho_S\bigl(
     \bar{I}^{(r)}, \bar{I}^{(r')}\bigr).
 \end{equation}
+BCa bootstrap confidence intervals are computed by resampling the $R$
+importance vectors (with replacement), recomputing mean pairwise
+Spearman $\rho_S$ on each bootstrap sample, and applying the
+bias-corrected and accelerated percentile method.
 
 \paragraph{Accuracy.}
 Spearman correlation between estimated global importance and ground truth
@@ -1336,9 +1340,12 @@ is never available in practice. \dash{}'s Stage~5 diagnostics address this
 by quantifying explanation disagreement across the ensemble.
 The companion paper \citep{caraker2026impossibility} introduces
 complementary formal tests: a single-model split-frequency $Z$-test
-that screens for instability from one model (no retraining), and a
-multi-model attribution $Z$-test that confirms instability with
-controlled type~I error.  The FSI and IS~Plot below are exploratory
+(F5: tests whether the split-count ratio within a collinear pair
+deviates from the null of equal utilization) that screens for
+instability from one model without retraining, and a multi-model
+attribution $Z$-test (F1: tests whether the attribution gap between
+features is significantly different from zero across $M$ models) that
+confirms instability with controlled type~I error.  The FSI and IS~Plot below are exploratory
 diagnostics that visualize the instability landscape; the $Z$-tests
 provide formal hypothesis testing.  The recommended workflow
 combines both: screen $\to$ confirm $\to$ resolve (via \dash{})
@@ -1659,6 +1666,12 @@ same level ($\approx 0.977$ at $\rhovar = 0.9$), regardless of their other
 design choices; and
 (3)~the effect scales with correlation severity, as the hypothesis
 predicts.
+The independence principle would be falsified by a setting in which
+averaging over independently trained models produces \emph{lower}
+stability than a single model---a scenario we have not observed but
+cannot rule out under adversarial construction or extreme model
+heterogeneity (\eg if independently trained models learn qualitatively
+different functions rather than merely different feature orderings).
 
 The implication is that the problem is not with SHAP itself---whose
 axiomatic properties (local accuracy, missingness, consistency) are
@@ -1770,6 +1783,9 @@ rankings, (2)~the FSI values and IS~Plot quadrant assignments as evidence
 of explanation reliability or instability, and (3)~specific features
 flagged as Quadrant~II members, which should be reported as collinear
 groups rather than individually ranked.
+\dash{} itself need not be separately inventoried as a model; it is a
+diagnostic tool applied to an existing inventoried model, analogous to
+backtesting or stress testing.
 
 \paragraph{Expected improvement magnitude.}
 The Breast Cancer result ($+0.549$ over Single Best) reflects extreme
@@ -1941,9 +1957,12 @@ multicollinearity. Three lines of evidence support this finding:
 \end{enumerate}
 
 \dash{} (Diversified Aggregation of SHAP) operationalizes the
-independence principle with forced feature restriction, diversity-aware
-model selection, and two diagnostic tools---the Feature Stability
-Index and Importance-Stability Plot---that detect first-mover bias
+independence principle at two layers: the \emph{core operation}---averaging
+attributions across independent models, proved to be the minimum-variance
+unbiased estimator \citep{caraker2026impossibility}---and the
+\emph{pipeline}, which adds forced feature restriction, diversity-aware
+model selection, and two diagnostic tools (the Feature Stability
+Index and Importance-Stability Plot) that detect first-mover bias
 without ground truth. On real-world datasets, \dash{} improves stability
 from $0.339$ to $0.925$ (Breast Cancer), from $0.840$ to $0.964$
 (Superconductor), and from $0.97$ to $0.98$ (California Housing).
