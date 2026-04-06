@@ -36,7 +36,7 @@ Stability on real-world datasets (50 reps):
 | Dataset | Features | Single Best | DASH | SR | Improvement |
 |---|---|---|---|---|---|
 | Breast Cancer | 30 (21 pairs \|r\| > 0.9) | 0.376 | **0.925** | 0.862 | **+0.549** |
-| Superconductor | 81 | 0.840 | **0.964** | 0.924 | +0.124 |
+| Superconductor | 81 | 0.840 | 0.964 | 0.924 | +0.124 |
 | California Housing | 8 | 0.969 | 0.978 | 0.977 | +0.009 (n.s.) |
 
 *SR = Stochastic Retrain (seed averaging).*
@@ -214,7 +214,7 @@ See **[REPRODUCE.md](REPRODUCE.md)** for the complete reproduction guide, includ
 pip install -r requirements.lock
 pip install -e .
 
-# Run all 20 experiments (~6–10 hours on 72-vCPU instance)
+# Run all 17 default experiments (~6–10 hours on 72-vCPU instance)
 python run_experiments_parallel.py
 
 # Run a single experiment
@@ -263,7 +263,7 @@ dash-shap/
 │   ├── experiments/    # Synthetic data generators (linear & nonlinear DGP)
 │   ├── evaluation/     # Metrics: stability, DGP agreement, equity, statistical tests
 │   └── utils/          # I/O and SHAP helpers
-├── notebooks/          # Interactive benchmarks (demo_benchmark_6 is canonical)
+├── notebooks/          # Interactive benchmarks (demo_benchmark_7_parallel is canonical for TMLR)
 ├── examples/           # Standalone usage examples (quickstart.py, extensions_quickstart.py)
 ├── docs/               # API_REFERENCE.md, BENCHMARK_RESULTS.md, DIAGNOSTICS.md
 ├── tests/              # pytest suite

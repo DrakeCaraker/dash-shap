@@ -23,7 +23,7 @@ After filtering for performance (only keeping models that actually learned signa
 
 ## Canonical Configuration
 
-All experiments share a single `PAPER_CONFIG` defined in the notebook's setup cell and mirrored in `run_experiments.py`:
+All experiments share a single `PAPER_CONFIG` defined in `dash_shap/config.py` and used by `run_experiments_parallel.py`:
 
 | Parameter | Value | Purpose |
 |-----------|-------|---------|
@@ -84,7 +84,7 @@ This is the experiment that makes or breaks the paper. It tests the hypothesis t
 
 The synthetic data has 50 features in 10 groups of 5, where within-group correlation is rho. The target is a linear combination of group means, with known coefficients descending from 2.0 to 0.0. Because the DGP is linear and symmetric within groups, we know the ground-truth importance: every feature in group g should get importance |beta_g|/5.
 
-We sweep rho in {0.0, 0.5, 0.7, 0.9, 0.95} and run **N_REPS repetitions** at each level. For each repetition, we regenerate the data (same coefficients, new random draws) and run all 7 sweep methods.
+We sweep rho in {0.0, 0.5, 0.7, 0.9, 0.95} and run **N_REPS repetitions** at each level. For each repetition, we regenerate the data (same coefficients, new random draws) and run all 8 sweep methods.
 
 ### Sweep methods (8)
 
@@ -247,7 +247,7 @@ For Single Best, model-selection variance should dominate (the arbitrary hyperpa
 
 Generates the concentration figure for the paper (Figure 2). Shows per-feature importance within a single correlated group (5 features, each with true importance 0.40) for Single Best, Large Single Model, and DASH (MaxMin). Demonstrates that Single Best and LSM concentrate importance on an arbitrary feature while DASH distributes proportionally.
 
-Run via `run_experiments.py --experiments first_mover_visualization`. Output: `results/figures/first_mover_concentration.{pdf,png}`.
+Run via `run_experiments_parallel.py --experiments first_mover_visualization`. Output: `results/figures/first_mover_concentration.{pdf,png}`.
 
 ---
 
@@ -255,7 +255,7 @@ Run via `run_experiments.py --experiments first_mover_visualization`. Output: `r
 
 Shows how first-mover bias concentration grows with tree count in a single sequential model. Trains models with increasing numbers of trees and measures importance concentration within correlated groups. Confirms the mechanistic prediction: more sequential trees amplify the first-mover advantage.
 
-Run via `run_experiments.py --experiments first_mover_bias`. Output: `results/figures/first_mover_bias_isolation.{pdf,png}`, `results/tables/first_mover_bias.json`.
+Run via `run_experiments_parallel.py --experiments first_mover_bias`. Output: `results/figures/first_mover_bias_isolation.{pdf,png}`, `results/tables/first_mover_bias.json`.
 
 ---
 
@@ -301,7 +301,7 @@ DASH's consensus SHAP values are computed using a random subsample of the explai
 
 Expected: Stability varies by < 0.005 across background sizes. Larger backgrounds increase compute cost linearly with minimal accuracy gain.
 
-Run via `run_experiments.py --experiments background_sensitivity`. Output: `results/tables/background_sensitivity.json`.
+Run via `run_experiments_parallel.py --experiments background_sensitivity`. Output: `results/tables/background_sensitivity.json`.
 
 ---
 
