@@ -82,6 +82,7 @@
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit}
 \usepackage{microtype}
+\usepackage{float}       % [H] placement for figures/tables
 \usepackage{hyperref}
 \usepackage{url}
 
@@ -2326,7 +2327,7 @@ $\to$ $M = 200$ ($0.9767$) $\to$ $M = 500$ ($0.9777$). Performance
 is effectively invariant to population size (within 0.001 across
 $M \in \{50, 100, 200, 500\}$). We use $M = 200$ as a conservative default.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.6\textwidth,alt={Sensitivity plot of stability vs population size M at two correlation levels}]{ablation_sensitivity.png}
 \caption{Ablation sensitivity: stability as a function of population size $M$
@@ -2389,6 +2390,7 @@ favorable conditions (known-DGP synthetic data and datasets with
 documented collinearity); adversarial or out-of-distribution stress
 tests are deferred to the journal version. \dash{} passes all eleven:
 
+\begin{samepage}
 \begin{enumerate}
   \item \textbf{Stability wins (linear)}: DASH $>$ Single Best on $\geq$4/5
     $\rhovar$ levels $\to$ \textbf{PASS} (4/5)
@@ -2413,6 +2415,7 @@ tests are deferred to the journal version. \dash{} passes all eleven:
   \item \textbf{Variance decomposition}: DASH model-selection variance $<$ SB
     $\to$ \textbf{PASS} ($0.006$ vs.\ $0.023$)
 \end{enumerate}
+\end{samepage}
 
 
 \section{Asymmetric Causal DGP Check}
