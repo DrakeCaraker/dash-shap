@@ -1201,6 +1201,12 @@ benefits---nonlinear robustness (Section~\ref{sec:nonlinear}), equitable
 attribution (below), ground-truth-free diagnostics
 (Section~\ref{sec:diagnostics}), and computational efficiency---that
 simple seed averaging does not provide.
+The companion paper \citep{caraker2026impossibility} proves that
+\dash{} consensus averaging is Pareto-optimal among all attribution
+aggregation methods: it achieves the Cram\'er--Rao variance bound
+$\sigma^2/M$ and no method can simultaneously achieve zero
+within-group unfaithfulness and higher between-group stability for the
+same ensemble size.
 
 SR achieves marginally higher stability point estimates at most
 $\rhovar$ levels, though these differences are small ($\leq 0.003$) and
@@ -1639,9 +1645,15 @@ independence alone.
 \paragraph{Random forests as an independence control.}
 Random Forest (RF) provides a natural test of the independence principle
 from the model-family side: its trees are trained independently by
-construction (via bootstrap sampling and random feature subsets). In the
+construction (via bootstrap sampling and random feature subsets).
+The companion impossibility analysis \citep{caraker2026impossibility}
+predicts this theoretically: RF's attribution ratio converges as
+$O(1/\sqrt{T})$, in contrast to gradient boosting's divergent
+$1/(1 - \rhovar^2)$---independence between trees prevents the
+compounding that drives first-mover concentration. In the
 linear correlation sweep, RF achieves stability competitive with
-\dash{} ($0.978$ vs.\ $0.977$ at $\rhovar = 0.9$). However, RF's
+\dash{} ($0.978$ vs.\ $0.977$ at $\rhovar = 0.9$), consistent with
+this prediction. However, RF's
 top-$5$ ranking agreement is substantially lower ($0.375$ vs.\ $0.863$;
 $p < 0.001$, $d = +0.488$) and its predictive RMSE is significantly
 worse ($0.957$ vs.\ $0.591$). This pattern---high stability but poor
@@ -1753,10 +1765,16 @@ settings with heavy collinearity.
     gap: any attribution method producing feature-level vectors can
     plug into \dash{}'s aggregation stages without retraining
     (validated on LIME in Appendix~\ref{app:lime_demo}).
-    The conditional SHAP case warrants particular attention: because
+    The conditional SHAP case warrants particular attention: although
     conditional approaches account for feature dependencies in the
-    reference distribution \citep{aas2021explaining}, the instability
-    dynamics may differ from the interventional setting studied here.
+    reference distribution \citep{aas2021explaining}, the companion
+    paper proves that switching to conditional SHAP does \emph{not}
+    escape the impossibility when features have equal causal effects
+    \citep{caraker2026impossibility}---the instability is a property of
+    the Rashomon set, not the attribution method.  However, the
+    practical dynamics of instability under conditional SHAP may differ
+    from the interventional setting, and empirical validation remains
+    open.
   \item \textbf{Interventional SHAP under correlation.} DASH uses
     interventional TreeSHAP, which conditions on marginal rather than
     conditional feature distributions. Under high correlation, this
@@ -2418,7 +2436,11 @@ Large Single Model & 1.000 & 0.084 & 0.084 \\
 \label{app:twotree}
 
 To build intuition for first-mover bias, we analyze the simplest possible
-case: two-step linear boosting on perfectly correlated features.
+case: two-step linear boosting on correlated features. The companion
+paper \citep{caraker2026impossibility} proves the formal result---the
+attribution ratio is exactly $1/(1-\rhovar^2)$ for gradient boosting
+under the proportionality axiom---and verifies it in Lean~4. Here we
+provide an accessible derivation that isolates the core mechanism.
 
 \paragraph{Setup.}
 Let $A, B$ be two features with $\text{Cov}(A, B) = \rho$,
