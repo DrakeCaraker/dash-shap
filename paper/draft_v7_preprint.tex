@@ -144,7 +144,7 @@ method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
 chain, supporting the view that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
-$= 0.977$, while the standard
+$\approx 0.977$--$0.978$, while the standard
 single-best workflow degrades to $0.958$ and the Large Single Model to
 $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
 $0.376$ to $0.925$ ($+0.549$) over Single Best, and from
@@ -251,7 +251,7 @@ producing a more reproducible importance ranking. Specifically, \dash{}:
     local disagreement maps) for auditing explanation reliability.
 \end{enumerate}
 
-We make four contributions:
+We make five contributions:
 \begin{itemize}
   \item \textbf{Mechanistic framing.} Feature selection bias in ensemble methods
     is well known \citep{strobl2007bias, hooker2019please}; we articulate
@@ -716,7 +716,7 @@ and a sinusoidal component:
 \end{equation}
 
 We sweep $\rhovar \in \{0.0, 0.5, 0.7, 0.9, 0.95\}$ with $N_{\text{reps}}
-= 20$ repetitions at each level, regenerating data (same coefficients, new
+= 50$ repetitions at each level, regenerating data (same coefficients, new
 random draws) for each repetition.
 
 \subsection{Real-world datasets}
@@ -855,7 +855,7 @@ stability of any method at every correlation level, despite matching
 with the first-mover bias hypothesis: sequential residual dependency concentrates
 importance on arbitrary features, and the effect worsens with
 correlation severity (LSM stability degrades from $0.955$ at
-$\rhovar = 0$ to $0.925$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
+$\rhovar = 0$ to $0.927$ at $\rhovar = 0.95$). Meanwhile, \dash{}'s
 stability is effectively flat ($0.972$--$0.977$), demonstrating
 immunity to the mechanism it is designed to break.
 
@@ -1212,7 +1212,7 @@ Table~\ref{tab:sweep} (Section~\ref{sec:mechanism_result}) reveals a
 dose-response relationship: as $\rhovar$ increases, first-mover bias
 intensifies for dependent methods while independent methods remain
 immune. LSM stability degrades monotonically from $0.955$ at $\rhovar=0$
-to $0.925$ at $\rhovar=0.95$---a $2.9\%$ decline. Single Best follows
+to $0.927$ at $\rhovar=0.95$---a $2.9\%$ decline. Single Best follows
 the same pattern ($0.973 \to 0.951$, a $2.3\%$ decline). \dash{}'s
 stability is effectively flat ($0.972$--$0.977$), fluctuating by less
 than $0.5\%$ across the entire correlation range.
@@ -1785,13 +1785,13 @@ The code, data, and reproducible benchmarks are publicly available at
 All code, data generators, hyperparameter configurations, and evaluation
 metrics are publicly available at
 \url{https://github.com/DrakeCaraker/dash-shap}. The complete benchmark
-can be reproduced via \texttt{python run\_experiments.py} with fixed
+can be reproduced via \texttt{python run\_experiments\_parallel.py} with fixed
 random seeds ($\text{SEED} = 42$). The authoritative interactive
-notebook \texttt{notebooks/demo\_benchmark\_6.ipynb} provides a
-checkpointed walkthrough of all experiments; all tables and figures in
-this paper are sourced from that notebook. Hardware-dependent timing
-results (Table~\ref{tab:cost}) were measured on Apple M-series silicon,
-single node, and are reported for relative comparison only.
+notebook \texttt{notebooks/demo\_benchmark\_7\_parallel.ipynb} provides a
+checkpointed walkthrough of all experiments. The canonical results were
+produced on AWS SageMaker (\texttt{ml.g5.16xlarge}, 64~vCPU, 248~GB~RAM);
+hardware-dependent timing results (Table~\ref{tab:cost}) were measured on
+Apple M-series silicon, single node, and are reported for relative comparison only.
 
 % ===========================================================================
 \section*{Acknowledgments}
@@ -2077,9 +2077,9 @@ H.~Zou and T.~Hastie.
 
 Full per-repetition importance vectors, significance test results, and
 ablation data are available in JSON format from the experimental runner.
-Running \texttt{python run\_experiments.py} reproduces all tables and
+Running \texttt{python run\_experiments\_parallel.py} reproduces all tables and
 figures. The authoritative notebook
-\texttt{notebooks/demo\_benchmark\_6.ipynb} provides a checkpointed
+\texttt{notebooks/demo\_benchmark\_7\_parallel.ipynb} provides a checkpointed
 walkthrough of all experiments with intermediate results cached for
 rapid re-execution.
 
