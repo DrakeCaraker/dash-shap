@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "experiment": "variance_decomposition",
+    "timestamp": "2026-04-01T21:42:53.114864+00:00",
+    "code_sha": "e38f99eee74c9a801a2e9bb00b51462125bd06c4",
+    "code_dirty": true,
+    "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": 13860.9,
+    "output": "results/tables/variance_decomposition.json",
+    "hardware": {
+      "cpu_count": 64,
+      "hostname": "ip-10-10-23-214.eu-central-1.compute.internal",
+      "platform": "Linux-5.10.251-248.983.amzn2.x86_64-x86_64-with-glibc2.26",
+      "python": "3.10.20",
+      "ram_gb": 247.7,
+      "instance_type": "ml.g5.16xlarge"
+    }
+  },
+  "data_fixed": {
+    "Single Best": {
+      "stability": 0.9754958571183577,
+      "topk5_stability": 0.5960349854227405,
+      "decomposition": {
+        "model_selection_frac": 0.5796634310449008,
+        "data_sampling_frac": 0.806771438003288
+      }
+    },
+    "DASH (MaxMin)": {
+      "stability": 0.9950180758017493,
+      "topk5_stability": 0.8440816326530612,
+      "decomposition": {
+        "model_selection_frac": 0.21425031271388398,
+        "data_sampling_frac": 0.8481744589459774
+      }
+    }
+  },
+  "model_fixed": {
+    "Single Best": {
+      "stability": 0.9658953083274124,
+      "topk5_stability": 0.6080563654033042,
+      "decomposition": {
+        "model_selection_frac": 0.5796634310449008,
+        "data_sampling_frac": 0.806771438003288
+      }
+    },
+    "DASH (MaxMin)": {
+      "stability": 0.9802775510204081,
+      "topk5_stability": 0.839961127308066,
+      "decomposition": {
+        "model_selection_frac": 0.21425031271388398,
+        "data_sampling_frac": 0.8481744589459774
+      }
+    }
+  },
+  "both_varied": {
+    "Single Best": {
+      "stability": 0.9577269471053727,
+      "topk5_stability": 0.546255264010366,
+      "decomposition": {
+        "model_selection_frac": 0.5796634310449008,
+        "data_sampling_frac": 0.806771438003288
+      }
+    },
+    "DASH (MaxMin)": {
+      "stability": 0.9767471788715486,
+      "topk5_stability": 0.862818270165209,
+      "decomposition": {
+        "model_selection_frac": 0.21425031271388398,
+        "data_sampling_frac": 0.8481744589459774
+      }
+    }
+  }
+}

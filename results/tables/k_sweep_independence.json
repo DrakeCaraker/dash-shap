@@ -1,10 +1,10 @@
 {
   "_meta": {
     "experiment": "k_sweep_independence",
-    "timestamp": "2026-03-23T00:00:00+00:00",
-    "code_sha": "88b1bc34f8afb5c447cf697e1ffdd3956e1d0ada",
-    "code_dirty": false,
-    "config_sha": "backfilled",
+    "timestamp": "2026-04-02T08:47:47.669691+00:00",
+    "code_sha": "24690e5637d277df3ab3104e8d74bcdae97cc1bd",
+    "code_dirty": true,
+    "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
     "n_reps": 50,
     "paper_config": {
       "M": 200,
@@ -17,10 +17,15 @@
       "N_ESTIMATORS_ESHAP": 2000,
       "TAU_CLUSTER": 0.3
     },
-    "elapsed_s": null,
+    "elapsed_s": 28471.17,
     "output": "results/tables/k_sweep_independence.json",
     "hardware": {
-      "note": "SageMaker run \u2014 hardware details not captured at time of run"
+      "cpu_count": 64,
+      "hostname": "ip-10-10-23-214.eu-central-1.compute.internal",
+      "platform": "Linux-5.10.251-248.983.amzn2.x86_64-x86_64-with-glibc2.26",
+      "python": "3.10.20",
+      "ram_gb": 247.7,
+      "instance_type": "ml.g5.16xlarge"
     }
   },
   "1": {
@@ -31,28 +36,157 @@
       "accuracy_std": NaN,
       "n_successful": 0
     },
+    "RS": {
+      "stability": 0.9521850993458609,
+      "stability_se": 0.003907681436380256,
+      "accuracy_mean": 0.9754902457324113,
+      "accuracy_std": 0.014719139484487057,
+      "n_successful": 50
+    },
     "SR": {
-      "stability": 0.9478511404561825,
-      "stability_se": NaN,
-      "accuracy_mean": 0.9749208784289982,
-      "accuracy_std": 0.006141409035701495,
-      "n_successful": 2
+      "stability": 0.9597138839209153,
+      "stability_se": 0.001548780090708087,
+      "accuracy_mean": 0.9792249092310702,
+      "accuracy_std": 0.006128893742588858,
+      "n_successful": 50
+    }
+  },
+  "3": {
+    "DASH": {
+      "stability": 0.9675717078668202,
+      "stability_se": 0.0013981593455071083,
+      "accuracy_mean": 0.9833069832877441,
+      "accuracy_std": 0.005331233378798585,
+      "n_successful": 50
+    },
+    "RS": {
+      "stability": 0.970829722909572,
+      "stability_se": 0.0015384277748268606,
+      "accuracy_mean": 0.9850536863710962,
+      "accuracy_std": 0.005706693219698344,
+      "n_successful": 50
+    },
+    "SR": {
+      "stability": 0.9729995639071954,
+      "stability_se": 0.0011543738052583838,
+      "accuracy_mean": 0.9860959180451405,
+      "accuracy_std": 0.00460791063780663,
+      "n_successful": 50
     }
   },
   "5": {
     "DASH": {
-      "stability": 0.9759903961584634,
-      "stability_se": NaN,
-      "accuracy_mean": 0.9855362010350057,
-      "accuracy_std": 0.010918060507913725,
-      "n_successful": 2
+      "stability": 0.9724744493715852,
+      "stability_se": 0.001087111495320794,
+      "accuracy_mean": 0.9858643110064641,
+      "accuracy_std": 0.0041638230676373225,
+      "n_successful": 50
+    },
+    "RS": {
+      "stability": 0.9738314525810321,
+      "stability_se": 0.0013210417812990149,
+      "accuracy_mean": 0.9866363344687191,
+      "accuracy_std": 0.004991684529962727,
+      "n_successful": 50
     },
     "SR": {
-      "stability": 0.9804081632653061,
-      "stability_se": NaN,
-      "accuracy_mean": 0.9872250023586887,
-      "accuracy_std": 0.005117840863084645,
-      "n_successful": 2
+      "stability": 0.974372482054046,
+      "stability_se": 0.0010962084257493086,
+      "accuracy_mean": 0.9867424876947791,
+      "accuracy_std": 0.004367452672227921,
+      "n_successful": 50
+    }
+  },
+  "10": {
+    "DASH": {
+      "stability": 0.9759802043266286,
+      "stability_se": 0.0010253424154072113,
+      "accuracy_mean": 0.987717167315876,
+      "accuracy_std": 0.003856718517850724,
+      "n_successful": 50
+    },
+    "RS": {
+      "stability": 0.975781933998089,
+      "stability_se": 0.0011689342374243598,
+      "accuracy_mean": 0.987601363796538,
+      "accuracy_std": 0.004468323774106166,
+      "n_successful": 50
+    },
+    "SR": {
+      "stability": 0.9765478109611191,
+      "stability_se": 0.0010665471882622558,
+      "accuracy_mean": 0.9879005228881619,
+      "accuracy_std": 0.004126926827609504,
+      "n_successful": 50
+    }
+  },
+  "20": {
+    "DASH": {
+      "stability": 0.9767471788715486,
+      "stability_se": 0.0009953401776972815,
+      "accuracy_mean": 0.9881224796335601,
+      "accuracy_std": 0.003748662324772247,
+      "n_successful": 50
+    },
+    "RS": {
+      "stability": 0.9764352304186981,
+      "stability_se": 0.001054322855888009,
+      "accuracy_mean": 0.98791017318144,
+      "accuracy_std": 0.0039823078009007225,
+      "n_successful": 50
+    },
+    "SR": {
+      "stability": 0.977260063208957,
+      "stability_se": 0.0011231668768466431,
+      "accuracy_mean": 0.9882575837394549,
+      "accuracy_std": 0.0044059153285481,
+      "n_successful": 50
+    }
+  },
+  "30": {
+    "DASH": {
+      "stability": 0.9767471788715486,
+      "stability_se": 0.0009953401776972815,
+      "accuracy_mean": 0.9881224796335601,
+      "accuracy_std": 0.003748662324772247,
+      "n_successful": 50
+    },
+    "RS": {
+      "stability": 0.9764561628733125,
+      "stability_se": 0.0009862296501248447,
+      "accuracy_mean": 0.9879584246478309,
+      "accuracy_std": 0.0037088157639125546,
+      "n_successful": 50
+    },
+    "SR": {
+      "stability": 0.9776187372908346,
+      "stability_se": 0.0010897104129617013,
+      "accuracy_mean": 0.9884795404848533,
+      "accuracy_std": 0.004320418878234975,
+      "n_successful": 50
+    }
+  },
+  "50": {
+    "DASH": {
+      "stability": 0.9767471788715486,
+      "stability_se": 0.0009953401776972815,
+      "accuracy_mean": 0.9881224796335601,
+      "accuracy_std": 0.003748662324772247,
+      "n_successful": 50
+    },
+    "RS": {
+      "stability": 0.9762628316632775,
+      "stability_se": 0.0009729775141419716,
+      "accuracy_mean": 0.9878329708352145,
+      "accuracy_std": 0.0037165840247228936,
+      "n_successful": 50
+    },
+    "SR": {
+      "stability": 0.9781804640223436,
+      "stability_se": 0.001089066452600516,
+      "accuracy_mean": 0.9887497486966424,
+      "accuracy_std": 0.0042632488662496535,
+      "n_successful": 50
     }
   }
 }

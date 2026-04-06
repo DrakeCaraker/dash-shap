@@ -1,0 +1,183 @@
+{
+  "_meta": {
+    "experiment": "asymmetric_dgp",
+    "timestamp": "2026-04-01T23:04:49.555234+00:00",
+    "code_sha": "41a04ce02aa711e69160191c9cfc1ea7c8949e95",
+    "code_dirty": true,
+    "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": 2146.13,
+    "output": "results/tables/asymmetric_dgp.json",
+    "hardware": {
+      "cpu_count": 64,
+      "hostname": "ip-10-10-23-214.eu-central-1.compute.internal",
+      "platform": "Linux-5.10.251-248.983.amzn2.x86_64-x86_64-with-glibc2.26",
+      "python": "3.10.20",
+      "ram_gb": 247.7,
+      "instance_type": "ml.g5.16xlarge"
+    }
+  },
+  "0.5": {
+    "Single Best": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.032509885225927904,
+      "passive_leak_f1": 0.032509885225928056,
+      "mean_importance": [
+        0.9674901147740721,
+        0.032509885225928056
+      ]
+    },
+    "Stochastic Retrain": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.03375907560626157,
+      "passive_leak_f1": 0.033759075606261416,
+      "mean_importance": [
+        0.9662409243937384,
+        0.033759075606261416
+      ]
+    },
+    "DASH (MaxMin)": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.04570079889717127,
+      "passive_leak_f1": 0.04570079889717117,
+      "mean_importance": [
+        0.9542992011028287,
+        0.04570079889717117
+      ]
+    },
+    "Large Single Model": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.06092919258326557,
+      "passive_leak_f1": 0.060929192583265436,
+      "mean_importance": [
+        0.9390708074167344,
+        0.060929192583265436
+      ]
+    }
+  },
+  "0.7": {
+    "Single Best": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.03865666456879713,
+      "passive_leak_f1": 0.03865666456879708,
+      "mean_importance": [
+        0.9613433354312029,
+        0.03865666456879708
+      ]
+    },
+    "Stochastic Retrain": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.04208928670021628,
+      "passive_leak_f1": 0.04208928670021633,
+      "mean_importance": [
+        0.9579107132997837,
+        0.04208928670021633
+      ]
+    },
+    "DASH (MaxMin)": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.05162680313069268,
+      "passive_leak_f1": 0.051626803130692664,
+      "mean_importance": [
+        0.9483731968693073,
+        0.051626803130692664
+      ]
+    },
+    "Large Single Model": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.06905297327247184,
+      "passive_leak_f1": 0.06905297327247192,
+      "mean_importance": [
+        0.9309470267275282,
+        0.06905297327247192
+      ]
+    }
+  },
+  "0.9": {
+    "Single Best": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.06754487489532279,
+      "passive_leak_f1": 0.06754487489532282,
+      "mean_importance": [
+        0.9324551251046772,
+        0.06754487489532282
+      ]
+    },
+    "Stochastic Retrain": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.07397429915456466,
+      "passive_leak_f1": 0.07397429915456466,
+      "mean_importance": [
+        0.9260257008454353,
+        0.07397429915456466
+      ]
+    },
+    "DASH (MaxMin)": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.08856481344833345,
+      "passive_leak_f1": 0.08856481344833352,
+      "mean_importance": [
+        0.9114351865516666,
+        0.08856481344833352
+      ]
+    },
+    "Large Single Model": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.08413725192440213,
+      "passive_leak_f1": 0.0841372519244021,
+      "mean_importance": [
+        0.9158627480755979,
+        0.0841372519244021
+      ]
+    }
+  },
+  "0.95": {
+    "Single Best": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.11383657868552233,
+      "passive_leak_f1": 0.11383657868552215,
+      "mean_importance": [
+        0.8861634213144777,
+        0.11383657868552215
+      ]
+    },
+    "Stochastic Retrain": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.12462966521545416,
+      "passive_leak_f1": 0.12462966521545422,
+      "mean_importance": [
+        0.8753703347845458,
+        0.12462966521545422
+      ]
+    },
+    "DASH (MaxMin)": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.17248237851266646,
+      "passive_leak_f1": 0.17248237851266648,
+      "mean_importance": [
+        0.8275176214873335,
+        0.17248237851266648
+      ]
+    },
+    "Large Single Model": {
+      "stability": 0.9999999999999999,
+      "bias_f0": 0.1137294824922852,
+      "passive_leak_f1": 0.11372948249228523,
+      "mean_importance": [
+        0.8862705175077148,
+        0.11372948249228523
+      ]
+    }
+  }
+}

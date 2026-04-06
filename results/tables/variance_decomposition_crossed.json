@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "experiment": "variance_decomposition_crossed",
+    "timestamp": "2026-04-01T22:18:44.053025+00:00",
+    "code_sha": "0cb7f92dee015884800d31d5b72d2b594c78f8fc",
+    "code_dirty": true,
+    "config_sha": "7397c9c48f4d0732ec9f8c22fe7d8a375041be76fcb6b917ff371461b83c2a42",
+    "n_reps": 50,
+    "paper_config": {
+      "M": 200,
+      "K": 30,
+      "N_REPS": 50,
+      "EPSILON": 0.08,
+      "DELTA": 0.05,
+      "N_TRIALS_SB": 30,
+      "T_PER_MODEL": 500,
+      "N_ESTIMATORS_ESHAP": 2000,
+      "TAU_CLUSTER": 0.3
+    },
+    "elapsed_s": 2150.93,
+    "output": "results/tables/variance_decomposition_crossed.json",
+    "hardware": {
+      "cpu_count": 64,
+      "hostname": "ip-10-10-23-214.eu-central-1.compute.internal",
+      "platform": "Linux-5.10.251-248.983.amzn2.x86_64-x86_64-with-glibc2.26",
+      "python": "3.10.20",
+      "ram_gb": 247.7,
+      "instance_type": "ml.g5.16xlarge"
+    }
+  },
+  "Single Best": {
+    "data_var_frac": 0.3757167012069006,
+    "model_var_frac": 0.4061880054709649,
+    "residual_var_frac": 0.21809529332213454,
+    "ss_data": 0.5878712084228195,
+    "ss_model": 0.6355486270799965,
+    "ss_error": 0.3412463252891397,
+    "ss_total": 1.5646661607919556,
+    "R_d": 7,
+    "R_m": 7
+  },
+  "DASH (MaxMin)": {
+    "data_var_frac": 0.7363152484256795,
+    "model_var_frac": 0.16188034681513683,
+    "residual_var_frac": 0.10180440475918366,
+    "ss_data": 0.40527734913828234,
+    "ss_model": 0.08910101749909158,
+    "ss_error": 0.05603444907547259,
+    "ss_total": 0.5504128157128465,
+    "R_d": 7,
+    "R_m": 7
+  }
+}
