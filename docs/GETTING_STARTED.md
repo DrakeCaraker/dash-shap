@@ -40,7 +40,7 @@ The five-stage pipeline:
 
 5. **Diagnose via FSI and IS plots (Stage 5: Diagnostics)** — The Feature Stability Index (FSI) quantifies how much each feature's attribution varied across the K models. High FSI = the K models disagreed about this feature = likely a collinear cluster member. The Importance-Stability (IS) plot places all features in a two-dimensional space: consensus importance (x-axis) vs. FSI (y-axis). Quadrant II features (high importance, high FSI) are collinear cluster members that should be reported as a group.
 
-Why doesn't **Stochastic Retrain** (same approach, simpler implementation) fully replace DASH? Stochastic Retrain achieves nearly the same stability (~0.977 at ρ = 0.9) with minimal code. DASH's advantages are: (1) the FSI diagnostic identifies *which specific features* are contested, something Stochastic Retrain doesn't provide; (2) DASH distributes credit more equitably across collinear cluster members (within-group CV = 0.176 vs. 0.224 for Single Best); and (3) the IS plot enables principled decision-making about which features to report individually vs. as a group.
+Why doesn't **Stochastic Retrain** (same approach, simpler implementation) fully replace DASH? Stochastic Retrain achieves nearly the same stability (~0.977 at ρ = 0.9) with minimal code. DASH's advantages are: (1) the FSI diagnostic identifies *which specific features* are contested, something Stochastic Retrain doesn't provide; (2) DASH distributes credit more equitably across collinear cluster members (within-group CV = 0.175 vs. 0.232 for Single Best); and (3) the IS plot enables principled decision-making about which features to report individually vs. as a group.
 
 ---
 
@@ -67,7 +67,7 @@ For the "When to Use DASH" decision guide, see `README.md`.
 | 3 | [Tutorial 1: The Problem](../notebooks/tutorial_01_the_problem.ipynb) | See SHAP ranking instability on Breast Cancer before DASH is introduced |
 | 4 | [Tutorial 2: How DASH Works](../notebooks/tutorial_02_dash_walkthrough.ipynb) | 5-stage walkthrough on Breast Cancer — inspect intermediate outputs at each stage |
 | 5 | [Tutorial 3: Reading Results](../notebooks/tutorial_03_interpreting_outputs.ipynb) | IS plot, FSI, local disagreement maps — quadrant action guide with clinical feature names |
-| 6 | [Tutorial 4: Parameter Exploration](../notebooks/tutorial_04_simulation.ipynb) | Sweep ρ, M, K, epsilon; understand why the Breast Cancer +0.614 result happens |
+| 6 | [Tutorial 4: Parameter Exploration](../notebooks/tutorial_04_simulation.ipynb) | Sweep ρ, M, K, epsilon; understand why the Breast Cancer +0.549 result happens |
 
 ---
 

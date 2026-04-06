@@ -2,9 +2,10 @@
 
 **What the experiments test, why each piece matters, and how to interpret the results.**
 
-**Authoritative notebook**: `notebooks/demo_benchmark_6.ipynb` (ArXiv canonical). **In development**: `notebooks/demo_benchmark_7.ipynb` (TMLR, 53 cells, mechanism-first structure, checkpointed)
-**Automated script**: `run_experiments.py` (mirrors the notebook, outputs to `results/`)
-**Parallel fork**: `run_experiments_parallel.py` (identical results, ~3-5x faster via population sharing + parallel SHAP)
+**Authoritative notebook (ArXiv)**: `notebooks/demo_benchmark_6.ipynb` (v6, 20 reps, FROZEN).
+**Authoritative notebook (TMLR)**: `notebooks/demo_benchmark_7_parallel.ipynb` (v7, 50 reps).
+**Automated script**: `run_experiments_parallel.py` (canonical runner, outputs to `results/`). `run_experiments.py` is deprecated — retained for historical provenance only.
+
 
 ## The Problem DASH Solves
 

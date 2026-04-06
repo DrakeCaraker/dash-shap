@@ -3,14 +3,14 @@
 > **Version guide**
 > | Version | Notebook | N_REPS | Status | Use for |
 > |---------|----------|--------|--------|---------|
-> | **v7 (TMLR)** | `demo_benchmark_7_parallel.ipynb` | 50 | ⚠️ IN PROGRESS | TMLR submission |
+> | **v7 (TMLR)** | `demo_benchmark_7_parallel.ipynb` | 50 | ✅ COMPLETE | TMLR submission |
 > | **v6 (ArXiv/Zenodo)** | `demo_benchmark_6.ipynb` | 20 | ✅ FROZEN | ArXiv/Zenodo; responding to ArXiv comments |
 >
 > When writing the TMLR paper, use v7 numbers only. Use `/paper-context` for TMLR, `/paper-context-arxiv` for ArXiv.
 
 ---
 
-## v7 Results (TMLR — in progress)
+## v7 Results (TMLR — COMPLETE)
 
 > ✅ **Status: COMPLETE** — All 18 experiments finished on SageMaker run 20260329 (ml.g5.16xlarge, 64 CPU, 247.7 GB RAM).
 > All use PAPER_CONFIG (M=200, K=30, N_REPS=50, ε=0.08, δ=0.05). All marked code_dirty=true due to
