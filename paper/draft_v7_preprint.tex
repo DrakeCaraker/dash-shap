@@ -151,7 +151,7 @@ $0.376$ to $0.925$ ($+0.549$) over Single Best, and from
 $0.339$ to $0.925$ ($+0.586$) over the training-budget-matched
 Single Best ($M{=}200$), outperforming even Stochastic Retrain by $+0.063$.
 
-\dash{} additionally provides two novel diagnostic tools---the Feature
+\dash{} additionally provides two diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
 first-mover bias without ground truth and can be applied independently
 of the full \dash{} pipeline, enabling practitioners to audit
@@ -1069,9 +1069,40 @@ shifts the variance budget decisively: data accounts for $73.6\%$ of
 total variance while model selection drops to $16.2\%$, a $60\%$
 reduction in the model-selection sum of squares ($0.636 \to 0.089$).
 The residual (interaction + noise) likewise decreases from $21.8\%$ to
-$10.2\%$. This is the most direct evidence that independence-based
-averaging cancels the arbitrary feature choices that dominate
-single-model explanations.
+$10.2\%$. Table~\ref{tab:anova} reports the full ANOVA decomposition
+with $F$-statistics. Both data and model effects are highly significant
+for both methods ($p < 10^{-5}$). The key contrast is between methods:
+Single Best's model $F = 11.2$ slightly exceeds its data $F = 10.3$
+(model-dominated), while \dash{}'s data $F = 43.4$ dwarfs its model
+$F = 9.5$ (data-dominated). This shift confirms that
+independence-based averaging cancels the arbitrary feature choices that
+dominate single-model explanations.
+
+\begin{table}[htbp]
+\centering
+\caption{Two-way ANOVA for the $7 \times 7$ crossed variance
+decomposition ($\rhovar = 0.9$). Sum of squares are aggregated across
+$P = 50$ features. Both data and model effects are significant for both
+methods; the critical contrast is that \dash{} shifts from
+model-dominated (SB) to data-dominated variance.}
+\label{tab:anova}
+\small
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Method} & \textbf{Source} & \textbf{SS} & \textbf{df} & $F$ & $p$ \\
+\midrule
+\multirow{3}{*}{Single Best}
+  & Data     & 0.588 & 6  & 10.3 & $1.2 \times 10^{-6}$ \\
+  & Model    & 0.636 & 6  & 11.2 & $5.1 \times 10^{-7}$ \\
+  & Residual & 0.341 & 36 & ---  & --- \\
+\addlinespace
+\multirow{3}{*}{\dash{} (MaxMin)}
+  & Data     & 0.405 & 6  & 43.4 & $4.9 \times 10^{-15}$ \\
+  & Model    & 0.089 & 6  & \phantom{0}9.5 & $2.8 \times 10^{-6}$ \\
+  & Residual & 0.056 & 36 & ---  & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 As a complementary check, we also conduct a marginal decomposition by
 alternately fixing the data seed or the model seed. When data is fixed
@@ -1271,6 +1302,40 @@ radius/perimeter/area triad that are less frequently selected as
 instability. The FSI gradient across correlated features
 identifies collinear groups without computing the correlation matrix,
 providing an unsupervised collinearity diagnostic.
+
+\paragraph{Quantitative validation of FSI.}
+On synthetic data with known ground truth, FSI cleanly separates signal
+features (those in groups with $\beta_g > 0$) from noise features
+($\beta_g = 0$) at every correlation level (Table~\ref{tab:fsi_validation}).
+Signal features have consistently lower FSI (more stable attributions)
+than noise features, with the ratio declining from $0.31$ at $\rhovar = 0$
+to $0.25$ at $\rhovar = 0.95$---indicating that FSI becomes a sharper
+discriminator as collinearity increases. The Spearman correlation between
+FSI and ground-truth importance magnitude is $\rhovar_S \approx -0.995$
+($p < 0.001$) at every level, confirming that FSI ordering nearly
+perfectly recovers the true importance ordering without access to ground
+truth.
+
+\begin{table}[htbp]
+\centering
+\caption{FSI validation on synthetic data (50 repetitions per $\rhovar$).
+Mean FSI for signal features ($\beta_g > 0$) vs.\ noise features
+($\beta_g = 0$).  $\beta$~Spearman is the rank correlation between FSI
+and ground-truth importance magnitude across all 50~features.}
+\label{tab:fsi_validation}
+\small
+\begin{tabular}{ccccc}
+\toprule
+$\rhovar$ & Mean FSI (signal) & Mean FSI (noise) & Ratio & $\beta$~Spearman \\
+\midrule
+0.0  & 0.285 & 0.905 & 0.31 & $-$0.995 \\
+0.5  & 0.337 & 1.253 & 0.27 & $-$0.995 \\
+0.7  & 0.362 & 1.424 & 0.25 & $-$0.995 \\
+0.9  & 0.420 & 1.636 & 0.26 & $-$0.994 \\
+0.95 & 0.461 & 1.843 & 0.25 & $-$0.991 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Importance-Stability (IS) Plot.}
 The IS Plot partitions features into four quadrants by median
@@ -1626,6 +1691,22 @@ which partial orders are necessary rather than merely convenient.
     amplifies, rather than resolves, explanation instability.
 \end{enumerate}
 
+\paragraph{Model governance considerations.}
+In regulated settings (\eg banking model risk management under SR~11-7,
+or transparency obligations under the EU~AI~Act), \dash{} is best
+understood as an \emph{explanation auditing layer} rather than a
+replacement for the production model. The deployed system still trains
+and serves a single XGBoost model; \dash{} runs offline during model
+validation to assess whether that model's SHAP-based feature rankings
+are trustworthy. The $M$-model population is an audit instrument---
+analogous to stress-testing a model under varied specifications---not a
+deployed ensemble. For model risk documentation, we recommend recording:
+(1)~the production model's SHAP rankings alongside the \dash{} consensus
+rankings, (2)~the FSI values and IS~Plot quadrant assignments as evidence
+of explanation reliability or instability, and (3)~specific features
+flagged as Quadrant~II members, which should be reported as collinear
+groups rather than individually ranked.
+
 \subsection{Limitations}
 
 \begin{itemize}
@@ -1769,7 +1850,7 @@ multicollinearity. Three lines of evidence support this finding:
 
 \dash{} (Diversified Aggregation of SHAP) operationalizes the
 independence principle with forced feature restriction, diversity-aware
-model selection, and two novel diagnostic tools---the Feature Stability
+model selection, and two diagnostic tools---the Feature Stability
 Index and Importance-Stability Plot---that detect first-mover bias
 without ground truth. On real-world datasets, \dash{} improves stability
 from $0.339$ to $0.925$ (Breast Cancer), from $0.840$ to $0.964$
