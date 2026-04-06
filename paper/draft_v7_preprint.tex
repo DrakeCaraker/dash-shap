@@ -150,6 +150,9 @@ $0.938$. On the Breast Cancer dataset, \dash{} improves stability from
 $0.376$ to $0.925$ ($+0.549$) over Single Best, and from
 $0.339$ to $0.925$ ($+0.586$) over the training-budget-matched
 Single Best ($M{=}200$), outperforming even Stochastic Retrain by $+0.063$.
+Under nonlinear data-generating processes, the stability advantage
+emerges at $\rhovar \geq 0.7$; at lower correlation, simpler methods
+suffice.
 
 \dash{} additionally provides two diagnostic tools---the Feature
 Stability Index (FSI) and Importance-Stability (IS) Plot---that detect
@@ -1721,17 +1724,39 @@ of explanation reliability or instability, and (3)~specific features
 flagged as Quadrant~II members, which should be reported as collinear
 groups rather than individually ranked.
 
+\paragraph{Expected improvement magnitude.}
+The Breast Cancer result ($+0.549$ over Single Best) reflects extreme
+collinearity (21~feature pairs with $|r| > 0.9$). On datasets with
+moderate collinearity---California Housing ($|r| \approx 0.7$, 8
+features)---the stability improvement is $+0.009$ (not significant),
+and \dash{}'s primary value is the diagnostic output rather than the
+stability gain. Practitioners should calibrate expectations
+accordingly: improvements of $+0.01$--$0.05$ on stability are typical
+for moderately correlated datasets, with larger gains reserved for
+settings with heavy collinearity.
+
 \subsection{Limitations}
 
 \begin{itemize}
-  \item \textbf{Scope.} The default pipeline targets XGBoost and
-    TreeSHAP. Extension to other model families (\eg neural networks
-    with KernelSHAP) would require adapting the diversity selection
-    criteria to non-tree-based importance measures. The
-    \texttt{fit\_from\_attributions()} interface partially relaxes this
-    constraint: any attribution method producing feature-level vectors
-    can plug into the diversity selection and consensus stages without
-    retraining.
+  \item \textbf{Scope of the independence principle.} The empirical
+    validation in this paper covers interventional TreeSHAP on XGBoost.
+    The companion impossibility theorem
+    \citep{caraker2026impossibility} proves that the underlying
+    instability---and the necessity of ensemble-based resolution---holds
+    for \emph{any} attribution method on \emph{any} model class
+    exhibiting the Rashomon property under correlation, providing a
+    theoretical basis for expecting the independence principle to
+    generalize.  However, direct empirical validation on other
+    configurations (conditional SHAP, LightGBM, CatBoost, neural
+    networks with KernelSHAP) remains future work.  The
+    \texttt{fit\_from\_attributions()} interface partially bridges this
+    gap: any attribution method producing feature-level vectors can
+    plug into \dash{}'s aggregation stages without retraining
+    (validated on LIME in Appendix~\ref{app:lime_demo}).
+    The conditional SHAP case warrants particular attention: because
+    conditional approaches account for feature dependencies in the
+    reference distribution \citep{aas2021explaining}, the instability
+    dynamics may differ from the interventional setting studied here.
   \item \textbf{Interventional SHAP under correlation.} DASH uses
     interventional TreeSHAP, which conditions on marginal rather than
     conditional feature distributions. Under high correlation, this
