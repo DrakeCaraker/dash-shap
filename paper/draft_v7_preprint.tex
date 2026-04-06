@@ -2328,15 +2328,17 @@ $M \in \{50, 100, 200, 500\}$). We use $M = 200$ as a conservative default.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.6\textwidth,alt={Sensitivity plot of stability vs population size M at two correlation levels}]{ablation_sensitivity.png}
-\caption{Ablation sensitivity: stability as a function of population size $M$
-at two correlation levels ($\rhovar = 0.0$ and $\rhovar = 0.9$).
-Stability is effectively invariant to population size
-(within 0.001 across $M \in \{50, 100, 200, 500\}$), indicating that
-$M = 200$ is a conservative default.
-Additional ablation results for $K$, $\varepsilon$, and $\delta$ are reported
-in Table~\ref{tab:epsilon} and the inline text; full multi-panel ablation
-figures are planned for the journal version.}
+\includegraphics[width=\textwidth,alt={Four-panel ablation sensitivity plot showing stability vs M, K, epsilon, and delta at three correlation levels}]{ablation_sensitivity.png}
+\caption{Ablation sensitivity: stability as a function of each \dash{}
+hyperparameter at three correlation levels
+($\rhovar \in \{0.0, 0.9, 0.95\}$).
+\textbf{Top left}: Population size $M$---stability is effectively
+invariant ($\Delta < 0.005$ across $M \in \{50, 100, 200, 500\}$).
+\textbf{Top right}: Selected models $K$---saturates at $K \approx 20$.
+\textbf{Bottom left}: Filter threshold $\varepsilon$---robust across
+a $3\times$ range ($0.03$--$0.10$).
+\textbf{Bottom right}: Diversity threshold $\delta$---sensitive above
+$0.05$; the default $\delta = 0.05$ is at the elbow.}
 \label{fig:ablation}
 \end{figure}
 
