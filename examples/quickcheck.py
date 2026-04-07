@@ -2,6 +2,7 @@
 
 Detects first-mover bias on the Breast Cancer dataset.
 """
+
 from sklearn.datasets import load_breast_cancer
 from dash_shap import check
 

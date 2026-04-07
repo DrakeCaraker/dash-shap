@@ -59,10 +59,13 @@ class CheckResult:
 
         # Compute stable features (Quadrant I: high importance, low FSI)
         imp_threshold = np.median(consensus_importance)
-        fsi_threshold = np.median(fsi[consensus_importance > imp_threshold]) if np.any(consensus_importance > imp_threshold) else np.median(fsi)
+        fsi_threshold = (
+            np.median(fsi[consensus_importance > imp_threshold])
+            if np.any(consensus_importance > imp_threshold)
+            else np.median(fsi)
+        )
         self.stable_features = [
-            j for j in range(self.n_features)
-            if consensus_importance[j] > imp_threshold and fsi[j] < fsi_threshold
+            j for j in range(self.n_features) if consensus_importance[j] > imp_threshold and fsi[j] < fsi_threshold
         ]
 
     def _fname(self, i):
@@ -85,8 +88,7 @@ class CheckResult:
             lines.append("UNSTABLE PAIRS (rankings flip across retrains):")
             for i, j in self.unstable_pairs[:10]:
                 flip = self.flip_rates.get((i, j), self.flip_rates.get((j, i), 0))
-                lines.append(f"  {self._fname(i)} vs {self._fname(j)}: "
-                             f"flip rate {flip:.0%}")
+                lines.append(f"  {self._fname(i)} vs {self._fname(j)}: flip rate {flip:.0%}")
             if len(self.unstable_pairs) > 10:
                 lines.append(f"  ... and {len(self.unstable_pairs) - 10} more")
             lines.append("")
@@ -100,17 +102,13 @@ class CheckResult:
         ranking = np.argsort(-self.consensus_importance)
         for rank, j in enumerate(ranking[:10], 1):
             stability = "stable" if self.fsi[j] < np.median(self.fsi) else "UNSTABLE"
-            lines.append(f"  {rank}. {self._fname(j)}: "
-                         f"{self.consensus_importance[j]:.4f} ({stability})")
+            lines.append(f"  {rank}. {self._fname(j)}: {self.consensus_importance[j]:.4f} ({stability})")
 
         return "\n".join(lines)
 
     def dash_importance(self):
         """Return DASH consensus importance as a dict {feature_name: importance}."""
-        return {
-            self._fname(j): self.consensus_importance[j]
-            for j in np.argsort(-self.consensus_importance)
-        }
+        return {self._fname(j): self.consensus_importance[j] for j in np.argsort(-self.consensus_importance)}
 
     def plot(self, figsize=(10, 7), top_k=8):
         """Importance-Stability (IS) Plot.
@@ -119,6 +117,7 @@ class CheckResult:
         vs FSI, colored by quadrant.
         """
         from dash_shap.core.diagnostics import ImportanceStabilityPlot
+
         return ImportanceStabilityPlot.plot(
             self.consensus_importance,
             self.fsi,
@@ -130,6 +129,7 @@ class CheckResult:
     def to_dataframe(self):
         """Return results as a pandas DataFrame."""
         import pandas as pd
+
         data = {
             "feature": [self._fname(j) for j in range(self.n_features)],
             "importance": self.consensus_importance,
@@ -218,9 +218,7 @@ def check(
 
     # Split into train/test for SHAP
     rng = np.random.RandomState(seed)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=seed
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=seed)
 
     # Hyperparameter search space (matches paper)
     search_space = {
@@ -257,6 +255,7 @@ def check(
 
     # Compute SHAP for all models
     import shap
+
     shap_matrix = np.zeros((M, X_test.shape[0], X_test.shape[1]))
     for i, model in enumerate(models):
         explainer = shap.TreeExplainer(model)
@@ -298,7 +297,7 @@ def check(
 
     for group in groups:
         for ii, fi in enumerate(group):
-            for fj in group[ii + 1:]:
+            for fj in group[ii + 1 :]:
                 diffs = model_importances[:, fi] - model_importances[:, fj]
                 mean_diff = np.mean(diffs)
                 std_diff = np.std(diffs, ddof=1)
@@ -313,8 +312,7 @@ def check(
                     unstable.append((fi, fj))
 
     if verbose:
-        print(f"  Done. {len(unstable)} unstable pairs found "
-              f"in {len(groups)} correlated groups.")
+        print(f"  Done. {len(unstable)} unstable pairs found in {len(groups)} correlated groups.")
 
     return CheckResult(
         shap_matrix=mean_abs_shap,

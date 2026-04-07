@@ -1,4 +1,5 @@
 """Quick stability check — regression example (California Housing)."""
+
 from sklearn.datasets import fetch_california_housing
 from dash_shap import check
 
