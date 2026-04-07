@@ -49,7 +49,8 @@ paper/            LaTeX source
 
 ## Key Entry Points
 
-- `dash_shap.core.pipeline.DASHPipeline` — main class, runs all 5 stages via `.fit()`
+- `dash_shap.check()` — **simplest API**: 3-line stability check, trains M=25 models, returns `CheckResult` with `.report()`, `.plot()`, `.dash_importance()`
+- `dash_shap.core.pipeline.DASHPipeline` — full 5-stage pipeline class, runs all stages via `.fit()`
 - `run_experiments.py` — CLI experiment runner (deprecated — use parallel runner; retained for historical provenance)
 - `run_experiments_parallel.py` — **sole actively maintained entry point** (17 default experiments, ~3-5x faster via population sharing + parallel SHAP)
 - `notebooks/demo_benchmark_6.ipynb` — **authoritative (ArXiv)** interactive benchmark notebook

@@ -58,7 +58,21 @@ For the "When to Use DASH" decision guide, see `README.md`.
 
 ---
 
-## 5. Recommended Learning Path
+## 5. Quick Check (Start Here)
+
+Before diving into the full pipeline, check if your model is affected:
+
+```python
+from dash_shap import check
+result = check(X, y, feature_names=feature_names)
+print(result.report())
+```
+
+This trains 25 models, computes SHAP, and tells you which feature rankings are stable vs unstable. If the report shows no unstable pairs, your single-model SHAP is reliable. If it does, read on.
+
+---
+
+## 6. Recommended Learning Path
 
 | Step | Resource | What You'll Learn |
 |---|---|---|

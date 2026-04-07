@@ -1,6 +1,35 @@
 # API Reference
 
-## Quick Reference
+## Quick Check (Simplest API)
+
+```python
+from dash_shap import check
+
+result = check(X, y, task="binary", feature_names=feature_names)
+print(result.report())     # Human-readable stability summary
+result.plot()              # IS Plot (importance vs stability)
+result.dash_importance()   # Stable consensus rankings as dict
+result.to_dataframe()      # Full results as pandas DataFrame
+```
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `X` | (required) | Training data array |
+| `y` | (required) | Target variable |
+| `M` | 25 | Number of independent models to train |
+| `task` | `"auto"` | `"regression"`, `"binary"`, `"multiclass"`, or `"auto"` |
+| `feature_names` | `None` | Feature names for display |
+| `correlation_threshold` | 0.5 | Minimum \|r\| to group features |
+| `seed` | 42 | Random seed |
+| `verbose` | `True` | Print progress |
+
+**Returns:** `CheckResult` with `.report()`, `.plot()`, `.dash_importance()`, `.to_dataframe()`, `.unstable_pairs`, `.stable_features`, `.fsi`, `.consensus_importance`.
+
+---
+
+## Full Pipeline (DASHPipeline)
 
 ### Minimal Working Example
 

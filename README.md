@@ -151,7 +151,26 @@ python -c "from dash_shap import DASHPipeline; print('DASH installation OK')"
 
 ---
 
-## Quick Start
+## Quick Check (3 lines)
+
+Is your model affected by first-mover bias? Find out in under 60 seconds:
+
+```python
+from dash_shap import check
+from sklearn.datasets import load_breast_cancer
+
+data = load_breast_cancer()
+result = check(data.data, data.target, task="binary",
+               feature_names=list(data.feature_names))
+print(result.report())   # Shows unstable pairs + stable consensus rankings
+result.plot()             # IS Plot: importance vs stability for all features
+```
+
+`check()` trains 25 independent models, computes SHAP for each, detects which feature rankings are stable vs unstable, and provides DASH consensus rankings. See `result.dash_importance()` for stable rankings, `result.to_dataframe()` for a full summary.
+
+## Full Pipeline (Advanced)
+
+For publication-quality results with M=200 models, diversity selection, and full diagnostics:
 
 ```python
 from dash_shap import DASHPipeline
