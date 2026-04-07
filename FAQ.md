@@ -2,9 +2,19 @@
 
 ## Is DASH Right for My Problem?
 
+**Q: How do I know if my model is affected?**
+
+Run the quick check — it takes under 60 seconds:
+```python
+from dash_shap import check
+result = check(X, y, feature_names=feature_names)
+print(result.report())
+```
+If the report shows unstable pairs, your SHAP rankings are affected by first-mover bias. Use `result.dash_importance()` for stable rankings.
+
 **Q: My features aren't correlated — will DASH help?**
 
-Probably not. DASH's stability advantage is statistically significant at ρ ≥ 0.7 and grows with correlation severity. At low correlations (ρ < 0.5), single-model SHAP is already stable and DASH adds overhead without benefit. Check whether your features are correlated before using DASH.
+Probably not. DASH's stability advantage is statistically significant at ρ ≥ 0.7 and grows with correlation severity. At low correlations (ρ < 0.5), single-model SHAP is already stable and DASH adds overhead without benefit. The `check()` function above will confirm whether your features are affected.
 
 **Q: My dataset is small (< 500 rows). Will DASH work?**
 
