@@ -8,6 +8,10 @@ except Exception:
     __version__ = "0.1.0"  # fallback for editable installs or uninstalled usage
 
 __all__ = [
+    # Quick API (3-line stability check)
+    "check",
+    "CheckResult",
+    # Full pipeline
     "DASHPipeline",
     "FeatureStabilityIndex",
     "ImportanceStabilityPlot",
@@ -22,6 +26,9 @@ __all__ = [
     "consensus",
     "report",
 ]
+
+# Quick API
+from dash_shap.quick import check, CheckResult
 
 # Lazy imports for the stability workflow
 from dash_shap.stability import screen, validate, consensus, report
