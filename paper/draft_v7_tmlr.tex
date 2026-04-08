@@ -162,7 +162,7 @@ first-mover bias without ground truth and can be applied independently
 of the full \dash{} pipeline, enabling practitioners to audit
 explanation reliability before acting on feature rankings. Software and
 reproducible benchmarks are available at
-\url{https://github.com/DrakeCaraker/dash-shap}.
+\url{https://anonymous.4open.science/r/dash-shap}.
 \end{abstract}
 
 \smallskip
@@ -616,7 +616,7 @@ We use greedy max-min dissimilarity selection:
 This ensures each selected model is maximally different from all previously
 selected models in its feature utilization pattern, without requiring
 knowledge of the feature correlation structure.
-The companion paper \citep{caraker2026impossibility} formalizes a
+\citet{caraker2026impossibility} formalizes a
 \emph{balanced ensemble} condition: within each collinear group, every
 feature serves as first-mover equally often, guaranteeing exact
 within-group equity.  Forced low \texttt{colsample\_bytree} (Stage~1)
@@ -1213,8 +1213,8 @@ $\rhovar$ & \textbf{Comparison} & \textbf{Metric} & $p_{\text{HB}}$ & Cohen's $d
 Stochastic Retrain implements the same core operation as
 \dash{}---averaging attributions across independently trained
 models---differing only in how independence is achieved (seed diversity
-vs.\ hyperparameter diversity).  The companion paper
-\citep{caraker2026impossibility} proves this averaging is the unique
+vs.\ hyperparameter diversity).  \citet{caraker2026impossibility}
+prove this averaging is the unique
 minimum-variance unbiased estimator; the equivalence below confirms
 that practical independence, not pipeline engineering, drives stability.
 We find that model independence alone---even in its simplest form (seed
@@ -1233,7 +1233,7 @@ benefits---nonlinear robustness (Section~\ref{sec:nonlinear}), equitable
 attribution (below), ground-truth-free diagnostics
 (Section~\ref{sec:diagnostics}), and computational efficiency---that
 simple seed averaging does not provide.
-The companion paper \citep{caraker2026impossibility} proves that
+\citet{caraker2026impossibility} proves that
 \dash{} consensus averaging is Pareto-optimal among all attribution
 aggregation methods: it achieves the Cram\'er--Rao variance bound
 $\sigma^2/M$ and no method can simultaneously achieve zero
@@ -1340,7 +1340,7 @@ A key practical question is: \emph{how can a practitioner know whether
 their explanations suffer from first-mover bias?} Ground-truth importance
 is never available in practice. \dash{}'s Stage~5 diagnostics address this
 by quantifying explanation disagreement across the ensemble.
-The companion paper \citep{caraker2026impossibility} introduces
+\citet{caraker2026impossibility} introduces
 complementary formal tests: a single-model split-frequency $Z$-test
 (F5: tests whether the split-count ratio within a collinear pair
 deviates from the null of equal utilization) that screens for
@@ -1696,7 +1696,7 @@ independence alone.
 Random Forest (RF) provides a natural test of the independence principle
 from the model-family side: its trees are trained independently by
 construction (via bootstrap sampling and random feature subsets).
-The companion impossibility analysis \citep{caraker2026impossibility}
+The impossibility analysis of \citet{caraker2026impossibility}
 predicts this theoretically: RF's attribution ratio converges as
 $O(1/\sqrt{T})$, in contrast to gradient boosting's divergent
 $1/(1 - \rhovar^2)$---independence between trees prevents the
@@ -1740,9 +1740,8 @@ output representation: features that consistently swap rank across
 ensemble members can be treated as \emph{incomparable} rather than
 arbitrarily ordered, yielding a partial order on feature importance
 that more honestly reflects genuine attribution ambiguity under
-collinearity. We pursue this direction in companion work
-\citep{caraker2026impossibility}, which formalizes the conditions under
-which partial orders are necessary rather than merely convenient.
+collinearity. \citet{caraker2026impossibility} formalize the conditions
+under which partial orders are necessary rather than merely convenient.
 
 \subsection{Practical recommendations}
 
@@ -1805,8 +1804,8 @@ settings with heavy collinearity.
 \begin{itemize}
   \item \textbf{Scope of the independence principle.} The empirical
     validation in this paper covers interventional TreeSHAP on XGBoost.
-    The companion impossibility theorem
-    \citep{caraker2026impossibility} proves that the underlying
+    The impossibility theorem of
+    \citet{caraker2026impossibility} proves that the underlying
     instability---and the necessity of ensemble-based resolution---holds
     for \emph{any} attribution method on \emph{any} model class
     exhibiting the Rashomon property under correlation, providing a
@@ -1820,10 +1819,10 @@ settings with heavy collinearity.
     (validated on LIME in Appendix~\ref{app:lime_demo}).
     The conditional SHAP case warrants particular attention: although
     conditional approaches account for feature dependencies in the
-    reference distribution \citep{aas2021explaining}, the companion
-    paper proves that switching to conditional SHAP does \emph{not}
-    escape the impossibility when features have equal causal effects
-    \citep{caraker2026impossibility}---the instability is a property of
+    reference distribution \citep{aas2021explaining},
+    \citet{caraker2026impossibility} prove that switching to
+    conditional SHAP does \emph{not} escape the impossibility when
+    features have equal causal effects---the instability is a property of
     the Rashomon set, not the attribution method.  However, the
     practical dynamics of instability under conditional SHAP may differ
     from the interventional setting, and empirical validation remains
@@ -1887,16 +1886,16 @@ structure.
 
 The empirical equivalence between \dash{} and Stochastic Retrain---and
 the monotonic degradation of dependent methods with
-$\rhovar$---is consistent with a formal impossibility result we
-establish in companion work \citep{caraker2026impossibility}: no
+$\rhovar$---is consistent with the formal impossibility result of
+\citet{caraker2026impossibility}: no
 single-model feature ranking can simultaneously be faithful (reflect
 the model's attributions), stable (consistent across equivalent models),
 and complete (rank all feature pairs) when features are collinear.
 This trilemma holds for any attribution method applied to any model
 class exhibiting the Rashomon property under correlation---not only
 gradient boosting. The present work provides the empirical foundation
-and constructive resolution; the companion theorem, mechanically
-verified in the Lean~4 proof assistant, proves that ensemble-based
+and constructive resolution; the theorem of \citet{caraker2026impossibility},
+mechanically verified in the Lean~4 proof assistant, proves that ensemble-based
 approaches like \dash{} are not merely effective but mathematically
 necessary for achieving both stability and equity.
 
@@ -1970,7 +1969,7 @@ from $0.339$ to $0.925$ (Breast Cancer), from $0.840$ to $0.964$
 (Superconductor), and from $0.97$ to $0.98$ (California Housing).
 
 The code, data, and reproducible benchmarks are publicly available at
-\url{https://github.com/DrakeCaraker/dash-shap}.
+\url{https://anonymous.4open.science/r/dash-shap}.
 
 
 % ===========================================================================
@@ -1978,7 +1977,7 @@ The code, data, and reproducible benchmarks are publicly available at
 
 All code, data generators, hyperparameter configurations, and evaluation
 metrics are publicly available at
-\url{https://github.com/DrakeCaraker/dash-shap}. The complete benchmark
+\url{https://anonymous.4open.science/r/dash-shap}. The complete benchmark
 can be reproduced via \texttt{python run\_experiments\_parallel.py} with fixed
 random seeds ($\text{SEED} = 42$). The authoritative interactive
 notebook \texttt{notebooks/demo\_benchmark\_7\_parallel.ipynb} provides a
@@ -2033,12 +2032,12 @@ L.~Breiman.
 \newblock Statistical modeling: The two cultures.
 \newblock \emph{Statistical Science}, 16(3):199--231, 2001.
 
-\bibitem[Caraker et~al.(2026b)]{caraker2026impossibility}
-D.~Caraker, B.~Arnold, and D.~Rhoads.
+\bibitem[Anonymous(2026b)]{caraker2026impossibility}
+Anonymous.
 \newblock The attribution impossibility: Faithful, stable, and complete
   feature rankings cannot coexist under collinearity.
-\newblock \emph{arXiv preprint}, 2026. Lean~4 formalization (260 theorems)
-  available at \url{https://github.com/DrakeCaraker/dash-impossibility-lean}.
+\newblock \emph{arXiv preprint}, 2026. Lean~4 formalization available at
+  \url{https://anonymous.4open.science/r/dash-impossibility-lean}.
 
 \bibitem[Chen and Guestrin(2016)]{chen2016xgboost}
 T.~Chen and C.~Guestrin.
@@ -2291,7 +2290,7 @@ walkthrough of all experiments with intermediate results cached for
 rapid re-execution.
 
 All code, data generators, and benchmark infrastructure are publicly
-available at \url{https://github.com/DrakeCaraker/dash-shap}.
+available at \url{https://anonymous.4open.science/r/dash-shap}.
 
 \section{Ablation Studies and Computational Cost}
 \label{app:ablation}
@@ -2496,8 +2495,8 @@ Large Single Model & 1.000 & 0.084 & 0.084 \\
 \label{app:twotree}
 
 To build intuition for first-mover bias, we analyze the simplest possible
-case: two-step linear boosting on correlated features. The companion
-paper \citep{caraker2026impossibility} proves the formal result---the
+case: two-step linear boosting on correlated features.
+\citet{caraker2026impossibility} prove the formal result---the
 attribution ratio is exactly $1/(1-\rhovar^2)$ for gradient boosting
 under the proportionality axiom---and verifies it in Lean~4. Here we
 provide an accessible derivation that isolates the core mechanism.
