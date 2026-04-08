@@ -24,6 +24,8 @@ These apply to every session, no exceptions:
 
 9. **Smoke test before long runs.** Run `python run_experiments_parallel.py --smoke --experiments linear_sweep` before any multi-hour experiment run. The smoke test validates the full serialization pipeline in ~1 second and catches bugs that would otherwise crash after hours of compute.
 
+10. **Verify agent findings before acting.** When an Explore or research agent reports on code structure, file contents, or repo state, spot-check 2-3 key claims by reading the actual files before building a plan on top of them. Agents can read stale code, miss branches, or misidentify patterns.
+
 ## Directory Map
 
 ```
