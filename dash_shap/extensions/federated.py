@@ -131,13 +131,14 @@ def federated_consensus(
 
     n_sites = len(results)
 
+    w: np.ndarray
     if weights is not None:
-        weights = np.asarray(weights, dtype=float)
-        if weights.shape != (n_sites,):
-            raise ValueError(f"weights must have shape ({n_sites},), got {weights.shape}")
-        weights = weights / weights.sum()
+        w = np.asarray(weights, dtype=float)
+        if w.shape != (n_sites,):
+            raise ValueError(f"weights must have shape ({n_sites},), got {w.shape}")
+        w = w / w.sum()
     else:
-        weights = np.ones(n_sites) / n_sites
+        w = np.ones(n_sites) / n_sites
 
     # Stack per-site consensus matrices as (n_sites, n_ref, P)
     # Use the consensus (mean SHAP) from each site, shape (n_ref_i, P)
@@ -154,7 +155,7 @@ def federated_consensus(
 
     # Apply weights by scaling each site's matrix
     for s in range(n_sites):
-        matrices[s] *= weights[s] * n_sites  # scale so mean = weighted mean
+        matrices[s] *= w[s] * n_sites  # scale so mean = weighted mean
 
     combined = DASHResult.from_shap_matrices(matrices, feature_names=feature_names)
 
