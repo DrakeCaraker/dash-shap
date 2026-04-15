@@ -5,7 +5,7 @@ try:
 
     __version__ = _version("dash-shap")
 except Exception:
-    __version__ = "0.1.0"  # fallback for editable installs or uninstalled usage
+    __version__ = "0.2.0"  # fallback for editable installs or uninstalled usage
 
 __all__ = [
     # Quick API (3-line stability check)

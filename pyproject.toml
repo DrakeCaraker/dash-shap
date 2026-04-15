@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dash-shap"
-version = "0.1.0"
-description = "DASH: Diversified Aggregation of SHAP"
+version = "0.2.0"
+description = "Stable feature importance explanations under collinearity — works with any model and attribution method"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
-keywords = ["shap", "explainability", "xgboost", "feature-importance", "collinearity"]
+keywords = ["shap", "explainability", "feature-importance", "collinearity", "stability", "lime", "interpretability"]
 authors = [
   {name = "Drake Caraker"},
   {name = "Bryan Arnold"},
