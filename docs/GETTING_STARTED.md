@@ -68,6 +68,7 @@ DASH is backed by formal impossibility results proved in Lean 4 (zero sorry stat
 - **Divergence rate**: The first-mover attribution ratio diverges as 1/(1−ρ²) — at ρ=0.9, the first-mover feature gets 5.3× more credit than its correlated partner.
 - **Flip rate = coin flip**: For symmetric correlated features, the probability that a retrained model swaps their ranking is exactly 50%.
 - **DASH is optimal**: Equal-weight averaging across M independent models is the minimum-variance unbiased linear estimator (Cauchy-Schwarz / Titu's lemma). The ensemble size formula **M_min = ⌈2.71 · σ²/Δ²⌉** gives the minimum M needed for a 5% flip rate target.
+- **The Bilemma** (binary questions): For binary explanation spaces — "is this feature's effect positive or negative?" — the situation is worse: faithful + stable alone is impossible (not just the three-way trilemma). DASH resolves ranking instability via averaging, but sign instability is a harder problem with no single-model fix.
 
 These results are available as practical diagnostics via the **theory bridge extension**:
 
