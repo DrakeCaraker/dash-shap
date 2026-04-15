@@ -192,29 +192,35 @@ For full parameter documentation, see **[API Reference](API_REFERENCE.md)**.
 ## Going Further: Extensions Framework
 
 The IS-plot and FSI identify *which quadrant* each feature falls into. The
-**[extensions framework](EXTENSIONS.md)** lets you act on that classification:
+**[extensions framework](EXTENSIONS_GUIDE.md)** lets you act on that classification:
 
 | Question | Extension | What it does |
 |---|---|---|
-| "Which features are certified safe?" | `robust_certification` | Worst-case guarantee: top-k across *every* model |
 | "How confident is the ranking?" | `confidence_intervals` | BCa bootstrap CI for importance, FSI, and rank |
+| "Which features are certified safe?" | `robust_certification` | Worst-case guarantee: top-k across *every* model |
 | "Is feature A definitely more important than B?" | `partial_order` | π(A>B) — fraction of models ranking A above B |
-| "Which features are collinear with each other?" | `feature_groups` | Cluster on SHAP substitutability (Phase 2) |
-| "What triggered this observation's prediction?" | `local_uncertainty` | Per-observation K×P slice with sign-flip rate (Phase 2) |
-| "Can I justify this feature selection to stakeholders?" | `audit_report` | Structured report with warnings (Phase 3) |
-| "Has my data distribution changed?" | `DriftMonitor` | Cosine distance between baseline and current importance (Phase 4) |
+| "Which features are collinear with each other?" | `feature_groups` | Cluster on SHAP substitutability |
+| "What's the actionable label for each feature?" | `causal_flags` | Labels: robust / collinear / fragile / unimportant |
+| "What triggered this observation's prediction?" | `local_uncertainty` | Per-observation K×P slice with sign-flip rate |
+| "How do I pick the best features?" | `stable_feature_selection` | Composite importance+stability ranking |
+| "Can I justify this to stakeholders?" | `audit_report` | Structured report with warnings |
+| "What flip rate should I expect?" | `theory_bridge` | SNR, predicted flip rates, M recommendation |
+| "Has my model's behavior changed?" | `DriftMonitor` | Cosine distance between baseline and current importance |
+| "What's the optimal DASH config?" | `ParetoSelector` | RMSE-stability Pareto frontier |
+| "Can I combine results from multiple sites?" | `federated_consensus` | Cross-site consensus without sharing data |
 
 ```python
 # After pipe.fit(...):
-from dash_shap.extensions import robust_certification, confidence_intervals
+from dash_shap.extensions import robust_certification, confidence_intervals, causal_flags
 
 cert = robust_certification(pipe.result_)
 print(cert.summary())   # which features are certified top-3?
 
 ci = confidence_intervals(pipe.result_)
 print(ci.summary())     # how wide are the importance CIs?
+
+flags = causal_flags(pipe.result_, X_ref=X_ref)
+print(flags.summary())  # robust / collinear / fragile / unimportant
 ```
 
-See **[EXTENSIONS.md](EXTENSIONS.md)** for the full specification and
-**[EXTENSIONS_USER_GUIDE.md](EXTENSIONS_USER_GUIDE.md)** for a concept-first
-narrative guide organized by user question.
+See the **[Extensions Guide](EXTENSIONS_GUIDE.md)** for worked examples of all 12 extensions, organized by use case.
