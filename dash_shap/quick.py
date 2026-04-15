@@ -68,6 +68,23 @@ class CheckResult:
             j for j in range(self.n_features) if consensus_importance[j] > imp_threshold and fsi[j] < fsi_threshold
         ]
 
+        # Theory bridge: SNR predictions and M recommendation
+        try:
+            from dash_shap.extensions.theory_bridge import compute_snr, predict_flip_rate, recommend_M
+
+            self.snr = compute_snr(shap_matrix)
+            self.predicted_flip_rates = {pair: predict_flip_rate(s) for pair, s in self.snr.items()}
+            self._m_recommendation = recommend_M(shap_matrix, target_flip_rate=0.05)
+        except Exception:
+            self.snr = {}
+            self.predicted_flip_rates = {}
+            self._m_recommendation = {"recommended_M": shap_matrix.shape[0]}
+
+    @property
+    def recommended_M(self):
+        """Recommended ensemble size M for 5% target flip rate."""
+        return self._m_recommendation["recommended_M"]
+
     def _fname(self, i):
         if self.feature_names is not None:
             return self.feature_names[i]
@@ -88,7 +105,9 @@ class CheckResult:
             lines.append("UNSTABLE PAIRS (rankings flip across retrains):")
             for i, j in self.unstable_pairs[:10]:
                 flip = self.flip_rates.get((i, j), self.flip_rates.get((j, i), 0))
-                lines.append(f"  {self._fname(i)} vs {self._fname(j)}: flip rate {flip:.0%}")
+                pred = self.predicted_flip_rates.get((i, j), self.predicted_flip_rates.get((j, i), None))
+                pred_str = f", predicted {pred:.0%}" if pred is not None else ""
+                lines.append(f"  {self._fname(i)} vs {self._fname(j)}: flip rate {flip:.0%}{pred_str}")
             if len(self.unstable_pairs) > 10:
                 lines.append(f"  ... and {len(self.unstable_pairs) - 10} more")
             lines.append("")
@@ -103,6 +122,13 @@ class CheckResult:
         for rank, j in enumerate(ranking[:10], 1):
             stability = "stable" if self.fsi[j] < np.median(self.fsi) else "UNSTABLE"
             lines.append(f"  {rank}. {self._fname(j)}: {self.consensus_importance[j]:.4f} ({stability})")
+
+        # Theory bridge: ensemble size recommendation
+        rec_M = self._m_recommendation["recommended_M"]
+        if rec_M > self.n_models:
+            lines.append("")
+            lines.append(f"RECOMMENDATION: Use M={rec_M} models for 5% flip rate target")
+            lines.append(f"  (current M={self.n_models}; see DASHPipeline(M={rec_M}, ...))")
 
         return "\n".join(lines)
 
@@ -130,11 +156,20 @@ class CheckResult:
         """Return results as a pandas DataFrame."""
         import pandas as pd
 
+        # Per-feature worst-case SNR: minimum SNR among all pairs involving this feature
+        worst_snr = np.full(self.n_features, np.nan if not self.snr else np.inf)
+        for (j, k), s in self.snr.items():
+            if s < worst_snr[j]:
+                worst_snr[j] = s
+            if s < worst_snr[k]:
+                worst_snr[k] = s
+
         data = {
             "feature": [self._fname(j) for j in range(self.n_features)],
             "importance": self.consensus_importance,
             "fsi": self.fsi,
             "std": np.std(self.shap_matrix, axis=0, ddof=1),
+            "worst_snr": worst_snr,
             "stable": [j in self.stable_features for j in range(self.n_features)],
         }
         df = pd.DataFrame(data).sort_values("importance", ascending=False)

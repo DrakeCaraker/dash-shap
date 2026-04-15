@@ -58,7 +58,28 @@ For the "When to Use DASH" decision guide, see `README.md`.
 
 ---
 
-## 5. Quick Check (Start Here)
+## 5. Theoretical Foundations
+
+DASH is backed by formal impossibility results proved in Lean 4 (zero sorry statements, zero behavioral axioms):
+
+- **The Attribution Trilemma**: No single-model feature ranking can simultaneously be faithful, stable, and complete when features are collinear. This is why single-model SHAP explanations are partially arbitrary — it is mathematically *impossible* for them to be stable.
+- **Divergence rate**: The first-mover attribution ratio diverges as 1/(1−ρ²) — at ρ=0.9, the first-mover feature gets 5.3× more credit than its correlated partner.
+- **Flip rate = coin flip**: For symmetric correlated features, the probability that a retrained model swaps their ranking is exactly 50%.
+- **DASH is optimal**: Equal-weight averaging across M independent models is the minimum-variance unbiased linear estimator (Cauchy-Schwarz / Titu's lemma). The ensemble size formula **M_min = ⌈2.71 · σ²/Δ²⌉** gives the minimum M needed for a 5% flip rate target.
+
+These results are available as practical diagnostics via the **theory bridge extension**:
+
+```python
+from dash_shap.extensions.theory_bridge import theory_bridge
+tb = theory_bridge(pipe.result_)
+print(tb.summary())  # SNR per pair, predicted flip rates, M recommendation
+```
+
+For the empirical evidence, see the [DASH paper](https://arxiv.org/abs/2603.22346). For the formal proofs, see the [Lean 4 formalization](https://github.com/DrakeCaraker/dash-impossibility-lean) (315 theorems, 0 sorry statements).
+
+---
+
+## 6. Quick Check (Start Here)
 
 Before diving into the full pipeline, check if your model is affected:
 
@@ -72,7 +93,7 @@ This trains 25 models, computes SHAP, and tells you which feature rankings are s
 
 ---
 
-## 6. Recommended Learning Path
+## 7. Recommended Learning Path
 
 | Step | Resource | What You'll Learn |
 |---|---|---|
@@ -85,7 +106,7 @@ This trains 25 models, computes SHAP, and tells you which feature rankings are s
 
 ---
 
-## 6. Five-Minute Breast Cancer Example
+## 8. Five-Minute Breast Cancer Example
 
 The code below runs DASH end-to-end on the Breast Cancer dataset. It uses tutorial-scale parameters (M=100, K=20) that complete in about 1–2 minutes on a laptop with `n_jobs=-1`.
 
