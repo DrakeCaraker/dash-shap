@@ -111,7 +111,10 @@ The underlying [impossibility theorem](https://github.com/DrakeCaraker/dash-impo
 After fitting, `pipe.result_` is a `DASHResult` that supports additional analyses:
 
 ```python
-from dash_shap.extensions import confidence_intervals, robust_certification, theory_bridge
+from dash_shap.extensions import (
+    confidence_intervals, robust_certification, theory_bridge,
+    causal_flags, audit_report, DriftMonitor, federated_consensus,
+)
 
 # Bootstrap confidence intervals on importance and FSI
 ci = confidence_intervals(pipe.result_)
@@ -124,9 +127,27 @@ print(cert.certified[5])  # features certified top-5
 # Theory bridge: predict flip rates from impossibility theorem formulas
 tb = theory_bridge(pipe.result_)
 print(tb.summary())       # SNR per pair, predicted flip rates, M recommendation
+
+# Label each feature: robust / collinear / fragile / unimportant
+flags = causal_flags(pipe.result_, X_ref=X_ref)
+print(flags.summary())
+
+# Structured audit report with warnings for stakeholders
+report = audit_report(pipe.result_, X_ref=X_ref, causal=flags)
+print(report.summary())
+
+# Monitor explanation drift between model versions
+monitor = DriftMonitor(pipe.result_, threshold=0.1)
+alert = monitor.check(new_result, label="v2")
+if alert.drifted:
+    print(f"Drift: {alert.distance:.3f}, changed: {alert.changed_features}")
+
+# Combine results from multiple sites without sharing data
+fed = federated_consensus([result_site1, result_site2])
+print(f"Cross-site agreement: {fed.cross_site_agreement:.3f}")
 ```
 
-All extensions: `confidence_intervals`, `partial_order`, `feature_groups`, `stable_feature_selection`, `local_uncertainty`, `robust_certification`, `theory_bridge`.
+All 12 extensions: `confidence_intervals`, `partial_order`, `feature_groups`, `stable_feature_selection`, `local_uncertainty`, `robust_certification`, `theory_bridge`, `causal_flags`, `audit_report`, `DriftMonitor`, `ParetoSelector`, `federated_consensus`.
 
 ## How It Works
 
