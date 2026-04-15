@@ -62,7 +62,7 @@ Python 3.9–3.12. Tested in CI on Python 3.9 and 3.11.
 pip install -e ".[lightgbm]"
 ```
 
-This enables the `LightGBMSingleBestBaseline`. It is optional — all other baselines and the core pipeline use XGBoost only.
+This enables the `LightGBMSingleBestBaseline`. It is optional — the default pipeline uses XGBoost, but `DASHPipeline.fit_from_attributions()` accepts attributions from any model or method.
 
 ---
 

@@ -1,31 +1,26 @@
-"""DASH Stability Diagnostics — F5→F1→DASH workflow.
+"""DASH Stability Diagnostics — screen → validate → resolve workflow.
 
 Implements the diagnostic pipeline from "The Attribution Impossibility":
-  1. screen()    — F5 single-model screen (identify unstable pairs)
-  2. validate()  — F1 multi-model validation (confirm instability)
+  1. screen()    — Single-model screen (identify unstable pairs)
+  2. validate()  — Multi-model validation (confirm instability)
   3. consensus() — DASH ensemble averaging (resolve instability)
   4. report()    — Generate instability disclosure text
 
-Usage:
-    import dash_shap
+Both model-based and attribution-based paths are supported:
 
-    # Step 1: Screen a single model
+    # Path A: From fitted models (auto-computes SHAP)
     flags = dash_shap.screen(model, X_train, X_test)
-
-    # Step 2: Validate with multiple models
     results = dash_shap.validate(models, X_test)
 
-    # Step 3: Compute DASH consensus
-    dash = dash_shap.consensus(models, X_test)
-
-    # Step 4: Generate report
-    text = dash_shap.report(results, feature_names=X_test.columns)
+    # Path B: From pre-computed attributions (any source: LIME, IG, attention, etc.)
+    results = dash_shap.validate_from_attributions(attribution_matrix)
+    dash = dash_shap.consensus_from_attributions(attribution_matrix)
 """
 
 import numpy as np
 from scipy import stats
 
-__all__ = ["screen", "validate", "consensus", "report"]
+__all__ = ["screen", "validate", "consensus", "report", "validate_from_attributions", "consensus_from_attributions"]
 
 
 def _compute_shap(model, X_test, X_background=None):
@@ -64,16 +59,16 @@ def _correlated_groups(X, threshold=0.5):
 
 
 def screen(model, X_train, X_test, correlation_threshold=0.5):
-    """F5 single-model screen for attribution instability.
+    """Single-model screen for attribution instability.
 
-    Trains one model, computes SHAP, identifies correlated groups,
-    and flags potentially unstable pairs using within-tree split
-    frequency variation.
+    Computes attributions for one model, identifies correlated groups,
+    and flags potentially unstable pairs based on attribution gap
+    relative to importance magnitude.
 
     Parameters
     ----------
     model : fitted model
-        Must support shap.TreeExplainer or shap.KernelExplainer.
+        Any model supported by shap (TreeExplainer, KernelExplainer, etc.).
     X_train : array-like
         Training data (used for correlation detection).
     X_test : array-like
@@ -110,9 +105,9 @@ def screen(model, X_train, X_test, correlation_threshold=0.5):
 
 
 def validate(models, X_test, threshold=1.96, X_background=None):
-    """F1 multi-model validation of attribution instability.
+    """Multi-model validation of attribution instability.
 
-    Computes SHAP for each model, then for each feature pair:
+    Computes attributions for each model, then for each feature pair:
     Z_{jk} = |mean(phi_j - phi_k)| / (std(phi_j - phi_k) / sqrt(M))
 
     Parameters
@@ -129,11 +124,11 @@ def validate(models, X_test, threshold=1.96, X_background=None):
     Returns
     -------
     dict with keys:
-        shap_matrix : (M, P) array of mean |SHAP| per model
+        shap_matrix : (M, P) array of mean |attribution| per model
         z_statistics : dict of (i, j) -> Z-score
         flip_rates : dict of (i, j) -> flip rate
         unstable_pairs : list of (i, j) with Z < threshold
-        f1_correlation : Spearman r(Z, flip_rate)
+        z_flip_correlation : Spearman r(Z, flip_rate)
     """
     X_test = np.asarray(X_test)
     M = len(models)
@@ -158,7 +153,7 @@ def validate(models, X_test, threshold=1.96, X_background=None):
 
     unstable = [(i, j) for (i, j), z in z_stats.items() if z < threshold]
 
-    # F1 correlation
+    # Z-statistic vs flip rate correlation (diagnostic quality check)
     z_arr = np.array(list(z_stats.values()))
     flip_arr = np.array(list(flip_rates.values()))
     mask = np.isfinite(z_arr)
@@ -169,6 +164,9 @@ def validate(models, X_test, threshold=1.96, X_background=None):
         "z_statistics": z_stats,
         "flip_rates": flip_rates,
         "unstable_pairs": unstable,
+        "z_flip_correlation": r,
+        "z_flip_pvalue": p,
+        # Backward compatibility
         "f1_correlation": r,
         "f1_pvalue": p,
     }
@@ -251,9 +249,9 @@ def report(validate_results=None, consensus_results=None, feature_names=None, sc
 
     if validate_results:
         unstable = validate_results["unstable_pairs"]
-        r = validate_results["f1_correlation"]
+        r = validate_results.get("z_flip_correlation", validate_results.get("f1_correlation", 0))
         lines.append(f"**Unstable pairs (Z < 1.96):** {len(unstable)}")
-        lines.append(f"**F1 diagnostic correlation:** r = {r:.3f}\n")
+        lines.append(f"**Z–flip diagnostic correlation:** r = {r:.3f}\n")
         if unstable:
             lines.append("**Unstable pair details:**")
             for i, j in unstable[:10]:
@@ -282,3 +280,107 @@ def report(validate_results=None, consensus_results=None, feature_names=None, sc
     lines.append("*Generated by dash-shap. See: The Attribution Impossibility (Caraker et al., 2026)*")
 
     return "\n".join(lines)
+
+
+def validate_from_attributions(attribution_matrix, threshold=1.96):
+    """Multi-model validation from pre-computed attributions.
+
+    Works with any attribution source — SHAP, LIME, Integrated Gradients,
+    attention maps, or any other method that produces per-feature scores.
+
+    Parameters
+    ----------
+    attribution_matrix : ndarray of shape (M, P)
+        Per-model mean absolute attribution for each feature.
+        Rows = models (or seeds), columns = features.
+    threshold : float
+        Z-score threshold (default 1.96 for 5% significance).
+
+    Returns
+    -------
+    dict with same keys as validate().
+    """
+    attribution_matrix = np.asarray(attribution_matrix, dtype=float)
+    if attribution_matrix.ndim != 2:
+        raise ValueError(f"attribution_matrix must be 2D (M, P), got {attribution_matrix.ndim}D")
+    M, P = attribution_matrix.shape
+
+    z_stats = {}
+    flip_rates = {}
+
+    for i in range(P):
+        for j in range(i + 1, P):
+            diffs = attribution_matrix[:, i] - attribution_matrix[:, j]
+            mean_diff = np.mean(diffs)
+            std_diff = np.std(diffs, ddof=1)
+            z = abs(mean_diff) / (std_diff / np.sqrt(M)) if std_diff > 0 else np.inf
+            z_stats[(i, j)] = z
+
+            wins_i = np.sum(attribution_matrix[:, i] > attribution_matrix[:, j])
+            wins_j = np.sum(attribution_matrix[:, j] > attribution_matrix[:, i])
+            flip_rates[(i, j)] = min(wins_i, wins_j) / max(wins_i + wins_j, 1)
+
+    unstable = [(i, j) for (i, j), z in z_stats.items() if z < threshold]
+
+    z_arr = np.array(list(z_stats.values()))
+    flip_arr = np.array(list(flip_rates.values()))
+    mask = np.isfinite(z_arr)
+    r, p = stats.spearmanr(z_arr[mask], flip_arr[mask]) if np.sum(mask) > 2 else (0.0, 1.0)
+
+    return {
+        "shap_matrix": attribution_matrix,
+        "z_statistics": z_stats,
+        "flip_rates": flip_rates,
+        "unstable_pairs": unstable,
+        "z_flip_correlation": r,
+        "z_flip_pvalue": p,
+        "f1_correlation": r,
+        "f1_pvalue": p,
+    }
+
+
+def consensus_from_attributions(attribution_matrix):
+    """DASH consensus from pre-computed attributions.
+
+    Works with any attribution source — SHAP, LIME, Integrated Gradients,
+    attention maps, or any other method that produces per-feature scores.
+
+    Parameters
+    ----------
+    attribution_matrix : ndarray of shape (M, P)
+        Per-model mean absolute attribution for each feature.
+
+    Returns
+    -------
+    dict with same keys as consensus().
+    """
+    attribution_matrix = np.asarray(attribution_matrix, dtype=float)
+    if attribution_matrix.ndim != 2:
+        raise ValueError(f"attribution_matrix must be 2D (M, P), got {attribution_matrix.ndim}D")
+
+    mean_attr = np.mean(attribution_matrix, axis=0)
+    std_attr = np.std(attribution_matrix, axis=0, ddof=1)
+
+    P = len(mean_attr)
+    tied = []
+    visited = set()
+    for i in range(P):
+        if i in visited:
+            continue
+        group = [i]
+        for j in range(i + 1, P):
+            if j in visited:
+                continue
+            avg = (mean_attr[i] + mean_attr[j]) / 2
+            if avg > 0 and abs(mean_attr[i] - mean_attr[j]) / avg < 0.01:
+                group.append(j)
+                visited.add(j)
+        if len(group) >= 2:
+            tied.append(group)
+            visited.update(group)
+
+    return {
+        "attributions": mean_attr,
+        "std": std_attr,
+        "tied_groups": tied,
+    }

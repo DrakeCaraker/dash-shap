@@ -1318,7 +1318,7 @@ def experiment_real_california():
             f"ablation={np.mean(ablation_runs):.4f}"
         )
 
-    # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
+    # Statistical tests: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
     _log_pairwise_significance(cal_results, "DASH (MaxMin)", cal_methods, "California Housing")
 
     # IS plot from last DASH run
@@ -1478,7 +1478,7 @@ def experiment_real_breast_cancer():
         }
         log(f"  {name:<22} stab={stab:.4f}±{stab_se:.4f}  topk5={topk5:.4f}  ablation={np.mean(ablation_runs):.4f}")
 
-    # C7+F1: Wilcoxon signed-rank test and Cohen's d
+    # Statistical tests: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(bc_results, "DASH (MaxMin)", bc_methods, "Breast Cancer")
 
     # IS plot and disagreement map from last DASH run
@@ -1679,7 +1679,7 @@ def experiment_real_superconductor():
             f"ablation={np.mean(ablation_runs):.4f}"
         )
 
-    # C7+F1: Wilcoxon signed-rank test and Cohen's d
+    # Statistical tests: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(sc_results, "DASH (MaxMin)", sc_methods, "Superconductor")
 
     save_json(sc_results, f"{OUT}/tables/superconductor.json")
@@ -1894,7 +1894,7 @@ def experiment_ablation():
 
 
 ###############################################################################
-# EXPERIMENT: Variance Decomposition (F1 fix)
+# EXPERIMENT: Variance Decomposition (statistical tests fix)
 ###############################################################################
 
 
