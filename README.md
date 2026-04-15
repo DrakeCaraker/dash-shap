@@ -13,9 +13,9 @@
 
 ## The Problem
 
-SHAP is one of the most widely used tools for explaining machine learning predictions. But it has a hidden fragility: when features are correlated, the explanation changes depending on which feature the model happens to use first. Train the same XGBoost model twice with different random seeds and you can get completely different importance rankings — even though the predictions are identical. In regulated, high-stakes, or scientific settings, this means the "explanation" is partially arbitrary.
+Feature importance explanations are fragile under collinearity: when features are correlated, the explanation changes depending on which feature the model happens to use first. Train the same model twice with a different random seed and you can get completely different importance rankings — even though the predictions are identical. In regulated, high-stakes, or scientific settings, this means the "explanation" is partially arbitrary.
 
-This instability comes from a specific mechanism — **sequential residual dependency** in gradient boosting — and the intuitive fix (bigger models) makes it *worse*. A single large model with the same total tree count as DASH produces the worst explanations of any method tested, because more sequential trees means more reinforcement of an arbitrary initial feature choice.
+This instability comes from **sequential residual dependency** in iterative model fitting — proved for gradient boosting (XGBoost, LightGBM, CatBoost), Lasso, and neural networks. The intuitive fix (bigger models) makes it *worse*. A single large model with the same total tree count as DASH produces the worst explanations of any method tested, because more sequential fitting means more reinforcement of an arbitrary initial feature choice.
 
 **DASH fixes this.** It trains many small models independently, so each one makes its own arbitrary choice about which correlated feature to use. When you average their explanations, the arbitrary noise cancels out and the signal remains — which *group* of features matters, with credit distributed fairly across the group.
 
@@ -105,9 +105,11 @@ Use DASH when:
 
 Do not increase the size of a single model to fix instability. The Large Single Model experiment — matching DASH's total tree count in one sequential model — produces the **worst** explanations of any method tested, confirming that sequential dependency, not model capacity, drives the problem.
 
-### Current scope
+### Scope and generality
 
-DASH currently targets **XGBoost + interventional TreeSHAP**. It averages main-effect SHAP value matrices; interaction tensor averaging is theoretically supported but not yet implemented. Extension to other model families (e.g., neural networks with KernelSHAP) is planned for future work.
+The impossibility theorem underlying DASH is proved for **all iterative optimizers** — gradient boosting (XGBoost, LightGBM, CatBoost), Lasso, neural networks, and any model where sequential fitting creates path-dependent attributions. The resolution (independent model averaging) is equally general.
+
+The default pipeline uses **XGBoost + interventional TreeSHAP** for the population stage, but `DASHPipeline.fit_from_attributions()` accepts pre-computed attribution matrices from **any source** — LIME, Integrated Gradients, attention maps, KernelSHAP, or custom methods. The stability workflow (`validate_from_attributions`, `consensus_from_attributions`) is also fully model-agnostic.
 
 ---
 

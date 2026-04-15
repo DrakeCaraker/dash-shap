@@ -1,12 +1,16 @@
 """Extension: Theory Bridge — impossibility-theorem-grounded diagnostics.
 
 Implements formulas from the Attribution Impossibility theorem
-(Caraker et al., 2026; Lean 4 verified) as practical diagnostics:
+(Caraker et al., 2026; Lean 4 verified, proved for all iterative
+optimizers including gradient boosting, Lasso, and neural networks):
 
 - compute_snr(): signal-to-noise ratio per feature pair
 - predict_flip_rate(): Φ(-SNR) flip probability prediction
 - recommend_M(): minimum ensemble size for target stability
 - divergence_ratio(): 1/(1-ρ²) attribution divergence bound
+
+These diagnostics are model-agnostic — they operate on importance
+matrices from any attribution source (SHAP, LIME, IG, attention, etc.).
 
 References:
     FlipRate.lean — exact binary flip rate = 1/2

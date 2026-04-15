@@ -2417,7 +2417,7 @@ def experiment_real_california(resume=False, cleanup=False):
 
     clear_checkpoints_by_prefix("cal_flat_", CKPT_DIR)
 
-    # C7+F1: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
+    # Statistical tests: Wilcoxon signed-rank test and Cohen's d between DASH and baselines
     _log_pairwise_significance(cal_results, "DASH (MaxMin)", cal_methods, "California Housing")
 
     # IS plot skipped when methods run in parallel (model object not available)
@@ -2699,7 +2699,7 @@ def experiment_real_breast_cancer(resume=False, cleanup=False):
 
     clear_checkpoints_by_prefix("bc_flat_", CKPT_DIR)
 
-    # C7+F1: Wilcoxon signed-rank test and Cohen's d
+    # Statistical tests: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(bc_results, "DASH (MaxMin)", bc_methods, "Breast Cancer")
 
     # IS plot skipped when methods run in parallel (model object not available)
@@ -3003,7 +3003,7 @@ def experiment_real_superconductor(resume=False, cleanup=False):
 
     clear_checkpoints_by_prefix("sc_flat_", CKPT_DIR)
 
-    # C7+F1: Wilcoxon signed-rank test and Cohen's d
+    # Statistical tests: Wilcoxon signed-rank test and Cohen's d
     _log_pairwise_significance(sc_results, "DASH (MaxMin)", sc_methods, "Superconductor")
 
     import sklearn as _sklearn
@@ -3299,7 +3299,7 @@ def experiment_ablation(resume=False, cleanup=False):
 
 
 ###############################################################################
-# EXPERIMENT: Variance Decomposition (F1 fix)
+# EXPERIMENT: Variance Decomposition (statistical tests fix)
 ###############################################################################
 
 

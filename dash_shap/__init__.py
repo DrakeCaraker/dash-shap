@@ -20,18 +20,27 @@ __all__ = [
     # Convenience exports
     "generate_synthetic_linear",
     "generate_synthetic_nonlinear",
-    # F5→F1→DASH stability workflow (from The Attribution Impossibility)
+    # Stability workflow: screen → validate → resolve
     "screen",
     "validate",
     "consensus",
     "report",
+    "validate_from_attributions",
+    "consensus_from_attributions",
 ]
 
 # Quick API
 from dash_shap.quick import check, CheckResult
 
 # Lazy imports for the stability workflow
-from dash_shap.stability import screen, validate, consensus, report
+from dash_shap.stability import (
+    screen,
+    validate,
+    consensus,
+    report,
+    validate_from_attributions,
+    consensus_from_attributions,
+)
 
 
 def __getattr__(name):
