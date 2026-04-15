@@ -18,6 +18,11 @@ __all__ = [
     "local_uncertainty",
     "robust_certification",
     "theory_bridge",
+    "causal_flags",
+    "audit_report",
+    "DriftMonitor",
+    "ParetoSelector",
+    "federated_consensus",
 ]
 
 _EXTENSION_MAP = {
@@ -28,9 +33,14 @@ _EXTENSION_MAP = {
     "local_uncertainty": ("dash_shap.extensions.local", "local_uncertainty"),
     "robust_certification": ("dash_shap.extensions.certification", "robust_certification"),
     "theory_bridge": ("dash_shap.extensions.theory_bridge", "theory_bridge"),
+    "causal_flags": ("dash_shap.extensions.causal", "causal_flags"),
+    "audit_report": ("dash_shap.extensions.audit", "audit_report"),
+    "DriftMonitor": ("dash_shap.extensions.drift", "DriftMonitor"),
+    "ParetoSelector": ("dash_shap.extensions.model_selection", "ParetoSelector"),
+    "federated_consensus": ("dash_shap.extensions.federated", "federated_consensus"),
 }
 
-_PLANNED = {"audit_report", "causal_flags", "DriftMonitor", "ParetoSelector", "federated_consensus"}
+_PLANNED: set = set()  # all extensions now implemented
 
 
 def __getattr__(name):

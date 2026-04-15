@@ -266,17 +266,16 @@ jobs:
           )
           print('Phase 1 extensions (3/6) imported successfully.')
           "
-      - name: Verify unimplemented extensions raise NotImplementedError
+      - name: Verify all extensions importable
         run: |
           python -c "
-          from dash_shap import extensions
-          for name in ['audit_report', 'causal_flags']:
-              try:
-                  getattr(extensions, name)
-                  raise AssertionError(f'{name} should have raised')
-              except NotImplementedError:
-                  pass
-          print('OK: planned extensions raise NotImplementedError')
+          from dash_shap.extensions import (
+              confidence_intervals, partial_order, feature_groups,
+              stable_feature_selection, local_uncertainty, robust_certification,
+              theory_bridge, causal_flags, audit_report,
+              DriftMonitor, ParetoSelector, federated_consensus,
+          )
+          print('OK: all 12 extensions importable')
           "
 
   perf-smoke:
