@@ -17,6 +17,7 @@ __all__ = [
     "stable_feature_selection",
     "local_uncertainty",
     "robust_certification",
+    "theory_bridge",
 ]
 
 _EXTENSION_MAP = {
@@ -26,6 +27,7 @@ _EXTENSION_MAP = {
     "stable_feature_selection": ("dash_shap.extensions.selection", "stable_feature_selection"),
     "local_uncertainty": ("dash_shap.extensions.local", "local_uncertainty"),
     "robust_certification": ("dash_shap.extensions.certification", "robust_certification"),
+    "theory_bridge": ("dash_shap.extensions.theory_bridge", "theory_bridge"),
 }
 
 _PLANNED = {"audit_report", "causal_flags", "DriftMonitor", "ParetoSelector", "federated_consensus"}

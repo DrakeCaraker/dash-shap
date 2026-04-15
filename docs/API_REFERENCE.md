@@ -268,6 +268,58 @@ mean_cv = within_group_equity(importance_vector, group_assignments,
 
 ---
 
+## Theory Bridge (Impossibility-Theorem Diagnostics)
+
+Implements formulas from the Attribution Impossibility theorem (Caraker et al., 2026; Lean 4 verified) as practical diagnostics.
+
+```python
+from dash_shap.extensions.theory_bridge import (
+    compute_snr,
+    predict_flip_rate,
+    recommend_M,
+    divergence_ratio,
+    theory_bridge,
+)
+
+# Per-pair signal-to-noise ratio from importance matrix (M, P)
+snr = compute_snr(importance_matrix)           # dict of {(j, k): float}
+
+# Predicted flip rate from SNR (Φ(-SNR) formula, R²=0.848 validated)
+flip = predict_flip_rate(snr=1.5)              # 0.067
+
+# Recommend ensemble size for target stability
+rec = recommend_M(importance_matrix, target_flip_rate=0.05)
+print(rec["recommended_M"])                    # e.g., 150
+
+# Theoretical divergence ratio 1/(1-ρ²) — diverges as ρ→1
+ratio = divergence_ratio(rho=0.9)              # 5.26
+
+# Full extension on DASHResult
+from dash_shap.extensions import theory_bridge
+tb = theory_bridge(dash_result, target_flip_rate=0.05)
+print(tb.summary())                            # SNR table + M recommendation
+tb.plot()                                      # SNR vs flip rate scatter
+```
+
+**Standalone functions:**
+
+| Function | Input | Output | Formula |
+|---|---|---|---|
+| `compute_snr(importance_matrix)` | (M, P) array | dict of per-pair SNR | \|E[Δφ]\| / SD(Δφ) |
+| `predict_flip_rate(snr)` | float ≥ 0 | float in [0, 0.5] | Φ(-SNR) |
+| `recommend_M(importance_matrix, target_flip_rate)` | (M, P) array, float | dict with `recommended_M` | ⌈z² · σ²/Δ²⌉ |
+| `divergence_ratio(rho)` | float in [-1, 1] | float ≥ 1 | 1/(1-ρ²) |
+
+**Extension function:**
+
+| Function | Input | Output |
+|---|---|---|
+| `theory_bridge(result, target_flip_rate, unstable_threshold)` | DASHResult | TheoryBridgeResult |
+
+**TheoryBridgeResult attributes:** `snr`, `predicted_flip_rates`, `recommended_M`, `recommendation_details`, `unstable_pairs`, `feature_names`, `K`. Methods: `.summary(top_k=10)`, `.plot()`.
+
+---
+
 ## Statistical Testing
 
 ```python

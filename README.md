@@ -277,7 +277,7 @@ See the **[paper](https://arxiv.org/abs/2603.22346)** for the full mechanism ana
 dash-shap/
 ├── dash_shap/
 │   ├── core/           # Five-stage pipeline (population, filtering, diversity, consensus, diagnostics)
-│   ├── extensions/     # Analysis beyond consensus mean (CI, partial orders, certification, ...)
+│   ├── extensions/     # Analysis beyond consensus mean (CI, partial orders, certification, theory bridge)
 │   ├── baselines/      # 9 comparison methods
 │   ├── experiments/    # Synthetic data generators (linear & nonlinear DGP)
 │   ├── evaluation/     # Metrics: stability, DGP agreement, equity, statistical tests

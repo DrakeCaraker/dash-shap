@@ -90,6 +90,13 @@ X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.18
 
 - **M=50, K=10** — quick exploration; trains fast, often sufficient for real data
 - **M=200, K=30** — paper-quality results; slower but more stable and diverse
+- **Data-driven M selection** — run `check()` first (M=25), then use the theory-bridge recommendation:
+  ```python
+  from dash_shap import check
+  result = check(X, y, task="binary")
+  print(result.recommended_M)  # e.g., 150
+  ```
+  This uses the ensemble size formula from the Attribution Impossibility theorem (M_min = ⌈2.71 · σ²/Δ²⌉, Lean 4 verified) to recommend M for a 5% target flip rate based on your data's variance structure.
 - Rule of thumb: K should be ≤ 15–20% of M after filtering. If fewer than K models pass the epsilon filter, increase epsilon or switch to `epsilon_mode="quantile"`.
 
 **Q: What does `epsilon` control?**
