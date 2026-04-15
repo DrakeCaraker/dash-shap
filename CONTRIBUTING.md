@@ -50,7 +50,7 @@ dash_shap/
     consensus.py    Stage 4: element-wise mean SHAP matrices
     diagnostics.py  Stage 5: FSI, IS plots, local disagreement maps
     pipeline.py     DASHPipeline orchestrator
-  baselines/      Eight comparison baselines
+  baselines/      Eleven comparison baselines
   experiments/    Synthetic data generators (linear & nonlinear DGP)
   evaluation/     Metrics: stability, DGP agreement, equity, statistical tests
   utils/          I/O helpers, SHAP utilities

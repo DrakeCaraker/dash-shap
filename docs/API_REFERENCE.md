@@ -349,3 +349,133 @@ degradation = feature_ablation_score(
     model, X, y, importance, top_k=5, metric_fn=None  # default: RMSE
 )
 ```
+
+---
+
+## Stability Workflow
+
+The screen → validate → resolve workflow for detecting and fixing attribution instability.
+
+```python
+import dash_shap
+
+# From fitted models (auto-computes SHAP)
+flags = dash_shap.screen(model, X_train, X_test)
+results = dash_shap.validate(models, X_test)
+stable = dash_shap.consensus(models, X_test)
+text = dash_shap.report(results, stable, feature_names=names)
+
+# From pre-computed attributions (any source: LIME, IG, attention, etc.)
+results = dash_shap.validate_from_attributions(attribution_matrix)
+stable = dash_shap.consensus_from_attributions(attribution_matrix)
+```
+
+| Function | Input | Output |
+|---|---|---|
+| `screen(model, X_train, X_test)` | One fitted model | `dict` with `correlated_groups`, `flagged_pairs` |
+| `validate(models, X_test)` | List of fitted models | `dict` with `z_statistics`, `flip_rates`, `unstable_pairs` |
+| `validate_from_attributions(matrix)` | (M, P) importance array | Same as `validate()` |
+| `consensus(models, X_test)` | List of fitted models | `dict` with `attributions`, `std`, `tied_groups` |
+| `consensus_from_attributions(matrix)` | (M, P) importance array | Same as `consensus()` |
+| `report(validate_results, consensus_results, feature_names)` | Dicts from above | Markdown disclosure text |
+
+---
+
+## Extensions
+
+All 12 extensions accept a `DASHResult` and return a result object with `.summary()` and `.plot()`.
+
+For worked examples organized by use case, see the **[Extensions Guide](EXTENSIONS_GUIDE.md)**.
+
+### confidence_intervals
+
+```python
+from dash_shap.extensions import confidence_intervals
+ci = confidence_intervals(result, alpha=0.05, n_boot=1000, seed=42)
+```
+Returns `ConfidenceResult` with `importance_ci`, `fsi_ci`, `ranking_ci` — each `(P, 3)` arrays of [lower, point, upper].
+
+### robust_certification
+
+```python
+from dash_shap.extensions import robust_certification
+cert = robust_certification(result, k_values=[3, 5, 10])
+```
+Returns `CertificationResult` with `certified` dict (`{k: [feature_names]}`), `max_ranks` array.
+
+### partial_order
+
+```python
+from dash_shap.extensions import partial_order
+po = partial_order(result, alpha=0.1)
+```
+Returns `PartialOrderResult` with `confidence_matrix` `(P, P)` — entry `[i,j]` = fraction of K models ranking feature i above j.
+
+### feature_groups
+
+```python
+from dash_shap.extensions import feature_groups
+groups = feature_groups(result, threshold=0.8, X_ref=X_ref)
+```
+Returns `GroupResult` with `groups` (list of feature index lists), `substitutability_matrix` `(P, P)`.
+
+### stable_feature_selection
+
+```python
+from dash_shap.extensions import stable_feature_selection
+sel = stable_feature_selection(result, k=10, importance_weight=0.7, stability_weight=0.3)
+```
+Returns `SelectionResult` with `selected_features`, `scores`, `rankings`.
+
+### local_uncertainty
+
+```python
+from dash_shap.extensions import local_uncertainty
+local = local_uncertainty(result, obs_idx=0, top_k=15)
+```
+Returns `LocalResult` with `mean_shap`, `std_shap`, `sign_flip_rate` — all `(P,)` arrays for the given observation.
+
+### causal_flags
+
+```python
+from dash_shap.extensions import causal_flags
+flags = causal_flags(result, X_ref, correlation_threshold=0.5)
+```
+Returns `CausalResult` with `flags` (list of "robust"/"collinear"/"fragile"/"unimportant"), `correlated_pairs`.
+
+### audit_report
+
+```python
+from dash_shap.extensions import audit_report
+report = audit_report(result, X_ref=X_ref, confidence=ci, causal=flags)
+```
+Returns `AuditResult` with `sections` dict, `warnings` list. Optional enrichments: `confidence`, `partial_order`, `groups`, `causal`.
+
+### DriftMonitor
+
+```python
+from dash_shap.extensions import DriftMonitor
+monitor = DriftMonitor(baseline_result, threshold=0.1, rank_shift=2)
+alert = monitor.check(current_result, label="v2")
+monitor.plot_timeline()
+```
+`DriftAlert` has `drifted` (bool), `distance` (float), `changed_features` (list).
+
+### ParetoSelector
+
+```python
+from dash_shap.extensions import ParetoSelector
+selector = ParetoSelector()
+selector.evaluate(config, result, X_test, y_test, predict_fn=fn)
+frontier = selector.frontier()
+frontier.plot()
+```
+`ParetoFrontier` has `configs`, `rmse`, `stability` for optimal configurations.
+
+### federated_consensus
+
+```python
+from dash_shap.extensions import federated_consensus
+fed = federated_consensus([result1, result2], weights=[0.7, 0.3])
+```
+Returns `FederatedResult` with `combined` (`DASHResult`), `per_site_importance` `(n_sites, P)`, `cross_site_agreement` (float).

@@ -166,6 +166,7 @@ The key insight: **model independence** — not model size — is what cancels t
 | Resource | Description |
 |---|---|
 | [API Reference](docs/API_REFERENCE.md) | Complete parameter and method documentation |
+| [Extensions Guide](docs/EXTENSIONS_GUIDE.md) | All 12 extensions with worked examples, organized by use case |
 | [FAQ](FAQ.md) | Usage, troubleshooting, parameter guidance |
 | [Diagnostics Guide](docs/DIAGNOSTICS.md) | IS plots, FSI thresholds, disagreement maps |
 | [Getting Started](docs/GETTING_STARTED.md) | Concept-first introduction with worked examples |
