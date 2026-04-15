@@ -114,8 +114,11 @@ DASH is Paper 1 of a five-paper research program on trustworthy feature attribut
 |---|---|---|---|
 | **1. DASH** (this repo) | Method + empirical validation | TMLR | [dash-shap](https://github.com/DrakeCaraker/dash-shap) |
 | **3. Attribution Impossibility** | Formally verified impossibility theorem (Lean 4) | NeurIPS 2026 | [dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean) |
+| **4. Ostrowski Impossibility** | Bilemma for binary explanation spaces | Letters in Mathematical Physics | [ostrowski-impossibility](https://github.com/DrakeCaraker/ostrowski-impossibility) |
 
-The impossibility theorem proves that no single-model feature ranking can simultaneously be faithful, stable, and complete when features are collinear — formalizing the theoretical foundation for why DASH's ensemble approach is necessary.
+The impossibility theorem (Paper 3) proves that no single-model feature ranking can simultaneously be faithful, stable, and complete when features are collinear — formalizing the theoretical foundation for why DASH's ensemble approach is necessary.
+
+The Ostrowski impossibility (Paper 4) strengthens this for **binary questions** (e.g., "is this feature's effect positive or negative?"): the bilemma proves that faithful + stable is impossible for binary explanation spaces — not just the trilemma's three-way tradeoff, but the two-way tradeoff fails. DASH averaging resolves the ranking instability (via enrichment with ties) but cannot resolve sign instability. Any stable sign attribution method is wrong at ≥ 50% of Rashomon-equivalent model pairs.
 
 ---
 
