@@ -20,6 +20,9 @@
 %   - Added success criteria self-critique (#11)
 %   - Added LIME validation limitations paragraph (#18)
 %   - Added library version pins and cross-platform note (#12, #13)
+%   - Added bilemma/sign-stability cross-references from companion paper
+%   - Added Rashomon unfaithfulness bound quantification
+%   - Added sign stability limitation (ranking vs sign scope)
 %
 % draft_v7_preprint — TMLR submission revision (v7 changes):
 %   - Added colsample_bytree probabilistic-effect caveat to mechanism paragraph
@@ -1761,6 +1764,10 @@ single-model attribution method can reliably identify feature effects
 across sufficiently rich model classes; our independence principle is a
 constructive response---by averaging across independently trained
 models, we circumvent the single-model impossibility.
+The companion work further quantifies the cost of stability: any
+stable attribution method is unfaithful to at least one model in every
+Rashomon pair, implying a worst-case unfaithfulness rate of
+$\geq$50\% for binary sign attribution on Rashomon-connected features.
 \citet{chenrashomongb2024} provide an information-theoretic framework
 for gradient-boosting Rashomon sets; our first-mover bias hypothesis
 offers a complementary \emph{mechanistic} account specific to SHAP
@@ -2011,6 +2018,19 @@ settings with heavy collinearity.
     \texttt{colsample\_bytree} subsets, column-order effects are
     partially mitigated by the stochastic feature sampling, but a
     systematic robustness test remains future work.
+  \item \textbf{Sign stability.} This paper evaluates \emph{ranking}
+    stability (Spearman correlation of importance magnitudes) but does
+    not assess \emph{sign} stability---whether a feature's SHAP
+    contribution is consistently positive or negative across retraining
+    runs.  The companion impossibility theorem
+    \citep{caraker2026impossibility} proves a bilemma showing that sign
+    stability and faithfulness are jointly impossible for features in
+    Rashomon pairs: no method can consistently assign the correct sign
+    across equivalent models.  \dash{} consensus averaging resolves
+    ranking instability (via the neutral element of tied ranks) but
+    cannot resolve sign instability (binary signs admit no neutral
+    element).  Empirical characterization of sign flip rates under
+    \dash{} is deferred to future work.
 \end{itemize}
 
 \subsection{Broader implications}
@@ -2044,6 +2064,26 @@ and constructive resolution; the companion theorem, mechanically
 verified in the Lean~4 proof assistant, proves that ensemble-based
 approaches like \dash{} are not merely effective but mathematically
 necessary for achieving both stability and equity.
+
+A stronger result also holds: the companion paper proves a
+\emph{bilemma} showing that even without the completeness requirement,
+no method for determining a feature's SHAP sign (positive vs.\
+negative contribution) can be simultaneously faithful and stable
+across Rashomon-equivalent models.  The bilemma is constructive and
+zero-axiom in Lean~4, requiring only the existence of two models with
+identical predictions but opposite SHAP signs---a condition satisfied
+by construction in any correlated feature group.  A corollary (the
+all-or-nothing theorem) predicts that SHAP sign flip rates should
+exhibit \emph{bimodality}: features either flip near 0\% (no
+Rashomon ambiguity) or $\geq$50\% (full Rashomon ambiguity), with a
+dead zone in between.  This prediction is directly testable against
+the existing experimental data and constitutes a falsifiable
+consequence of the theoretical framework.
+\dash{} resolves \emph{ranking} instability because feature rankings
+admit a neutral element (tied rank under consensus averaging), but the
+bilemma proves that \emph{sign} instability is irreducible: binary
+signs have no neutral element, so no averaging scheme can simultaneously
+preserve faithfulness and achieve stability for sign attribution.
 
 The neural network case warrants particular attention. Attribution
 instability under feature collinearity is well-documented for NNs:
