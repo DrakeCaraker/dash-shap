@@ -66,7 +66,7 @@ tqdm==4.67.3
 traitlets==5.14.3
 typing_extensions==4.14.0
 tzdata==2025.3
-UNKNOWN @ file:///Users/drake.caraker/ds_projects/dash-shap
+dash-shap @ .
 wcwidth==0.2.13
 xgboost==2.1.4
 zipp==3.22.0

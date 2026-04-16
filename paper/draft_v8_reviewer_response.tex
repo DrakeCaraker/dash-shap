@@ -938,7 +938,7 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
   & Large Single Model   & $.955 \pm .002$ & .976 & .170 & .772 \\
   & Stoch.\ Retrain      & $\mathbf{.975} \pm .001$ & \textbf{.987} & .169 & \textbf{.581} \\
   & \dash{} (MaxMin) & $.973 \pm .001$ & .985 &
-    \textbf{.153} & .606 \\
+    \textbf{.153} & .605 \\
 \addlinespace
 \midrule
 \addlinespace
@@ -963,7 +963,7 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
 \multirow{4}{*}{0.9}
   & Single Best          & $.958 \pm .002$ & .978 & .232 & .613 \\
   & Large Single Model   & $.938 \pm .002$ & .968 & .258 & .733 \\
-  & Stoch.\ Retrain      & $\mathbf{.978} \pm .001$ & \textbf{.989} & .180 & \textbf{.576} \\
+  & Stoch.\ Retrain      & $\mathbf{.978} \pm .001$ & \textbf{.988} & .180 & \textbf{.576} \\
   & \dash{} (MaxMin) & $.977 \pm .001$ & .988 &
     \textbf{.175} & .591 \\
 \addlinespace
@@ -973,7 +973,7 @@ $\rhovar$ & \textbf{Method} & \textbf{Stability ($\pm$SE)} & \textbf{Accuracy} &
   & Single Best          & $.952 \pm .003$ & .975 & .236 & .610 \\
   & Large Single Model   & $.927 \pm .003$ & .962 & .277 & .728 \\
   & Stoch.\ Retrain      & $\mathbf{.980} \pm .002$ & \textbf{.990} & \textbf{.159} & \textbf{.575} \\
-  & \dash{} (MaxMin) & $.977 \pm .001$ & .989 &
+  & \dash{} (MaxMin) & $.977 \pm .001$ & .988 &
     .171 & .591 \\
 \bottomrule
 \end{tabular}
@@ -1068,10 +1068,10 @@ and were not independently measured.
 \midrule
 \addlinespace
 \multirow{4}{*}{\rotatebox{90}{\scriptsize Independent}}
-  & Stochastic Retrain   & $.977 \pm .002$ & .988 & .182 & 30 & 233.5 \\
-  & Random Selection$^\dagger$ & $.976 \pm .001$ & .988 & .187 & 30 & 287.2 \\
-  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .187 & 30 & --- \\
-  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} & \textbf{.176} & $\sim$12 & 140.3 \\
+  & Stochastic Retrain   & $.977 \pm .002$ & .988 & .180 & 30 & 233.5 \\
+  & Random Selection$^\dagger$ & $.976 \pm .001$ & .988 & .186 & 30 & 287.2 \\
+  & Naive Top-$N$        & $.976 \pm .001$ & .988 & .189 & 30 & --- \\
+  & \textbf{\dash{} (MaxMin)} & $\mathbf{.977} \pm .001$ & \textbf{.988} & \textbf{.175} & $\sim$12 & 140.3 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -1103,7 +1103,7 @@ Within the independent tier, Random Selection ($0.976$) nearly matches
 minimally to stability beyond what random sampling from the filtered
 population already provides. The primary value of diversity selection
 is therefore not stability but equity: \dash{}'s within-group CV
-($0.176$) is significantly lower than Random Selection's ($0.187$;
+($0.175$) is significantly lower than Random Selection's ($0.186$;
 Wilcoxon $p < 0.001$, Cohen's $d = -0.37$), confirming that deliberate
 diversity in feature utilization patterns produces more equitable credit
 distribution within the filtered-population framework. This equity
@@ -1170,7 +1170,7 @@ Per-feature ANOVA tables are available in the code repository.}
 
 As a complementary check, we also conduct a marginal decomposition by
 alternately fixing the data seed or the model seed. When data is fixed
-and only model seeds vary, Single Best stability is $0.978$ while
+and only model seeds vary, Single Best stability is $0.976$ while
 \dash{} achieves $0.995$---indicating that \dash{} nearly eliminates
 model-selection noise.\footnote{The marginal decomposition uses
 $1 - \text{stability}$ as a proxy for instability. Since stability is a
@@ -1293,7 +1293,7 @@ are threefold:
     explanations are stable is less useful than knowing \emph{which
     features} are unreliable.
   \item \textbf{Equity.} Significantly lower within-group CV than
-    Random Selection ($0.176$ vs.\ $0.187$; $p < 0.001$, $d = -0.37$),
+    Random Selection ($0.175$ vs.\ $0.186$; $p < 0.001$, $d = -0.37$),
     indicating that forced feature restriction distributes credit more
     evenly across correlated groups. The equity advantage over SR is
     smaller and not significant ($d = -0.13$, $p = 0.44$) at
@@ -1340,8 +1340,8 @@ stability is effectively flat ($0.973$--$0.977$), fluctuating by less
 than $0.5\%$ across the entire correlation range.
 
 The equity metric shows the same scaling. LSM's within-group CV worsens
-from $0.170$ to $0.277$ ($+67\%$), while \dash{} ranges from $0.164$ to
-$0.176$ ($+7\%$). This is consistent with sequential residual dependency
+from $0.170$ to $0.277$ ($+67\%$), while \dash{} ranges from $0.153$ to
+$0.175$ ($+7\%$). This is consistent with sequential residual dependency
 concentrating importance within correlated groups, with the concentration
 scaling with the degree of correlation---as the first-mover bias
 hypothesis predicts. When correlation is low, features within a group
@@ -1665,7 +1665,7 @@ Bold indicates best per $\rhovar$.}
 $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \midrule
 0.0  & 0.931 & 0.913 & 0.929 & \textbf{0.935} & 0.933 \\
-0.5  & 0.850 & 0.837 & 0.846 & \textbf{0.860} & 0.857 \\
+0.5  & 0.850 & 0.836 & 0.846 & \textbf{0.860} & 0.857 \\
 0.7  & 0.845 & 0.825 & 0.850 & 0.853 & \textbf{0.858} \\
 0.9  & 0.811 & 0.778 & 0.825 & 0.857 & \textbf{0.887} \\
 0.95 & 0.801 & 0.755 & 0.791 & 0.859 & \textbf{0.884} \\
@@ -1673,7 +1673,7 @@ $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \multicolumn{6}{c}{\textit{Equity (CV, lower is better)}} \\
 $\rhovar$ & SB & LSM & LSM-T & SR & \textbf{DASH} \\
 \midrule
-0.0  & 0.174 & 0.179 & 0.178 & 0.177 & \textbf{0.163} \\
+0.0  & 0.174 & 0.178 & 0.178 & 0.177 & \textbf{0.163} \\
 0.5  & 0.168 & 0.189 & 0.174 & 0.166 & \textbf{0.165} \\
 0.7  & 0.185 & 0.208 & 0.187 & 0.182 & \textbf{0.173} \\
 0.9  & 0.217 & 0.242 & 0.217 & 0.184 & \textbf{0.161} \\
@@ -2553,7 +2553,7 @@ tests are deferred to the journal version. \dash{} passes all eleven:
   \item \textbf{Stability wins (linear)}: DASH $>$ Single Best on $\geq$4/5
     $\rhovar$ levels $\to$ \textbf{PASS} (4/5)
   \item \textbf{Accuracy at $\rhovar = 0.9$}: DASH $\geq$ SB $\to$
-    \textbf{PASS} (DASH $= 0.9879$ vs.\ SB $= 0.9784$)
+    \textbf{PASS} (DASH $= 0.9881$ vs.\ SB $= 0.9782$)
   \item \textbf{Equity wins (linear)}: DASH $<$ Single Best CV on $\geq$4/5
     $\rhovar$ levels $\to$ \textbf{PASS} (5/5)
   \item \textbf{Safety control at $\rhovar = 0$}: No degradation vs.\
