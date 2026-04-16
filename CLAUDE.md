@@ -280,4 +280,4 @@ Key claim: independence between models in the DASH population cancels path-depen
 
 ## Related Repositories
 
-- **[dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean)** — Lean 4 formalization of the attribution impossibility theorem (Paper 3, targeting NeurIPS 2026). Contains 36 Lean files with formal proofs that no feature ranking can simultaneously be faithful, stable, and complete under collinearity. Uses axioms verified by `paper/proofs/verify_lemma6_algebra.py` in this repo.
+- **[dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean)** — Lean 4 formalization of the attribution impossibility theorem (Paper 3, targeting NeurIPS 2026). Contains 58 Lean files (352 theorems, 6 axioms, 0 sorry) with formal proofs that no feature ranking can simultaneously be faithful, stable, and complete under collinearity. Uses axioms verified by `paper/proofs/verify_lemma6_algebra.py` in this repo.
