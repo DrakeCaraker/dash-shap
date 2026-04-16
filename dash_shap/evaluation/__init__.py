@@ -23,6 +23,7 @@ __all__ = [
     "bootstrap_topk5_test",
     "fsi_collinearity_correlation",
     "anova_decomposition",
+    "importance_stability_kendall",
 ]
 
 # =============================================================================
@@ -102,6 +103,27 @@ def importance_stability(vectors):
     if n < 2:
         return float("nan")
     return _stability_from_rank_matrix(_rank_matrix(vectors))
+
+
+def importance_stability_kendall(vectors):
+    """Compute mean pairwise Kendall tau correlation across importance vectors.
+
+    Complements Spearman-based stability as a robustness check: Kendall tau
+    handles ties differently (uses concordant/discordant pair counting) and
+    is less sensitive to outlier ranks. Useful for verifying that stability
+    results are not artifacts of Spearman's tie-breaking behavior.
+    """
+    from scipy.stats import kendalltau
+
+    n = len(vectors)
+    if n < 2:
+        return float("nan")
+    taus = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            tau, _ = kendalltau(vectors[i], vectors[j])
+            taus.append(tau)
+    return float(np.mean(taus))
 
 
 def _rank_matrix(vectors):
