@@ -36,6 +36,8 @@ def compute_diagnostics(all_shap_matrices, epsilon=1e-8):
 
 
 class FeatureStabilityIndex:
+    """Per-feature stability diagnostics with quadrant labeling and summary tables."""
+
     def __init__(self, fsi, global_importance, feature_names=None):
         self.fsi = fsi
         self.global_importance = global_importance
@@ -77,6 +79,8 @@ class FeatureStabilityIndex:
 
 
 class ImportanceStabilityPlot:
+    """Four-quadrant Importance-Stability scatter plot with threshold lines and annotations."""
+
     @staticmethod
     def plot(
         global_importance,

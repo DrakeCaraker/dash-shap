@@ -22,6 +22,8 @@ __all__ = ["DASHPipeline"]
 
 
 class DASHPipeline:
+    """End-to-end orchestrator for the five DASH pipeline stages (population, filtering, diversity, consensus, diagnostics)."""
+
     def __init__(
         self,
         M=200,
