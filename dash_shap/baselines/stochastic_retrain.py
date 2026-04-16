@@ -11,12 +11,13 @@ __all__ = ["StochasticRetrainBaseline"]
 
 
 class StochasticRetrainBaseline:
-    def __init__(self, N=20, task="regression", n_jobs=-1, seed=42, nthread=None):
+    def __init__(self, N=20, task="regression", n_jobs=-1, seed=42, nthread=None, colsample_range=None):
         self.N = N
         self.task = task
         self.n_jobs = n_jobs
         self.seed = seed
         self.nthread = nthread
+        self.colsample_range = colsample_range  # None = DEFAULT_SEARCH_SPACE
         self.global_importance_ = None
         self.fsi_ = None
 
@@ -25,8 +26,11 @@ class StochasticRetrainBaseline:
             X_ref = X_val
 
         if best_config is None:
+            search_space = dict(DEFAULT_SEARCH_SPACE)
+            if self.colsample_range is not None:
+                search_space["colsample_bytree"] = list(self.colsample_range)
             configs = sample_configurations(
-                DEFAULT_SEARCH_SPACE,
+                search_space,
                 100,
                 seed=self.seed,
             )

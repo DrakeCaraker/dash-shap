@@ -4,6 +4,7 @@ import numpy as np
 from dash_shap.evaluation import (
     importance_accuracy,
     importance_stability,
+    importance_stability_kendall,
     within_group_equity,
     cohens_d,
     compare_methods,
@@ -34,6 +35,31 @@ def test_importance_stability_identical():
 def test_importance_stability_single():
     vectors = [np.array([1.0, 0.5, 0.3])]
     assert np.isnan(importance_stability(vectors))
+
+
+def test_kendall_stability_identical():
+    vectors = [np.array([1.0, 0.5, 0.3])] * 3
+    stab = importance_stability_kendall(vectors)
+    assert stab > 0.99
+
+
+def test_kendall_stability_single():
+    vectors = [np.array([1.0, 0.5, 0.3])]
+    assert np.isnan(importance_stability_kendall(vectors))
+
+
+def test_kendall_stability_consistent_with_spearman():
+    """Kendall and Spearman should agree directionally on correlated vectors."""
+    rng = np.random.RandomState(42)
+    base = np.array([1.0, 0.8, 0.6, 0.4, 0.2])
+    vectors = [base + rng.normal(0, 0.05, size=5) for _ in range(10)]
+    spearman = importance_stability(vectors)
+    kendall = importance_stability_kendall(vectors)
+    # Both should be high for correlated vectors
+    assert spearman > 0.8
+    assert kendall > 0.7  # Kendall is typically lower in magnitude
+    # Both should agree on direction (positive)
+    assert kendall > 0
 
 
 def test_within_group_equity_uniform():
