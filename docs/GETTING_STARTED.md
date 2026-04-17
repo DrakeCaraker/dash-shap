@@ -143,4 +143,17 @@ pipe.plot_importance_stability()
 
 Expected output: the IS plot will show the radius cluster (mean radius, mean perimeter, mean area, worst radius, worst perimeter, worst area) in Quadrant II — high consensus importance, high FSI — because the K models disagree about which size measurement to credit. Features like worst concave points may appear in Quadrant I (high importance, low FSI) if they are individually informative beyond the collinear group.
 
+
+To check sign stability across the ensemble (do models agree on the *direction* of each feature's effect?):
+
+```python
+from dash_shap.core.diagnostics import coverage_conflict
+
+cc = coverage_conflict(pipe.all_shap_matrices_)
+for j, name in enumerate(feature_names):
+    rate = cc["feature_conflict_rate"][j]
+    if rate > 0.1:
+        print(f"  {name}: {rate:.0%} of observations have sign disagreement")
+```
+
 For detailed interpretation of the IS plot, FSI values, and local disagreement maps, see `notebooks/tutorial_03_interpreting_outputs.ipynb`.

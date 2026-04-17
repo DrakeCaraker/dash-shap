@@ -224,3 +224,56 @@ print(flags.summary())  # robust / collinear / fragile / unimportant
 ```
 
 See the **[Extensions Guide](EXTENSIONS_GUIDE.md)** for worked examples of all 12 extensions, organized by use case.
+
+---
+
+## Coverage Conflict
+
+Coverage conflict is a **sign-stability** diagnostic that complements FSI's **magnitude-stability** measurement. While FSI measures how much a feature's SHAP values vary in magnitude across models, coverage conflict measures whether models even agree on the *direction* (positive or negative) of a feature's effect.
+
+**What it measures:** For each (observation, feature) pair, coverage conflict counts how many of the K models assign a positive vs. negative SHAP value. The **minority fraction** — `min(n_positive, n_negative) / total` — quantifies the degree of sign disagreement.
+
+**Interpreting `minority_fraction`:**
+
+| Value | Meaning |
+|-------|---------|
+| 0.0 | Unanimous — all models agree on the sign |
+| 0.0–0.1 | Near-consensus — one or two dissenting models |
+| 0.1–0.3 | Moderate disagreement — sign is dataset-dependent |
+| 0.3–0.5 | Severe disagreement — models are nearly split on direction |
+| 0.5 | Perfect split — half positive, half negative (coin flip) |
+
+The distribution-free minority fraction outperforms the parametric Gaussian flip formula as a predictor of sign instability on real-world data (Spearman 0.96 vs 0.46 on California Housing). This is grounded in the bilemma's all-or-nothing theorem: features are either unanimously signed or split, with a predicted dead zone in between.
+
+**When to use coverage conflict vs. FSI:**
+
+- Use **FSI** to identify features where the *magnitude* of importance is unstable (collinear features trading credit).
+- Use **coverage conflict** to identify features where the *sign* of the effect is unstable (models disagree on whether a feature increases or decreases the prediction).
+- A feature can have low FSI (stable magnitude) but high coverage conflict (models disagree on direction) — this happens when a feature has a near-zero effect that fluctuates around zero.
+
+**Code example:**
+
+```python
+from dash_shap.core.diagnostics import coverage_conflict, compare_flip_predictors
+
+# After fitting a DASHPipeline:
+cc = coverage_conflict(pipeline.all_shap_matrices_)
+
+# Per-feature summary
+for j, name in enumerate(pipeline.feature_names_):
+    rate = cc["feature_conflict_rate"][j]
+    minority = cc["feature_mean_minority"][j]
+    print(f"{name}: conflict_rate={rate:.2f}, mean_minority={minority:.3f}")
+
+# Compare against Gaussian flip predictor
+comparison = compare_flip_predictors(pipeline.all_shap_matrices_)
+print(f"CC predictions:  {comparison['cc_prediction'][:5]}")
+print(f"Gaussian predictions: {comparison['gf_prediction'][:5]}")
+```
+
+**API quick reference update:**
+
+| Tool | Via pipeline | Direct import |
+|------|-------------|---------------|
+| Coverage conflict | — | `coverage_conflict(all_shap_matrices)` |
+| Flip predictor comparison | — | `compare_flip_predictors(all_shap_matrices)` |

@@ -157,7 +157,7 @@ DASH is a five-stage pipeline:
 2. **Filtering** — Keep models within ε of the best validation score
 3. **Diversity Selection** — Greedy MaxMin selection maximizing pairwise distance among importance vectors
 4. **Consensus** — Compute attributions for each selected model, then average
-5. **Diagnostics** — Feature Stability Index (FSI) and IS plots for auditing without ground truth
+5. **Diagnostics** — Feature Stability Index (FSI), IS plots, and coverage conflict (sign-stability diagnostic) for auditing without ground truth
 
 The key insight: **model independence** — not model size — is what cancels the arbitrary noise. See the [paper](https://arxiv.org/abs/2603.22346) for the full mechanism analysis.
 
