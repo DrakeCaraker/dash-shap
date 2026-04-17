@@ -138,6 +138,11 @@ Pre-push hook blocks `.pkl` files and files >10MB, and warns if the branch has d
 git config core.hooksPath .githooks
 ```
 
+
+### Git-Crypt
+
+`docs/private/` is encrypted with git-crypt. Be aware that git-crypt filters can cause phantom unstaged changes during rebase. When encountering unexpected unstaged changes in encrypted files, check if they are git-crypt artifacts (`git-crypt status`) before attempting fixes.
+
 ### Drift Prevention
 
 Three layers detect when a branch falls behind `main`:
@@ -178,6 +183,32 @@ Formatting (`make fmt`) and type checking (`make typecheck`) are handled by CI �
 - Push notebooks with large embedded outputs (>10MB) — clear outputs first
 - Use `dash` as a bare import in tests (shadows the Plotly Dash package — use `from dash_shap.core import ...`)
 - Train models with high `colsample_bytree` (>0.5) in DASH population — defeats the diversity mechanism
+
+
+## Output Preferences
+
+- When the user asks to see command output, show it raw. Do not summarize or paraphrase terminal output unless explicitly asked to summarize.
+- When executing a sequence of commands, show the actual output of each. Do not elide or collapse output into prose.
+- If output is very long (>100 lines), show the first and last 20 lines with a count of omitted lines — but never fabricate output.
+
+## Shell Commands
+
+- Prefer single-quoted heredocs (`<<'EOF'`) over double-quoted to avoid escaping issues.
+- On macOS, avoid `!` in unquoted strings (history expansion). Use `sed` or Python scripts over complex inline shell escaping.
+- When working on a remote instance (SageMaker, EC2), confirm the shell (`bash` vs `sh`) before using bash-specific features like arrays or `[[ ]]`.
+- For multi-line file writes, prefer `cat > file << 'EOF'` over chained `echo` or `sed` insertions.
+
+## Communication Style
+
+- When told to stay silent or just execute, do not narrate. Execute without explanation unless errors occur.
+- Do not restate what was just done after completing a task. The diff and commit message speak for themselves.
+- When the user gives a short directive ("fix it", "merge", "yes"), act immediately. Do not ask for confirmation of something already confirmed.
+
+## Agent Usage
+
+- When spawning sub-agents, ensure they have the necessary tool permissions. If a sub-agent is blocked on permissions, surface this immediately.
+- Sub-agents working on files outside the current repo (e.g., `dash-impossibility-lean`) should use Bash for writes — PostToolUse hooks from the current project interfere with Edit/Write on other repos.
+- Always verify agent findings before building plans on them (Non-Negotiable Rule #10).
 
 ## Key Results (for quick reference)
 

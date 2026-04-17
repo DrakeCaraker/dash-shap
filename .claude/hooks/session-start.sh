@@ -82,6 +82,18 @@ for nb in notebooks/demo_benchmark_6.ipynb notebooks/demo_benchmark_7.ipynb; do
     fi
 done
 
+# 7. Python environment check
+if [ -d ".venv" ]; then
+    venv_version=$(.venv/bin/python -c "import dash_shap; print(dash_shap.__version__)" 2>/dev/null)
+    toml_version=$(grep "^version" pyproject.toml 2>/dev/null | head -1 | sed "s/.*\"\(.*\)\".*/\1/")
+    if [ -n "$venv_version" ] && [ -n "$toml_version" ] && [ "$venv_version" != "$toml_version" ]; then
+        echo "" >&2
+        echo "Version mismatch: installed=$venv_version, pyproject.toml=$toml_version" >&2
+        echo "  Run: .venv/bin/pip install -e ." >&2
+    fi
+fi
+
+
 # 7. Session counter + self-improvement nudge
 count_file=".claude/.session-count"
 if [ -f "$count_file" ]; then
