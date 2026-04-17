@@ -880,3 +880,113 @@ def main():
 
 if __name__ == "__main__":
     results = main()
+
+
+# ---------------------------------------------------------------------------
+# Enhanced DGP: 20 features with 5 correlated pairs + 10 independent
+# ---------------------------------------------------------------------------
+def generate_synthetic_20feat(rho=0.9, n_samples=2000, seed=SEED):
+    """Generate 20-feature synthetic data with controlled collinearity structure.
+
+    Structure: 5 correlated pairs at rho (features 0-9) + 10 independent (10-19).
+    DGP: y = f0 + 0.5*f2 + 0.3*f4 + 0.2*f10 + 0.1*f12 + noise
+
+    Expected bimodality:
+      - Features in correlated pairs: subordinate members have high flip rates (~0.3-0.5)
+      - Independent features with signal: low flip rates (~0)
+      - Independent features without signal: moderate flip rates (noise)
+    """
+    rng = np.random.RandomState(seed)
+    n_features = 20
+    cov = np.eye(n_features)
+    # 5 correlated pairs: (0,1), (2,3), (4,5), (6,7), (8,9)
+    for i in range(0, 10, 2):
+        cov[i, i + 1] = cov[i + 1, i] = rho
+    X = rng.multivariate_normal(np.zeros(n_features), cov, n_samples)
+    # DGP uses dominant features from 3 correlated pairs + 2 independent
+    y = X[:, 0] + 0.5 * X[:, 2] + 0.3 * X[:, 4] + 0.2 * X[:, 10] + 0.1 * X[:, 12]
+    y += rng.normal(0, 0.1, n_samples)
+    return X, y
+
+
+# ---------------------------------------------------------------------------
+# Enhanced main with 20-feature + Breast Cancer experiments
+# ---------------------------------------------------------------------------
+def main_enhanced():
+    """Extended validation with 20-feature DGP and high-collinearity real data."""
+    from sklearn.datasets import load_breast_cancer
+
+    print("=" * 70)
+    print("ENHANCED PREDICTION VALIDATION")
+    print("Adds: 20-feature synthetic (5 correlated pairs) + Breast Cancer")
+    print("=" * 70)
+    print()
+    print("Configuration:")
+    print(f"  N_MODELS = {N_MODELS}")
+    print(f"  N_OBS = {N_OBS}")
+    print(f"  EPSILON_RELATIVE = {EPSILON_RELATIVE}")
+    print()
+
+    t_total = time.time()
+    results = []
+
+    # ---- 20-feature synthetic: the critical bimodality test ----
+    print("\n>>> 20-FEATURE SYNTHETIC (5 correlated pairs at rho=0.9 + 10 independent)")
+    X20, y20 = generate_synthetic_20feat(rho=0.9, n_samples=2000, seed=SEED)
+    feat_names_20 = [f"c{i // 2}_{'dom' if i % 2 == 0 else 'sub'}" for i in range(10)]
+    feat_names_20 += [f"ind_{i}" for i in range(10)]
+    r = run_experiment(X20, y20, "Synth20", "0.9", feature_names=feat_names_20)
+    results.append(r)
+
+    # ---- 20-feature at varying rho for sweep ----
+    for rho in [0.5, 0.7]:
+        X20r, y20r = generate_synthetic_20feat(rho=rho, n_samples=2000, seed=SEED)
+        r = run_experiment(X20r, y20r, "Synth20", str(rho), feature_names=feat_names_20)
+        results.append(r)
+
+    # ---- Breast Cancer (30 features, 21 pairs |r|>0.9) ----
+    print("\n>>> BREAST CANCER (30 features, extreme collinearity)")
+    bc = load_breast_cancer()
+    # Use as regression (predict continuous target probability-like score)
+    # Binary target is fine — XGBoost regression on 0/1 works
+    r = run_experiment(bc.data, bc.target, "BreastCancer", "real", feature_names=list(bc.feature_names))
+    results.append(r)
+
+    # ---- Summary ----
+    print("\n\n" + "=" * 150)
+    print("ENHANCED SUMMARY (UNFILTERED)")
+    print("=" * 150)
+    header = (
+        f"{'Dataset':14s} | {'rho':>4s} | {'N mod':>5s} | {'Dip p':>9s} | "
+        f"{'Perm':>5s} | {'Info':>4s} | "
+        f"{'BIC2<1':>6s} | {'Stbl%':>5s} | {'Dead%':>5s} | "
+        f"{'Unst%':>5s} | {'CC Sp':>6s} | {'GF Sp':>6s}"
+    )
+    print(header)
+    print("-" * 120)
+    for r in results:
+        a = r.unfiltered
+        bic = "Y" if a.bic_2 < a.bic_1 else "N"
+        info = "Y" if a.dip_permuted_informative else "N"
+        print(
+            f"{r.name:14s} | {r.rho:>4s} | {a.n_models:>5d} | "
+            f"{a.dip_pval:>9.4f} | {a.dip_permuted_pval:>4.0%} | {info:>4s} | "
+            f"{bic:>6s} | {a.stable_frac:>4.1%} | {a.dead_frac:>4.1%} | "
+            f"{a.unstable_frac:>4.1%} | {a.cc_spearman:>6.3f} | "
+            f"{a.gaussian_flip_spearman:>6.3f}"
+        )
+    print("-" * 120)
+
+    elapsed = time.time() - t_total
+    print(f"\nTotal runtime: {elapsed:.1f}s ({elapsed / 60:.1f} min)")
+
+    return results
+
+
+if __name__ == "__main__":
+    import sys
+
+    if "--enhanced" in sys.argv:
+        results = main_enhanced()
+    else:
+        results = main()

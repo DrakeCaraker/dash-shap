@@ -1,0 +1,802 @@
+======================================================================
+PREDICTION VALIDATION: Bimodality + Coverage Conflict
+Addresses peer review: C1-C3, M1-M4
+DUAL ANALYSIS: Unfiltered (approx bilemma) + Filtered (Rashomon)
+======================================================================
+
+Configuration:
+  N_MODELS (pre-filter) = 200
+  N_OBS (SHAP)          = 100
+  EPSILON_RELATIVE      = 0.05
+  DEAD_ZONE             = [0.05, 0.45]
+  CC_THRESHOLDS         = [0.05, 0.1, 0.2, 0.3]
+  N_PERMUTATIONS (dip)  = 100
+  MIN_RASHOMON_TESTS    = 20
+
+Metric documentation (C3):
+  flip_rate = minority fraction = min(n_pos, n_neg) / total_nonzero
+  This measures the fraction of models assigning the minority sign.
+  Range [0, 0.5]: 0 = unanimous agreement, 0.5 = perfect split.
+  Differs from pairwise flip rate = 2*n_pos*n_neg / (N*(N-1)).
+
+Recall = 1.0 tautology (C2):
+  Binary coverage_conflict (both signs present) <=> flip_rate > 0.
+  Therefore recall of coverage_conflict for any positive threshold
+  is trivially 1.0. We report PRECISION at thresholds instead.
+
+Dual analysis rationale:
+  Unfiltered: The approximate bilemma proves impossibility at any
+  epsilon-tolerance. The 200 diverse XGBoost models constitute an
+  approximate (epsilon-Rashomon) set with full statistical power.
+  Filtered: Proper Rashomon set (epsilon=5%). Flagged when < 20 models.
+
+
+======================================================================
+DATASET: Synthetic (rho=0.0)
+======================================================================
+  Training 200 models...
+  Trained in 6.4s
+  Rashomon set: 8/200 models (best RMSE=0.1341, threshold=0.1408)
+  Effective Rashomon diameter (all models): 0.5578
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 60.0s
+    [unfiltered] Dip test: stat=0.014047, p=0.373097 (fail to reject)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 66% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [unfiltered] BIC(1)=-583.0, BIC(2)=-2334.3 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0000, 0.2357
+    [unfiltered] Zones: stable=38.1%, dead=53.8%, unstable=8.1%
+    [unfiltered] CC Spearman (binary vs flip): r=0.7980
+    [unfiltered] Gaussian flip Spearman: r=0.7964, p=4.00e-07
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0051      STABLE
+              f1      0.0137      STABLE
+              f2      0.0675   DEAD ZONE
+              f3      0.2767   DEAD ZONE
+              f4      0.2872   DEAD ZONE
+              f5      0.2060   DEAD ZONE
+              f6      0.2566   DEAD ZONE
+              f7      0.2240   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 8 models) ---
+    [filtered] WARNING: Only 8 models (< 20). Distributional tests uninformative — rely on unfiltered analysis.
+    [filtered] Dip test: stat=0.075625, p=0.000000 (REJECT unimodality)
+    [filtered] Running permutation control (100 reps)...
+    [filtered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [filtered] BIC(1)=-614.0, BIC(2)=-4332.2 (2-comp preferred)
+    [filtered] 2-component means: 0.0000, 0.2749
+    [filtered] Zones: stable=52.0%, dead=41.9%, unstable=6.1%
+    [filtered] CC Spearman (binary vs flip): r=0.9381
+    [filtered] Gaussian flip Spearman: r=0.9248, p=2.02e-12
+    [filtered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0037      STABLE
+              f1      0.0088      STABLE
+              f2      0.0213      STABLE
+              f3      0.2150   DEAD ZONE
+              f4      0.2387   DEAD ZONE
+              f5      0.1450   DEAD ZONE
+              f6      0.2400   DEAD ZONE
+              f7      0.1837   DEAD ZONE
+
+======================================================================
+DATASET: Synthetic (rho=0.5)
+======================================================================
+  Training 200 models...
+  Trained in 6.4s
+  Rashomon set: 4/200 models (best RMSE=0.1245, threshold=0.1307)
+  Effective Rashomon diameter (all models): 0.5505
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 61.0s
+    [unfiltered] Dip test: stat=0.027688, p=0.000198 (REJECT unimodality)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 21% of permutations reject => dip test INFORMATIVE (bimodality is real)
+    [unfiltered] BIC(1)=-580.3, BIC(2)=-2525.7 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0000, 0.2593
+    [unfiltered] Zones: stable=36.8%, dead=56.4%, unstable=6.9%
+    [unfiltered] CC Spearman (binary vs flip): r=0.8101
+    [unfiltered] Gaussian flip Spearman: r=0.8851, p=4.02e-10
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0005      STABLE
+              f1      0.0284      STABLE
+              f2      0.0368      STABLE
+              f3      0.2741   DEAD ZONE
+              f4      0.3002   DEAD ZONE
+              f5      0.2861   DEAD ZONE
+              f6      0.2487   DEAD ZONE
+              f7      0.2662   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 4 models) ---
+    [filtered] WARNING: Only 4 models (< 20). Distributional tests uninformative — rely on unfiltered analysis.
+    [filtered] Dip test: stat=0.115000, p=0.000000 (REJECT unimodality)
+    [filtered] Running permutation control (100 reps)...
+    [filtered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [filtered] BIC(1)=-533.4, BIC(2)=-5634.9 (2-comp preferred)
+    [filtered] 2-component means: 0.0000, 0.3321
+    [filtered] Zones: stable=65.8%, dead=23.0%, unstable=11.2%
+    [filtered] CC Spearman (binary vs flip): r=0.9809
+    [filtered] Gaussian flip Spearman: r=0.7669, p=1.94e-06
+    [filtered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0000      STABLE
+              f1      0.0100      STABLE
+              f2      0.0075      STABLE
+              f3      0.1675   DEAD ZONE
+              f4      0.1900   DEAD ZONE
+              f5      0.1825   DEAD ZONE
+              f6      0.1975   DEAD ZONE
+              f7      0.1550   DEAD ZONE
+
+======================================================================
+DATASET: Synthetic (rho=0.7)
+======================================================================
+  Training 200 models...
+  Trained in 6.6s
+  Rashomon set: 8/200 models (best RMSE=0.1257, threshold=0.1320)
+  Effective Rashomon diameter (all models): 0.5037
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 60.6s
+    [unfiltered] Dip test: stat=0.025451, p=0.001014 (REJECT unimodality)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 8% of permutations reject => dip test INFORMATIVE (bimodality is real)
+    [unfiltered] BIC(1)=-570.5, BIC(2)=-2435.2 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0000, 0.2593
+    [unfiltered] Zones: stable=36.0%, dead=58.2%, unstable=5.8%
+    [unfiltered] CC Spearman (binary vs flip): r=0.8014
+    [unfiltered] Gaussian flip Spearman: r=0.8878, p=2.99e-10
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0143      STABLE
+              f1      0.0123      STABLE
+              f2      0.0396      STABLE
+              f3      0.2833   DEAD ZONE
+              f4      0.2945   DEAD ZONE
+              f5      0.2971   DEAD ZONE
+              f6      0.2497   DEAD ZONE
+              f7      0.2711   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 8 models) ---
+    [filtered] WARNING: Only 8 models (< 20). Distributional tests uninformative — rely on unfiltered analysis.
+    [filtered] Dip test: stat=0.091250, p=0.000000 (REJECT unimodality)
+    [filtered] Running permutation control (100 reps)...
+    [filtered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [filtered] BIC(1)=-590.2, BIC(2)=-1048.0 (2-comp preferred)
+    [filtered] 2-component means: 0.0289, 0.3264
+    [filtered] Zones: stable=48.1%, dead=44.9%, unstable=7.0%
+    [filtered] CC Spearman (binary vs flip): r=0.9239
+    [filtered] Gaussian flip Spearman: r=0.6797, p=6.95e-05
+    [filtered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0100      STABLE
+              f1      0.0088      STABLE
+              f2      0.0150      STABLE
+              f3      0.2425   DEAD ZONE
+              f4      0.1950   DEAD ZONE
+              f5      0.2512   DEAD ZONE
+              f6      0.2062   DEAD ZONE
+              f7      0.2000   DEAD ZONE
+
+======================================================================
+DATASET: Synthetic (rho=0.9)
+======================================================================
+  Training 200 models...
+  Trained in 6.7s
+  Rashomon set: 5/200 models (best RMSE=0.1209, threshold=0.1269)
+  Effective Rashomon diameter (all models): 0.4489
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 59.2s
+    [unfiltered] Dip test: stat=0.037781, p=0.000000 (REJECT unimodality)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 22% of permutations reject => dip test INFORMATIVE (bimodality is real)
+    [unfiltered] BIC(1)=-538.1, BIC(2)=-2616.0 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0000, 0.2753
+    [unfiltered] Zones: stable=36.1%, dead=55.5%, unstable=8.4%
+    [unfiltered] CC Spearman (binary vs flip): r=0.8185
+    [unfiltered] Gaussian flip Spearman: r=0.7635, p=2.28e-06
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0014      STABLE
+              f1      0.0191      STABLE
+              f2      0.0370      STABLE
+              f3      0.3023   DEAD ZONE
+              f4      0.3015   DEAD ZONE
+              f5      0.3105   DEAD ZONE
+              f6      0.2613   DEAD ZONE
+              f7      0.2744   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 5 models) ---
+    [filtered] WARNING: Only 5 models (< 20). Distributional tests uninformative — rely on unfiltered analysis.
+    [filtered] Dip test: stat=0.122500, p=0.000000 (REJECT unimodality)
+    [filtered] Running permutation control (100 reps)...
+    [filtered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [filtered] BIC(1)=-623.3, BIC(2)=-2448.3 (2-comp preferred)
+    [filtered] 2-component means: 0.0631, 0.4000
+    [filtered] Zones: stable=53.1%, dead=46.9%, unstable=0.0%
+    [filtered] CC Spearman (binary vs flip): r=0.9521
+    [filtered] Gaussian flip Spearman: r=0.6566, p=1.48e-04
+    [filtered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+              f0      0.0000      STABLE
+              f1      0.0160      STABLE
+              f2      0.0040      STABLE
+              f3      0.2320   DEAD ZONE
+              f4      0.2100   DEAD ZONE
+              f5      0.2140   DEAD ZONE
+              f6      0.2220   DEAD ZONE
+              f7      0.2100   DEAD ZONE
+
+Loading California Housing...
+
+======================================================================
+DATASET: California (rho=real)
+======================================================================
+  Training 200 models...
+  Trained in 17.2s
+  Rashomon set: 22/200 models (best RMSE=0.4782, threshold=0.5021)
+  Effective Rashomon diameter (all models): 0.3204
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 62.4s
+    [unfiltered] Dip test: stat=0.012569, p=0.575076 (fail to reject)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 20% of permutations reject => dip test INFORMATIVE (bimodality is real)
+    [unfiltered] BIC(1)=-642.9, BIC(2)=-2981.8 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0000, 0.2282
+    [unfiltered] Zones: stable=45.5%, dead=49.0%, unstable=5.5%
+    [unfiltered] CC Spearman (binary vs flip): r=0.8599
+    [unfiltered] Gaussian flip Spearman: r=0.4625, p=1.32e-02
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+          MedInc      0.0390      STABLE
+        HouseAge      0.1618   DEAD ZONE
+        AveRooms      0.1025   DEAD ZONE
+       AveBedrms      0.2368   DEAD ZONE
+      Population      0.2807   DEAD ZONE
+        AveOccup      0.0482      STABLE
+        Latitude      0.0971   DEAD ZONE
+       Longitude      0.1817   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 22 models) ---
+    [filtered] Dip test: stat=0.048750, p=0.000000 (REJECT unimodality)
+    [filtered] Running permutation control (100 reps)...
+    [filtered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [filtered] BIC(1)=-982.4, BIC(2)=-4859.9 (2-comp preferred)
+    [filtered] 2-component means: 0.0000, 0.1913
+    [filtered] Zones: stable=68.2%, dead=28.6%, unstable=3.1%
+    [filtered] CC Spearman (binary vs flip): r=0.9552
+    [filtered] Gaussian flip Spearman: r=0.4910, p=7.98e-03
+    [filtered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+          MedInc      0.0305      STABLE
+        HouseAge      0.1232   DEAD ZONE
+        AveRooms      0.0500   DEAD ZONE
+       AveBedrms      0.1914   DEAD ZONE
+      Population      0.1414   DEAD ZONE
+        AveOccup      0.0359      STABLE
+        Latitude      0.0155      STABLE
+       Longitude      0.0491      STABLE
+
+
+
+======================================================================================================================================================
+SUMMARY: UNFILTERED ANALYSIS (all 200 models — approximate bilemma)
+======================================================================================================================================================
+Dataset        |  rho | N models |     Dip p | Perm ctrl | Dip info | BIC 2<1 | Stable% | Dead% | Unst% | CC Prec@10% | CC Sprmn | GF Sprmn | Rash diam
+------------------------------------------------------------------------------------------------------------------------------------------------------
+Synthetic      |  0.0 |      200 |  0.373097 |      66%rej |       NO |     YES |  38.1% | 53.8% | 8.1% |      0.7739 |   0.7980 |   0.7964 |    0.5578
+Synthetic      |  0.5 |      200 |  0.000198 |      21%rej |      YES |     YES |  36.8% | 56.4% | 6.9% |      0.8378 |   0.8101 |   0.8851 |    0.5505
+Synthetic      |  0.7 |      200 |  0.001014 |       8%rej |      YES |     YES |  36.0% | 58.2% | 5.8% |      0.8330 |   0.8014 |   0.8878 |    0.5037
+Synthetic      |  0.9 |      200 |  0.000000 |      22%rej |      YES |     YES |  36.1% | 55.5% | 8.4% |      0.8611 |   0.8185 |   0.7635 |    0.4489
+California     | real |      200 |  0.575076 |      20%rej |      YES |     YES |  45.5% | 49.0% | 5.5% |      0.7371 |   0.8599 |   0.4625 |    0.3204
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+======================================================================================================================================================
+SUMMARY: FILTERED ANALYSIS (epsilon=0.05 Rashomon set)
+======================================================================================================================================================
+Dataset        |  rho | N models |     Dip p | Perm ctrl | Dip info | BIC 2<1 | Stable% | Dead% | Unst% | CC Prec@10% | CC Sprmn | GF Sprmn
+------------------------------------------------------------------------------------------------------------------------------------------------------
+Synthetic [<20] |  0.0 |        8 |  0.000000 |     100%rej |       NO |     YES |  52.0% | 41.9% | 6.1% |      1.0000 |   0.9381 |   0.9248
+Synthetic [<20] |  0.5 |        4 |  0.000000 |     100%rej |       NO |     YES |  65.8% | 23.0% | 11.2% |      1.0000 |   0.9809 |   0.7669
+Synthetic [<20] |  0.7 |        8 |  0.000000 |     100%rej |       NO |     YES |  48.1% | 44.9% | 7.0% |      1.0000 |   0.9239 |   0.6797
+Synthetic [<20] |  0.9 |        5 |  0.000000 |     100%rej |       NO |     YES |  53.1% | 46.9% | 0.0% |      1.0000 |   0.9521 |   0.6566
+California     | real |       22 |  0.000000 |     100%rej |       NO |     YES |  68.2% | 28.6% | 3.1% |      0.5964 |   0.9552 |   0.4910
+------------------------------------------------------------------------------------------------------------------------------------------------------
+
+COVERAGE CONFLICT PRECISION — UNFILTERED
+------------------------------------------------------------------------------------------
+Dataset        |  rho |    Prec@5% |   Prec@10% |   Prec@20% |   Prec@30%
+------------------------------------------------------------------------------------------
+Synthetic      |  0.0 |     0.8746 |     0.7739 |     0.5406 |     0.3781
+Synthetic      |  0.5 |     0.9117 |     0.8378 |     0.6595 |     0.4234
+Synthetic      |  0.7 |     0.9094 |     0.8330 |     0.6483 |     0.4423
+Synthetic      |  0.9 |     0.9342 |     0.8611 |     0.6965 |     0.4589
+California     | real |     0.8685 |     0.7371 |     0.5558 |     0.3566
+------------------------------------------------------------------------------------------
+
+COVERAGE CONFLICT PRECISION — FILTERED
+------------------------------------------------------------------------------------------
+Dataset        |  rho |    Prec@5% |   Prec@10% |   Prec@20% |   Prec@30%
+------------------------------------------------------------------------------------------
+Synthetic      |  0.0 |     1.0000 |     1.0000 |     0.6849 |     0.3880
+Synthetic      |  0.5 |     1.0000 |     1.0000 |     1.0000 |     0.3285
+Synthetic      |  0.7 |     1.0000 |     1.0000 |     0.6482 |     0.3928
+Synthetic      |  0.9 |     1.0000 |     1.0000 |     1.0000 |     0.4773
+California     | real |     0.7651 |     0.5964 |     0.3886 |     0.2470
+------------------------------------------------------------------------------------------
+
+GAUSSIAN MIXTURE BIC DETAILS — UNFILTERED
+----------------------------------------------------------------------------------------------------
+Dataset        |  rho | N models |       BIC(1) |       BIC(2) |      Delta |   Mode 1 |   Mode 2
+----------------------------------------------------------------------------------------------------
+Synthetic      |  0.0 |      200 |       -583.0 |      -2334.3 |     1751.3 |   0.0000 |   0.2357
+Synthetic      |  0.5 |      200 |       -580.3 |      -2525.7 |     1945.4 |   0.0000 |   0.2593
+Synthetic      |  0.7 |      200 |       -570.5 |      -2435.2 |     1864.7 |   0.0000 |   0.2593
+Synthetic      |  0.9 |      200 |       -538.1 |      -2616.0 |     2077.9 |   0.0000 |   0.2753
+California     | real |      200 |       -642.9 |      -2981.8 |     2338.8 |   0.0000 |   0.2282
+----------------------------------------------------------------------------------------------------
+
+GAUSSIAN MIXTURE BIC DETAILS — FILTERED
+----------------------------------------------------------------------------------------------------
+Dataset        |  rho | N models |       BIC(1) |       BIC(2) |      Delta |   Mode 1 |   Mode 2
+----------------------------------------------------------------------------------------------------
+Synthetic      |  0.0 |        8 |       -614.0 |      -4332.2 |     3718.2 |   0.0000 |   0.2749
+Synthetic      |  0.5 |        4 |       -533.4 |      -5634.9 |     5101.5 |   0.0000 |   0.3321
+Synthetic      |  0.7 |        8 |       -590.2 |      -1048.0 |      457.8 |   0.0289 |   0.3264
+Synthetic      |  0.9 |        5 |       -623.3 |      -2448.3 |     1825.0 |   0.0631 |   0.4000
+California     | real |       22 |       -982.4 |      -4859.9 |     3877.4 |   0.0000 |   0.1913
+----------------------------------------------------------------------------------------------------
+
+==========================================================================================
+PERMUTATION CONTROL SUMMARY (dip test)
+==========================================================================================
+Dataset        |  rho |  Unfilt reject% | Unfilt info |  Filt reject% | Filt info
+------------------------------------------------------------------------------------------
+Synthetic      |  0.0 |            66% |          NO |         100% |        NO
+Synthetic      |  0.5 |            21% |         YES |         100% |        NO
+Synthetic      |  0.7 |             8% |         YES |         100% |        NO
+Synthetic      |  0.9 |            22% |         YES |         100% |        NO
+California     | real |            20% |         YES |         100% |        NO
+------------------------------------------------------------------------------------------
+
+======================================================================
+INTERPRETATION
+======================================================================
+
+Dual analysis rationale:
+  The filtered Rashomon sets contain only 4-22 models, making
+  distributional tests (dip, BIC) unreliable — flip rates are
+  quantized to 3-5 values and dip detects discreteness, not bimodality.
+  The unfiltered analysis uses all 200 models, justified by the
+  approximate bilemma: the impossibility theorem holds at any epsilon-
+  tolerance, so the full diverse population is an approximate Rashomon set.
+  The 'effective Rashomon diameter' quantifies the epsilon.
+
+M1 — Control (rho=0, unfiltered):
+  PASS: Dip test fails to reject unimodality (p=0.3731)
+  As expected: no collinearity => no bimodality in flip rates.
+
+M1 — Collinearity sweep (unfiltered):
+  rho=0.0: dip p=0.3731 (fail, UNINFORMATIVE), BIC prefers 2-comp, stable=38.1%, unstable=8.1%, Rash.diam=0.5578
+  rho=0.5: dip p=0.0002 (REJECT, informative), BIC prefers 2-comp, stable=36.8%, unstable=6.9%, Rash.diam=0.5505
+  rho=0.7: dip p=0.0010 (REJECT, informative), BIC prefers 2-comp, stable=36.0%, unstable=5.8%, Rash.diam=0.5037
+  rho=0.9: dip p=0.0000 (REJECT, informative), BIC prefers 2-comp, stable=36.1%, unstable=8.4%, Rash.diam=0.4489
+
+M2 — Gaussian flip baseline (unfiltered):
+  Synthetic (rho=0.0): Spearman r=0.7964 (***)
+  Synthetic (rho=0.5): Spearman r=0.8851 (***)
+  Synthetic (rho=0.7): Spearman r=0.8878 (***)
+  Synthetic (rho=0.9): Spearman r=0.7635 (***)
+  California (rho=real): Spearman r=0.4625 (*)
+
+C2 — Coverage conflict precision (unfiltered):
+  Synthetic (rho=0.0): Precision@10%=0.7739
+  Synthetic (rho=0.5): Precision@10%=0.8378
+  Synthetic (rho=0.7): Precision@10%=0.8330
+  Synthetic (rho=0.9): Precision@10%=0.8611
+  California (rho=real): Precision@10%=0.7371
+
+Filtered sensitivity check:
+  Synthetic (rho=0.0): 8/200 models [TOO SMALL]
+  Synthetic (rho=0.5): 4/200 models [TOO SMALL]
+  Synthetic (rho=0.7): 8/200 models [TOO SMALL]
+  Synthetic (rho=0.9): 5/200 models [TOO SMALL]
+  California (rho=real): 22/200 models
+
+Permutation control interpretation:
+  Synthetic (rho=0.0): Dip result UNINFORMATIVE — 66% of permutations also reject
+  Synthetic (rho=0.5): Dip result is REAL — only 21% of permutations reject (vs 0.000198 actual p)
+  Synthetic (rho=0.7): Dip result is REAL — only 8% of permutations reject (vs 0.001014 actual p)
+  Synthetic (rho=0.9): Dip result is REAL — only 22% of permutations reject (vs 0.000000 actual p)
+  California (rho=real): Dip result is REAL — only 20% of permutations reject (vs 0.575076 actual p)
+
+Total runtime: 360.1s (6.0 min)
+======================================================================
+======================================================================
+ENHANCED PREDICTION VALIDATION
+Adds: 20-feature synthetic (5 correlated pairs) + Breast Cancer
+======================================================================
+
+Configuration:
+  N_MODELS = 200
+  N_OBS = 100
+  EPSILON_RELATIVE = 0.05
+
+
+>>> 20-FEATURE SYNTHETIC (5 correlated pairs at rho=0.9 + 10 independent)
+
+======================================================================
+DATASET: Synth20 (rho=0.9)
+======================================================================
+  Training 200 models...
+  Trained in 16.6s
+  Rashomon set: 6/200 models (best RMSE=0.1797, threshold=0.1887)
+  Effective Rashomon diameter (all models): 0.4054
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 77.0s
+    [unfiltered] Dip test: stat=0.021554, p=0.000000 (REJECT unimodality)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [unfiltered] BIC(1)=-1432.7, BIC(2)=-4364.0 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0005, 0.2577
+    [unfiltered] Zones: stable=32.8%, dead=59.5%, unstable=7.8%
+    [unfiltered] CC Spearman (binary vs flip): r=0.7287
+    [unfiltered] Gaussian flip Spearman: r=0.8426, p=2.08e-52
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+          c0_dom      0.0051      STABLE
+          c0_sub      0.0271      STABLE
+          c1_dom      0.0343      STABLE
+          c1_sub      0.0484      STABLE
+          c2_dom      0.0440      STABLE
+          c2_sub      0.1002   DEAD ZONE
+          c3_dom      0.3183   DEAD ZONE
+          c3_sub      0.3212   DEAD ZONE
+          c4_dom      0.3519   DEAD ZONE
+          c4_sub      0.3137   DEAD ZONE
+           ind_0      0.0360      STABLE
+           ind_1      0.2237   DEAD ZONE
+           ind_2      0.0375      STABLE
+           ind_3      0.3325   DEAD ZONE
+           ind_4      0.2657   DEAD ZONE
+           ind_5      0.2914   DEAD ZONE
+           ind_6      0.2609   DEAD ZONE
+           ind_7      0.2526   DEAD ZONE
+           ind_8      0.3321   DEAD ZONE
+           ind_9      0.2857   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 6 models) ---
+    [filtered] WARNING: Only 6 models (< 20). Distributional tests uninformative — rely on unfiltered analysis.
+    [filtered] Dip test: stat=0.104500, p=0.000000 (REJECT unimodality)
+    [filtered] Running permutation control (100 reps)...
+    [filtered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [filtered] BIC(1)=-1312.3, BIC(2)=-10239.7 (2-comp preferred)
+    [filtered] 2-component means: 0.0000, 0.2979
+    [filtered] Zones: stable=48.8%, dead=41.1%, unstable=10.1%
+    [filtered] CC Spearman (binary vs flip): r=0.9307
+    [filtered] Gaussian flip Spearman: r=0.8529, p=5.69e-55
+    [filtered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+          c0_dom      0.0117      STABLE
+          c0_sub      0.0400      STABLE
+          c1_dom      0.0267      STABLE
+          c1_sub      0.0550   DEAD ZONE
+          c2_dom      0.0367      STABLE
+          c2_sub      0.1150   DEAD ZONE
+          c3_dom      0.2050   DEAD ZONE
+          c3_sub      0.2117   DEAD ZONE
+          c4_dom      0.2450   DEAD ZONE
+          c4_sub      0.1717   DEAD ZONE
+           ind_0      0.0200      STABLE
+           ind_1      0.1633   DEAD ZONE
+           ind_2      0.0050      STABLE
+           ind_3      0.2950   DEAD ZONE
+           ind_4      0.2717   DEAD ZONE
+           ind_5      0.1817   DEAD ZONE
+           ind_6      0.2283   DEAD ZONE
+           ind_7      0.2650   DEAD ZONE
+           ind_8      0.2600   DEAD ZONE
+           ind_9      0.2433   DEAD ZONE
+
+======================================================================
+DATASET: Synth20 (rho=0.5)
+======================================================================
+  Training 200 models...
+  Trained in 16.7s
+  Rashomon set: 4/200 models (best RMSE=0.1698, threshold=0.1783)
+  Effective Rashomon diameter (all models): 0.5398
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 76.4s
+    [unfiltered] Dip test: stat=0.023500, p=0.000000 (REJECT unimodality)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [unfiltered] BIC(1)=-1554.6, BIC(2)=-3556.7 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0006, 0.2546
+    [unfiltered] Zones: stable=27.9%, dead=64.8%, unstable=7.3%
+    [unfiltered] CC Spearman (binary vs flip): r=0.6491
+    [unfiltered] Gaussian flip Spearman: r=0.9592, p=4.52e-105
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+          c0_dom      0.0039      STABLE
+          c0_sub      0.1065   DEAD ZONE
+          c1_dom      0.0216      STABLE
+          c1_sub      0.1581   DEAD ZONE
+          c2_dom      0.0325      STABLE
+          c2_sub      0.2335   DEAD ZONE
+          c3_dom      0.3856   DEAD ZONE
+          c3_sub      0.3106   DEAD ZONE
+          c4_dom      0.3025   DEAD ZONE
+          c4_sub      0.3284   DEAD ZONE
+           ind_0      0.0321      STABLE
+           ind_1      0.1991   DEAD ZONE
+           ind_2      0.0340      STABLE
+           ind_3      0.3254   DEAD ZONE
+           ind_4      0.2618   DEAD ZONE
+           ind_5      0.2865   DEAD ZONE
+           ind_6      0.2913   DEAD ZONE
+           ind_7      0.2564   DEAD ZONE
+           ind_8      0.3287   DEAD ZONE
+           ind_9      0.2302   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 4 models) ---
+    [filtered] WARNING: Only 4 models (< 20). Distributional tests uninformative — rely on unfiltered analysis.
+    [filtered] Dip test: stat=0.162250, p=0.000000 (REJECT unimodality)
+    [filtered] Running permutation control (100 reps)...
+    [filtered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [filtered] BIC(1)=-1047.9, BIC(2)=-10916.0 (2-comp preferred)
+    [filtered] 2-component means: 0.0000, 0.3329
+    [filtered] Zones: stable=51.4%, dead=32.5%, unstable=16.1%
+    [filtered] CC Spearman (binary vs flip): r=0.9528
+    [filtered] Gaussian flip Spearman: r=0.9130, p=3.95e-75
+    [filtered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+          c0_dom      0.0025      STABLE
+          c0_sub      0.1800   DEAD ZONE
+          c1_dom      0.0050      STABLE
+          c1_sub      0.1875   DEAD ZONE
+          c2_dom      0.0325      STABLE
+          c2_sub      0.2500   DEAD ZONE
+          c3_dom      0.1350   DEAD ZONE
+          c3_sub      0.2850   DEAD ZONE
+          c4_dom      0.2325   DEAD ZONE
+          c4_sub      0.2525   DEAD ZONE
+           ind_0      0.0075      STABLE
+           ind_1      0.2050   DEAD ZONE
+           ind_2      0.0025      STABLE
+           ind_3      0.1875   DEAD ZONE
+           ind_4      0.2775   DEAD ZONE
+           ind_5      0.1250   DEAD ZONE
+           ind_6      0.2700   DEAD ZONE
+           ind_7      0.2125   DEAD ZONE
+           ind_8      0.2300   DEAD ZONE
+           ind_9      0.1525   DEAD ZONE
+
+======================================================================
+DATASET: Synth20 (rho=0.7)
+======================================================================
+  Training 200 models...
+  Trained in 16.6s
+  Rashomon set: 1/200 models (best RMSE=0.1726, threshold=0.1812)
+  Effective Rashomon diameter (all models): 0.4999
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 77.8s
+    [unfiltered] Dip test: stat=0.017434, p=0.000285 (REJECT unimodality)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [unfiltered] BIC(1)=-1468.9, BIC(2)=-3875.7 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0006, 0.2533
+    [unfiltered] Zones: stable=30.2%, dead=62.1%, unstable=7.7%
+    [unfiltered] CC Spearman (binary vs flip): r=0.6895
+    [unfiltered] Gaussian flip Spearman: r=0.9101, p=7.88e-74
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+          c0_dom      0.0186      STABLE
+          c0_sub      0.0506   DEAD ZONE
+          c1_dom      0.0170      STABLE
+          c1_sub      0.0634   DEAD ZONE
+          c2_dom      0.0194      STABLE
+          c2_sub      0.2029   DEAD ZONE
+          c3_dom      0.3678   DEAD ZONE
+          c3_sub      0.3033   DEAD ZONE
+          c4_dom      0.3841   DEAD ZONE
+          c4_sub      0.3107   DEAD ZONE
+           ind_0      0.0314      STABLE
+           ind_1      0.2017   DEAD ZONE
+           ind_2      0.0369      STABLE
+           ind_3      0.3112   DEAD ZONE
+           ind_4      0.2708   DEAD ZONE
+           ind_5      0.3112   DEAD ZONE
+           ind_6      0.2554   DEAD ZONE
+           ind_7      0.2584   DEAD ZONE
+           ind_8      0.2949   DEAD ZONE
+           ind_9      0.2513   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 1 models) ---
+    [filtered] Only 1 models — skipping analysis.
+
+>>> BREAST CANCER (30 features, extreme collinearity)
+
+======================================================================
+DATASET: BreastCancer (rho=real)
+======================================================================
+  Training 200 models...
+  Trained in 15.0s
+  Rashomon set: 2/200 models (best RMSE=0.0999, threshold=0.1048)
+  Effective Rashomon diameter (all models): 0.0875
+
+  --- UNFILTERED ANALYSIS (all 200 models) ---
+  Justified by approximate bilemma: impossibility holds at any epsilon.
+  Computing SHAP (200 models x 100 obs)...
+    SHAP computed for 25/200 models
+    SHAP computed for 50/200 models
+    SHAP computed for 75/200 models
+    SHAP computed for 100/200 models
+    SHAP computed for 125/200 models
+    SHAP computed for 150/200 models
+    SHAP computed for 175/200 models
+    SHAP computed for 200/200 models
+  SHAP complete in 62.7s
+    [unfiltered] Dip test: stat=0.036000, p=0.000000 (REJECT unimodality)
+    [unfiltered] Running permutation control (100 reps)...
+    [unfiltered] PERMUTATION CONTROL: 100% of permutations also reject => dip test UNINFORMATIVE (detecting discreteness, not bimodality)
+    [unfiltered] BIC(1)=-2807.2, BIC(2)=-4755.3 (2-comp preferred)
+    [unfiltered] 2-component means: 0.0110, 0.2188
+    [unfiltered] Zones: stable=34.0%, dead=61.0%, unstable=5.1%
+    [unfiltered] CC Spearman (binary vs flip): r=0.4479
+    [unfiltered] Gaussian flip Spearman: r=0.9313, p=5.20e-192
+    [unfiltered] Per-feature flip rates:
+         Feature   mean_flip        zone
+    ------------  ----------  ----------
+     mean radius      0.2316   DEAD ZONE
+    mean texture      0.0768   DEAD ZONE
+    mean perimeter      0.3583   DEAD ZONE
+       mean area      0.1161   DEAD ZONE
+    mean smoothness      0.2252   DEAD ZONE
+    mean compactness      0.1746   DEAD ZONE
+    mean concavity      0.1072   DEAD ZONE
+    mean concave points      0.0393      STABLE
+    mean symmetry      0.3364   DEAD ZONE
+    mean fractal dimension      0.3357   DEAD ZONE
+    radius error      0.1184   DEAD ZONE
+    texture error      0.3227   DEAD ZONE
+    perimeter error      0.1735   DEAD ZONE
+      area error      0.0435      STABLE
+    smoothness error      0.2185   DEAD ZONE
+    compactness error      0.1071   DEAD ZONE
+    concavity error      0.2814   DEAD ZONE
+    concave points error      0.2762   DEAD ZONE
+    symmetry error      0.0975   DEAD ZONE
+    fractal dimension error      0.2674   DEAD ZONE
+    worst radius      0.0448      STABLE
+    worst texture      0.0824   DEAD ZONE
+    worst perimeter      0.0540   DEAD ZONE
+      worst area      0.0433      STABLE
+    worst smoothness      0.1154   DEAD ZONE
+    worst compactness      0.2195   DEAD ZONE
+    worst concavity      0.0312      STABLE
+    worst concave points      0.0237      STABLE
+    worst symmetry      0.1109   DEAD ZONE
+    worst fractal dimension      0.1680   DEAD ZONE
+
+  --- FILTERED ANALYSIS (epsilon=0.05, 2 models) ---
+    [filtered] Only 2 models — skipping analysis.
+
+
+======================================================================================================================================================
+ENHANCED SUMMARY (UNFILTERED)
+======================================================================================================================================================
+Dataset        |  rho | N mod |     Dip p |  Perm | Info | BIC2<1 | Stbl% | Dead% | Unst% |  CC Sp |  GF Sp
+------------------------------------------------------------------------------------------------------------------------
+Synth20        |  0.9 |   200 |    0.0000 | 100% |    N |      Y | 32.8% | 59.5% | 7.8% |  0.729 |  0.843
+Synth20        |  0.5 |   200 |    0.0000 | 100% |    N |      Y | 27.9% | 64.8% | 7.3% |  0.649 |  0.959
+Synth20        |  0.7 |   200 |    0.0003 | 100% |    N |      Y | 30.2% | 62.1% | 7.7% |  0.690 |  0.910
+BreastCancer   | real |   200 |    0.0000 | 100% |    N |      Y | 34.0% | 61.0% | 5.1% |  0.448 |  0.931
+------------------------------------------------------------------------------------------------------------------------
+
+Total runtime: 374.5s (6.2 min)
