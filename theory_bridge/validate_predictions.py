@@ -600,9 +600,7 @@ def run_experiment(X, y, dataset_name, rho_label, feature_names=None):
     filtered_indices = [i for i, r in enumerate(all_rmses) if r <= threshold]
     shap_filtered = [shap_all[i] for i in filtered_indices]
 
-    result.filtered = run_analysis_pass(
-        "filtered", filtered_models, shap_filtered, filtered_rmses, feature_names
-    )
+    result.filtered = run_analysis_pass("filtered", filtered_models, shap_filtered, filtered_rmses, feature_names)
 
     return result
 
@@ -856,9 +854,7 @@ def main():
     print(f"\nFiltered sensitivity check:")
     for r in results:
         flag = " [TOO SMALL]" if r.filtered.too_small else ""
-        print(
-            f"  {r.name} (rho={r.rho}): {r.n_models_rashomon}/{r.n_models_trained} models{flag}"
-        )
+        print(f"  {r.name} (rho={r.rho}): {r.n_models_rashomon}/{r.n_models_trained} models{flag}")
 
     # Permutation control interpretation
     print(f"\nPermutation control interpretation:")
