@@ -218,24 +218,25 @@ def compute_flip_rates_and_conflicts(shap_matrices):
 # ---------------------------------------------------------------------------
 # Permutation control for dip test
 # ---------------------------------------------------------------------------
-def permutation_dip_control(shap_matrices, n_permutations=N_PERMUTATIONS, seed=SEED):
-    """Permutation-based control for the dip test.
+def permutation_dip_control(shap_matrices, n_permutations=N_PERMUTATIONS, seed=SEED, subsample_m=30):
+    """Subsampled permutation control for the dip test.
 
-    For each permutation replicate:
-    1. For each observation, randomly shuffle the SHAP sign assignments
-       across features (breaking the feature structure).
-    2. Recompute flip rates on the permuted data.
-    3. Run the dip test.
+    With large M (e.g., 200), flip rates are finely discretized (0/200, 1/200,
+    ...) and the dip test detects discreteness itself rather than bimodality.
+    This renders the permutation control uninformative (always rejects).
 
-    Returns the fraction of permutations that also reject unimodality (p < 0.05).
-    If this fraction is high, the dip test result is uninformative (detecting
-    discreteness, not real bimodality).
+    Fix: subsample to `subsample_m` models before computing flip rates for
+    both the permuted and real dip tests. This gives coarser bins (0/30, 1/30,
+    ...) that don't trigger spurious dip rejection, while retaining enough
+    models to detect genuine bimodality.
 
     Parameters
     ----------
     shap_matrices : list of ndarray, each (n_obs, n_features)
     n_permutations : int
     seed : int
+    subsample_m : int
+        Number of models to subsample for the dip test. Default 30.
 
     Returns
     -------
@@ -244,16 +245,23 @@ def permutation_dip_control(shap_matrices, n_permutations=N_PERMUTATIONS, seed=S
     """
     rng = np.random.RandomState(seed)
     stack = np.stack(shap_matrices, axis=0)  # (n_models, n_obs, n_features)
-    signs = np.sign(stack)
-    n_models, n_obs, n_features = signs.shape
+    n_models, n_obs, n_features = stack.shape
+
+    # Subsample models for dip test to avoid discreteness artifacts
+    m = min(subsample_m, n_models)
 
     n_reject = 0
-    for _ in range(n_permutations):
+    for rep in range(n_permutations):
+        # Subsample models (different subset each replicate)
+        idx = rng.choice(n_models, size=m, replace=False)
+        sub_stack = stack[idx]
+        signs = np.sign(sub_stack)
+
         # Permute: for each observation, shuffle signs across features
         perm_signs = signs.copy()
         for obs in range(n_obs):
-            for model in range(n_models):
-                rng.shuffle(perm_signs[model, obs, :])
+            for model_i in range(m):
+                rng.shuffle(perm_signs[model_i, obs, :])
 
         # Compute flip rates on permuted data
         perm_flip_rates = np.zeros((n_obs, n_features))
@@ -269,7 +277,10 @@ def permutation_dip_control(shap_matrices, n_permutations=N_PERMUTATIONS, seed=S
                 perm_flip_rates[obs, feat] = min(n_pos, n_neg) / total
 
         pooled = perm_flip_rates.ravel()
-        _, pval = diptest(pooled)
+        # Jitter to smooth discrete flip rates
+        jitter = rng.normal(0, 0.5 / m, len(pooled))
+        pooled_j = np.clip(pooled + jitter, 0, 0.5)
+        _, pval = diptest(pooled_j)
         if pval < 0.05:
             n_reject += 1
 
@@ -435,8 +446,21 @@ def run_analysis_pass(label, models, shap_matrices, all_rmses, feature_names):
     flip_rates, conflict_strength = compute_flip_rates_and_conflicts(shap_matrices)
     pooled = flip_rates.ravel()
 
-    # Dip test
-    dip_stat, dip_pval = diptest(pooled)
+    # Dip test (subsample to M=30 to avoid discreteness artifacts with large M)
+    if len(models) > 30:
+        rng_dip = np.random.RandomState(SEED + 77)
+        sub_idx = rng_dip.choice(len(models), size=30, replace=False)
+        sub_shap = [shap_matrices[i] for i in sub_idx]
+        sub_fr, _ = compute_flip_rates_and_conflicts(sub_shap)
+        pooled_dip = sub_fr.ravel()
+    else:
+        pooled_dip = pooled
+    # Add small Gaussian jitter to smooth discrete flip rates for dip test
+    rng_jitter = np.random.RandomState(SEED + 88)
+    jitter_scale = 0.5 / max(len(sub_shap) if len(models) > 30 else len(models), 1)
+    pooled_jittered = pooled_dip + rng_jitter.normal(0, jitter_scale, len(pooled_dip))
+    pooled_jittered = np.clip(pooled_jittered, 0, 0.5)
+    dip_stat, dip_pval = diptest(pooled_jittered)
     result.dip_stat = dip_stat
     result.dip_pval = dip_pval
     print(

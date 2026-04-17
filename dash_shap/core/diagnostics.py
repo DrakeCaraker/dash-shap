@@ -301,9 +301,10 @@ def coverage_conflict(all_shap_matrices):
 
     For each (observation, feature), counts how many models assign positive
     vs. negative SHAP values. The minority fraction (min(n_pos, n_neg) / total)
-    is a distribution-free predictor of SHAP sign instability that outperforms
-    the Gaussian flip formula on real-world data (Spearman 0.96 vs 0.46 on
-    California Housing).
+    is a distribution-free predictor of SHAP sign instability. Performance is
+    regime-dependent: wins under weak collinearity (California Housing: 0.96
+    vs 0.46), Gaussian wins under strong collinearity (Breast Cancer: 0.93
+    vs 0.45). Use compare_flip_predictors() to check on your data.
 
     Grounded in the bilemma's all-or-nothing theorem: features are either
     unanimously signed (no Rashomon ambiguity) or split (Rashomon pair exists),

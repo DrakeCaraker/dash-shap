@@ -243,7 +243,7 @@ Coverage conflict is a **sign-stability** diagnostic that complements FSI's **ma
 | 0.3–0.5 | Severe disagreement — models are nearly split on direction |
 | 0.5 | Perfect split — half positive, half negative (coin flip) |
 
-The distribution-free minority fraction outperforms the parametric Gaussian flip formula as a predictor of sign instability on real-world data (Spearman 0.96 vs 0.46 on California Housing). This is grounded in the bilemma's all-or-nothing theorem: features are either unanimously signed or split, with a predicted dead zone in between.
+The distribution-free minority fraction is a distribution-free predictor of sign instability. Its performance relative to the parametric Gaussian flip formula is regime-dependent: coverage conflict wins under weak/partial collinearity (California Housing: Spearman 0.96 vs 0.46) while the Gaussian formula wins under strong/pervasive collinearity (Breast Cancer: 0.93 vs 0.45). Use `compare_flip_predictors()` to determine which is more reliable on your dataset. This is grounded in the bilemma's all-or-nothing theorem: features are either unanimously signed or split, with a predicted dead zone in between.
 
 **When to use coverage conflict vs. FSI:**
 

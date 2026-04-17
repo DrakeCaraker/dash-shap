@@ -490,7 +490,7 @@ result = coverage_conflict(
 )
 ```
 
-Nonparametric flip predictor based on sign agreement across ensemble models. For each (observation, feature), counts how many models assign positive vs. negative SHAP values. The minority fraction is a distribution-free predictor of SHAP sign instability that outperforms the Gaussian flip formula on real-world data (Spearman 0.96 vs 0.46 on California Housing).
+Nonparametric flip predictor based on sign agreement across ensemble models. For each (observation, feature), counts how many models assign positive vs. negative SHAP values. The minority fraction is a distribution-free predictor of SHAP sign instability that predicts SHAP sign instability without distributional assumptions. Performance is regime-dependent: on weakly correlated data (California Housing), coverage conflict achieves Spearman 0.96 vs Gaussian 0.46; on strongly correlated data (Breast Cancer, 21 pairs |r|>0.9), the Gaussian formula dominates (0.93 vs 0.45).
 
 **Returns:** dict with keys:
 
@@ -514,7 +514,7 @@ result = compare_flip_predictors(
 )
 ```
 
-Compares the coverage-conflict predictor against the Gaussian flip formula (Phi(-SNR)) for predicting SHAP sign flips. Use this to evaluate which predictor better tracks observed instability on your data. On California Housing, coverage conflict achieves Spearman 0.96 vs Gaussian 0.46.
+Compares the coverage-conflict predictor against the Gaussian flip formula (Phi(-SNR)) for predicting SHAP sign flips. Use this to evaluate which predictor better tracks observed instability on your data. Performance is regime-dependent: coverage conflict wins under weak/partial collinearity (California Housing: 0.96 vs 0.46), while the Gaussian formula wins under strong/pervasive collinearity (Breast Cancer: 0.93 vs 0.45). Run on your dataset to determine which predictor is more reliable.
 
 **Returns:** dict with keys:
 
