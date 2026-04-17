@@ -479,3 +479,47 @@ from dash_shap.extensions import federated_consensus
 fed = federated_consensus([result1, result2], weights=[0.7, 0.3])
 ```
 Returns `FederatedResult` with `combined` (`DASHResult`), `per_site_importance` `(n_sites, P)`, `cross_site_agreement` (float).
+
+## `coverage_conflict`
+
+```python
+from dash_shap.core.diagnostics import coverage_conflict
+
+result = coverage_conflict(
+    all_shap_matrices,    # (K, N', P) array — SHAP values from K models
+)
+```
+
+Nonparametric flip predictor based on sign agreement across ensemble models. For each (observation, feature), counts how many models assign positive vs. negative SHAP values. The minority fraction is a distribution-free predictor of SHAP sign instability that outperforms the Gaussian flip formula on real-world data (Spearman 0.96 vs 0.46 on California Housing).
+
+**Returns:** dict with keys:
+
+| Key | Shape | Description |
+|-----|-------|-------------|
+| `minority_fraction` | (N', P) | Per-element minority fraction in [0, 0.5]. 0 = all models agree on sign; 0.5 = perfect 50/50 split. |
+| `has_conflict` | (N', P) bool | True where both positive and negative signs appear. |
+| `feature_conflict_rate` | (P,) | Fraction of observations with sign conflict per feature. |
+| `feature_mean_minority` | (P,) | Mean minority fraction per feature (the flip rate predictor). |
+
+---
+
+## `compare_flip_predictors`
+
+```python
+from dash_shap.core.diagnostics import compare_flip_predictors
+
+result = compare_flip_predictors(
+    all_shap_matrices,         # (K, N', P) array — SHAP values from K models
+    importance_matrix=None,    # (K, P) array — per-model global importance (optional; computed if not provided)
+)
+```
+
+Compares the coverage-conflict predictor against the Gaussian flip formula (Phi(-SNR)) for predicting SHAP sign flips. Use this to evaluate which predictor better tracks observed instability on your data. On California Housing, coverage conflict achieves Spearman 0.96 vs Gaussian 0.46.
+
+**Returns:** dict with keys:
+
+| Key | Shape | Description |
+|-----|-------|-------------|
+| `cc_prediction` | (P,) | Coverage-conflict predictor (mean minority fraction per feature). |
+| `gf_prediction` | (P,) | Gaussian flip formula predictor (Phi(-SNR) per feature, averaged over all pairs). |
+| `cc_conflict_rate` | (P,) | Fraction of observations with sign conflict per feature. |
