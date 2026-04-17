@@ -8,6 +8,8 @@ __all__ = [
     "FeatureStabilityIndex",
     "ImportanceStabilityPlot",
     "local_disagreement_map",
+    "coverage_conflict",
+    "compare_flip_predictors",
 ]
 
 
@@ -292,3 +294,113 @@ def local_disagreement_map(
     ax.set_title(title.replace("\u2014", "-").replace("\u2013", "-"), fontsize=13)
     fig.tight_layout()
     return fig
+
+
+def coverage_conflict(all_shap_matrices):
+    """Nonparametric flip predictor: coverage conflict + minority fraction.
+
+    For each (observation, feature), counts how many models assign positive
+    vs. negative SHAP values. The minority fraction (min(n_pos, n_neg) / total)
+    is a distribution-free predictor of SHAP sign instability that outperforms
+    the Gaussian flip formula on real-world data (Spearman 0.96 vs 0.46 on
+    California Housing).
+
+    Grounded in the bilemma's all-or-nothing theorem: features are either
+    unanimously signed (no Rashomon ambiguity) or split (Rashomon pair exists),
+    with a predicted dead zone in between.
+
+    Parameters
+    ----------
+    all_shap_matrices : np.ndarray
+        Shape (K, N', P) — SHAP values from K models.
+
+    Returns
+    -------
+    dict with keys:
+        'minority_fraction': np.ndarray, shape (N', P)
+            Per-element minority fraction in [0, 0.5].
+            0 = all models agree on sign; 0.5 = perfect 50/50 split.
+        'has_conflict': np.ndarray, shape (N', P), dtype bool
+            True where both positive and negative signs appear.
+        'feature_conflict_rate': np.ndarray, shape (P,)
+            Fraction of observations with coverage conflict per feature.
+        'feature_mean_minority': np.ndarray, shape (P,)
+            Mean minority fraction per feature (the flip rate predictor).
+    """
+    signs = np.sign(all_shap_matrices)  # (K, N', P)
+    n_pos = np.sum(signs > 0, axis=0)  # (N', P)
+    n_neg = np.sum(signs < 0, axis=0)  # (N', P)
+    total = n_pos + n_neg
+    # Avoid division by zero where all values are exactly 0
+    safe_total = np.maximum(total, 1)
+    minority = np.minimum(n_pos, n_neg) / safe_total
+    minority[total < 2] = 0.0
+
+    has_conflict = (n_pos > 0) & (n_neg > 0)
+    feature_conflict_rate = np.mean(has_conflict, axis=0)
+    feature_mean_minority = np.mean(minority, axis=0)
+
+    return {
+        "minority_fraction": minority,
+        "has_conflict": has_conflict,
+        "feature_conflict_rate": feature_conflict_rate,
+        "feature_mean_minority": feature_mean_minority,
+    }
+
+
+def compare_flip_predictors(all_shap_matrices, importance_matrix=None):
+    """Compare coverage conflict vs Gaussian flip formula as flip predictors.
+
+    Returns per-feature predictions from both methods for direct comparison.
+    The Gaussian formula requires an importance matrix (M, P) of per-model
+    mean absolute SHAP; if not provided, it is computed from all_shap_matrices.
+
+    Parameters
+    ----------
+    all_shap_matrices : np.ndarray
+        Shape (K, N', P) — SHAP values from K models.
+    importance_matrix : np.ndarray, optional
+        Shape (K, P) — per-model global importance. Computed if not provided.
+
+    Returns
+    -------
+    dict with keys:
+        'cc_prediction': np.ndarray, shape (P,)
+            Coverage-conflict predictor (mean minority fraction per feature).
+        'gf_prediction': np.ndarray, shape (P,)
+            Gaussian flip formula predictor (Φ(-SNR) per feature, averaged
+            over all pairs involving that feature).
+        'cc_conflict_rate': np.ndarray, shape (P,)
+            Fraction of observations with sign conflict per feature.
+    """
+    from scipy.stats import norm
+
+    cc = coverage_conflict(all_shap_matrices)
+
+    # Gaussian flip formula: need per-model importance
+    if importance_matrix is None:
+        importance_matrix = np.mean(np.abs(all_shap_matrices), axis=1)  # (K, P)
+
+    K, P = importance_matrix.shape
+    # Pairwise SNR
+    gf_per_feature = np.zeros(P)
+    for j in range(P):
+        pair_flips = []
+        for k in range(P):
+            if k == j:
+                continue
+            diff = importance_matrix[:, j] - importance_matrix[:, k]
+            mu = np.mean(diff)
+            sd = np.std(diff, ddof=1)
+            if sd > 0:
+                snr = abs(mu) / sd
+                pair_flips.append(norm.cdf(-snr))
+            else:
+                pair_flips.append(0.0)
+        gf_per_feature[j] = np.mean(pair_flips) if pair_flips else 0.0
+
+    return {
+        "cc_prediction": cc["feature_mean_minority"],
+        "gf_prediction": gf_per_feature,
+        "cc_conflict_rate": cc["feature_conflict_rate"],
+    }
