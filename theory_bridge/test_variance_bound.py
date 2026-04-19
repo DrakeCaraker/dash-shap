@@ -145,47 +145,31 @@ def compute_coverage_conflict_rate(shap_stack):
 # ---------------------------------------------------------------------------
 # Main experiment
 # ---------------------------------------------------------------------------
-def main():
-    print("=" * 74)
-    print("INFORMATION-THEORETIC BOUND: Var[SHAP] = EXPLANATION QUALITY BUDGET")
-    print("=" * 74)
-    print()
-    print("Theorem: For any stable explanation E (constant across model choice),")
-    print("  min_E E[(E_j - SHAP_j(m,x))^2] = Var_m[SHAP_j(m,x)]")
-    print("The optimal E is the conditional mean = DASH (element-wise average).")
-    print()
-
-    # ------------------------------------------------------------------
-    # 1. Load data and generate correlated features
-    # ------------------------------------------------------------------
-    print("Generating California Housing + synthetic rho=0.9 features...")
-    X, y, feature_names = generate_synthetic_correlated(rho=0.9, seed=SEED)
+def run_single_dataset(dataset_name, X, y, feature_names):
+    """Run variance bound analysis on a single dataset. Returns results dict."""
     n_features = len(feature_names)
+
+    print(f"\n{'=' * 74}")
+    print(f"DATASET: {dataset_name}")
+    print(f"{'=' * 74}")
     print(f"  Features ({n_features}): {feature_names}")
-    print()
 
     # Split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=SEED
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=SEED)
     rng = np.random.RandomState(SEED + 1)
     obs_idx = rng.choice(len(X_test), size=min(N_OBS, len(X_test)), replace=False)
     X_explain = X_test[obs_idx]
     print(f"  Train: {X_train.shape[0]}, Test: {X_test.shape[0]}, Explain: {len(obs_idx)}")
     print()
 
-    # ------------------------------------------------------------------
-    # 2. Train Rashomon set
-    # ------------------------------------------------------------------
+    # Train Rashomon set
     print(f"Training {N_MODELS} XGBoost models...")
     t0 = time.time()
     models = train_rashomon_set(X_train, y_train, N_MODELS, SEED)
     print(f"  Done in {time.time() - t0:.1f}s")
     print()
 
-    # ------------------------------------------------------------------
-    # 3. Compute SHAP values
-    # ------------------------------------------------------------------
+    # Compute SHAP values
     print(f"Computing SHAP values ({N_MODELS} models x {len(X_explain)} obs)...")
     t0 = time.time()
     shap_matrices = compute_shap_matrices(models, X_explain, X_train)
@@ -196,9 +180,7 @@ def main():
     shap_stack = np.stack(shap_matrices, axis=0)
     n_models, n_obs, n_feat = shap_stack.shape
 
-    # ------------------------------------------------------------------
-    # 4. Compute variance bound and MSE for each aggregation method
-    # ------------------------------------------------------------------
+    # Compute variance bound and MSE for each aggregation method
     print("Computing variance bound and MSE for each method...")
     print()
 
@@ -215,34 +197,24 @@ def main():
     trimmed_values = np.zeros((n_obs, n_feat))
     for obs in range(n_obs):
         for feat in range(n_feat):
-            trimmed_values[obs, feat] = trim_mean(
-                shap_stack[:, obs, feat], proportiontocut=TRIM_FRACTION
-            )
+            trimmed_values[obs, feat] = trim_mean(shap_stack[:, obs, feat], proportiontocut=TRIM_FRACTION)
 
     # MSE for each method: mean across models of (SHAP_j(m) - E_j)^2
-    # For DASH:
     dash_mse = np.mean((shap_stack - dash_values[np.newaxis, :, :]) ** 2, axis=0)
-    # For Median:
     median_mse = np.mean((shap_stack - median_values[np.newaxis, :, :]) ** 2, axis=0)
-    # For Trimmed Mean:
     trimmed_mse = np.mean((shap_stack - trimmed_values[np.newaxis, :, :]) ** 2, axis=0)
 
-    # ------------------------------------------------------------------
-    # 5. Ratios: MSE / Var[SHAP]
-    # ------------------------------------------------------------------
-    # Avoid division by zero for features with zero variance
+    # Ratios: MSE / Var[SHAP]
     nonzero_mask = shap_var > 1e-15
 
     dash_ratio = np.where(nonzero_mask, dash_mse / shap_var, np.nan)
     median_ratio = np.where(nonzero_mask, median_mse / shap_var, np.nan)
     trimmed_ratio = np.where(nonzero_mask, trimmed_mse / shap_var, np.nan)
 
-    # ------------------------------------------------------------------
-    # 6. Report: Global ratios
-    # ------------------------------------------------------------------
-    print("=" * 74)
-    print("RESULT 1: MSE / Var[SHAP] RATIOS (should be 1.000 for DASH, >1 otherwise)")
-    print("=" * 74)
+    # ---- Report: Global ratios ----
+    print("-" * 74)
+    print(f"RESULT 1: MSE / Var[SHAP] RATIOS — {dataset_name}")
+    print("-" * 74)
     print()
 
     dash_ratio_mean = np.nanmean(dash_ratio)
@@ -268,23 +240,35 @@ def main():
     )
     print()
 
-    # Verify DASH identity
-    max_dash_deviation = np.nanmax(np.abs(dash_ratio - 1.0))
-    print(f"  DASH identity check: max |ratio - 1.0| = {max_dash_deviation:.2e}")
-    if max_dash_deviation < 1e-10:
-        print("  CONFIRMED: DASH MSE = Var[SHAP] exactly (machine precision)")
+    # Verify DASH identity (Fix 6): explicit machine-precision check
+    n_valid = np.sum(nonzero_mask)
+    abs_diff = np.abs(dash_mse - shap_var)
+    violations_identity = np.sum(abs_diff[nonzero_mask] >= 1e-10)
+    max_identity_diff = np.max(abs_diff[nonzero_mask]) if n_valid > 0 else 0.0
+    print(f"  VARIANCE IDENTITY VERIFICATION (|DASH_MSE - Var| < 1e-10):")
+    print(f"    {violations_identity}/{n_valid} violations at machine precision")
+    print(f"    Max |DASH_MSE - Var| = {max_identity_diff:.2e}")
+    if violations_identity == 0:
+        print("    CONFIRMED: Var = DASH MSE exactly (0 violations)")
     else:
-        print(f"  NOTE: deviation {max_dash_deviation:.2e} (should be ~1e-14)")
+        print(f"    WARNING: {violations_identity} violations detected")
+    print()
+
+    max_dash_deviation = np.nanmax(np.abs(dash_ratio - 1.0))
+    print(f"  DASH ratio check: max |ratio - 1.0| = {max_dash_deviation:.2e}")
     print()
 
     # Verify median and trimmed mean are suboptimal
     median_violations = np.nansum(median_ratio < 1.0 - 1e-10)
     trimmed_violations = np.nansum(trimmed_ratio < 1.0 - 1e-10)
-    n_valid = np.sum(nonzero_mask)
-    print(f"  Median MSE >= Var violations:       {median_violations}/{n_valid} "
-          f"({'PASS' if median_violations == 0 else 'UNEXPECTED'})")
-    print(f"  Trimmed Mean MSE >= Var violations:  {trimmed_violations}/{n_valid} "
-          f"({'PASS' if trimmed_violations == 0 else 'UNEXPECTED'})")
+    print(
+        f"  Median MSE >= Var violations:       {median_violations}/{n_valid} "
+        f"({'PASS' if median_violations == 0 else 'UNEXPECTED'})"
+    )
+    print(
+        f"  Trimmed Mean MSE >= Var violations:  {trimmed_violations}/{n_valid} "
+        f"({'PASS' if trimmed_violations == 0 else 'UNEXPECTED'})"
+    )
     print()
 
     # Excess MSE
@@ -294,29 +278,24 @@ def main():
     print(f"  Trimmed mean excess MSE over bound:  +{trimmed_excess:.2f}%")
     print()
 
-    # ------------------------------------------------------------------
-    # 7. Per-feature budget table
-    # ------------------------------------------------------------------
-    print("=" * 74)
-    print("RESULT 2: PER-FEATURE EXPLANATION QUALITY BUDGET")
-    print("  Var[SHAP_j] = minimum squared error any stable method incurs")
-    print("=" * 74)
-    print()
-
-    # Per-feature: mean variance across observations
-    feat_var = np.mean(shap_var, axis=0)  # (n_features,)
+    # ---- Per-feature budget table ----
+    feat_var = np.mean(shap_var, axis=0)
     feat_dash_mse = np.mean(dash_mse, axis=0)
     feat_median_mse = np.mean(median_mse, axis=0)
     feat_trimmed_mse = np.mean(trimmed_mse, axis=0)
-
-    # Mean absolute SHAP for scale reference
     feat_mean_abs_shap = np.mean(np.abs(np.mean(shap_stack, axis=0)), axis=0)
 
-    # Sort by variance (highest budget = most unstable)
     sort_idx = np.argsort(-feat_var)
 
-    print(f"  {'Rank':<5s} {'Feature':<15s} {'Var[SHAP]':>12s} {'DASH MSE':>12s} "
-          f"{'Median MSE':>12s} {'Trim MSE':>12s} {'|DASH|':>10s} {'Var/|DASH|^2':>12s}")
+    print("-" * 74)
+    print(f"RESULT 2: PER-FEATURE BUDGET — {dataset_name}")
+    print("-" * 74)
+    print()
+
+    print(
+        f"  {'Rank':<5s} {'Feature':<15s} {'Var[SHAP]':>12s} {'DASH MSE':>12s} "
+        f"{'Median MSE':>12s} {'Trim MSE':>12s} {'|DASH|':>10s} {'Var/|DASH|^2':>12s}"
+    )
     print("  " + "-" * 92)
 
     for rank, idx in enumerate(sort_idx, 1):
@@ -325,7 +304,6 @@ def main():
         med_val = feat_median_mse[idx]
         trim_val = feat_trimmed_mse[idx]
         abs_shap = feat_mean_abs_shap[idx]
-        # Relative budget: variance as fraction of squared magnitude
         rel_budget = var_val / (abs_shap**2) if abs_shap > 1e-15 else np.nan
         print(
             f"  {rank:<5d} {feature_names[idx]:<15s} {var_val:12.6f} {dash_val:12.6f} "
@@ -333,16 +311,13 @@ def main():
         )
     print()
 
-    # ------------------------------------------------------------------
-    # 8. Correlation with coverage conflict rate
-    # ------------------------------------------------------------------
-    print("=" * 74)
-    print("RESULT 3: VARIANCE vs COVERAGE CONFLICT CORRELATION")
-    print("  Features with high variance should be the ones with sign instability")
-    print("=" * 74)
-    print()
-
+    # ---- Correlation with coverage conflict rate ----
     conflict_rate = compute_coverage_conflict_rate(shap_stack)
+
+    print("-" * 74)
+    print(f"RESULT 3: VARIANCE vs CONFLICT — {dataset_name}")
+    print("-" * 74)
+    print()
 
     print(f"  {'Feature':<15s} {'Var[SHAP]':>12s} {'Conflict Rate':>14s}")
     print("  " + "-" * 43)
@@ -350,29 +325,119 @@ def main():
         print(f"  {feature_names[idx]:<15s} {feat_var[idx]:12.6f} {conflict_rate[idx]:14.1%}")
     print()
 
-    # Spearman correlation: absolute variance vs conflict rate
     rho_abs, p_abs = spearmanr(feat_var, conflict_rate)
     print(f"  Spearman (absolute Var vs conflict): rho = {rho_abs:.4f}, p = {p_abs:.4e}")
+
+    rel_var = np.array(
+        [
+            feat_var[i] / (feat_mean_abs_shap[i] ** 2) if feat_mean_abs_shap[i] > 1e-15 else np.nan
+            for i in range(n_features)
+        ]
+    )
+    valid_rel = ~np.isnan(rel_var)
+    if np.sum(valid_rel) >= 3:
+        rho_corr, p_val = spearmanr(rel_var[valid_rel], conflict_rate[valid_rel])
+        print(f"  Spearman (relative Var/|DASH|^2 vs conflict): rho = {rho_corr:.4f}, p = {p_val:.4e}")
+    else:
+        rho_corr, p_val = np.nan, np.nan
+        print("  Spearman (relative): too few valid features")
     print()
 
-    # Relative variance (Var/|DASH|^2) vs conflict rate — more meaningful
-    rel_var = np.array([
-        feat_var[i] / (feat_mean_abs_shap[i] ** 2) if feat_mean_abs_shap[i] > 1e-15 else np.nan
-        for i in range(n_features)
-    ])
-    valid_rel = ~np.isnan(rel_var)
-    rho_corr, p_val = spearmanr(rel_var[valid_rel], conflict_rate[valid_rel])
-    print(f"  Spearman (relative Var/|DASH|^2 vs conflict): rho = {rho_corr:.4f}, p = {p_val:.4e}")
-    if rho_corr > 0.7:
-        print("  STRONG positive correlation: high relative variance = sign-unstable features")
-    elif rho_corr > 0.4:
-        print("  MODERATE positive correlation")
-    else:
-        print("  WEAK correlation")
+    return {
+        "dataset_name": dataset_name,
+        "dash_ratio_mean": dash_ratio_mean,
+        "median_ratio_mean": median_ratio_mean,
+        "trimmed_ratio_mean": trimmed_ratio_mean,
+        "dash_identity_max_dev": max_dash_deviation,
+        "identity_violations": int(violations_identity),
+        "identity_n_checked": int(n_valid),
+        "identity_max_diff": float(max_identity_diff),
+        "median_violations": int(median_violations),
+        "trimmed_violations": int(trimmed_violations),
+        "median_excess_pct": median_excess,
+        "trimmed_excess_pct": trimmed_excess,
+        "var_conflict_spearman_rho_abs": rho_abs,
+        "var_conflict_spearman_p_abs": p_abs,
+        "var_conflict_spearman_rho_rel": rho_corr,
+        "var_conflict_spearman_p_rel": p_val,
+        "per_feature_var": {feature_names[i]: float(feat_var[i]) for i in range(n_features)},
+        "per_feature_conflict": {feature_names[i]: float(conflict_rate[i]) for i in range(n_features)},
+    }
+
+
+def main():
+    print("=" * 74)
+    print("INFORMATION-THEORETIC BOUND: Var[SHAP] = EXPLANATION QUALITY BUDGET")
+    print("=" * 74)
+    print()
+    print("Theorem: For any stable explanation E (constant across model choice),")
+    print("  min_E E[(E_j - SHAP_j(m,x))^2] = Var_m[SHAP_j(m,x)]")
+    print("The optimal E is the conditional mean = DASH (element-wise average).")
+    print()
+
+    all_results = {}
+
+    # ------------------------------------------------------------------
+    # Dataset 1: Unmodified California Housing (8 original features)
+    # ------------------------------------------------------------------
+    data = fetch_california_housing()
+    X_orig, y_orig = data.data, data.target
+    fnames_orig = list(data.feature_names)
+    all_results["California Housing (original)"] = run_single_dataset(
+        "California Housing (original, 8 features)", X_orig, y_orig, fnames_orig
+    )
+
+    # ------------------------------------------------------------------
+    # Dataset 2: California Housing + synthetic rho=0.9 correlated copies
+    # ------------------------------------------------------------------
+    X_aug, y_aug, fnames_aug = generate_synthetic_correlated(rho=0.9, seed=SEED)
+    all_results["California Housing (augmented)"] = run_single_dataset(
+        "California Housing (augmented, 12 features, rho=0.9)", X_aug, y_aug, fnames_aug
+    )
+
+    # ------------------------------------------------------------------
+    # Cross-dataset summary
+    # ------------------------------------------------------------------
+    print()
+    print("=" * 74)
+    print("CROSS-DATASET SUMMARY")
+    print("=" * 74)
+    print()
+
+    print(f"  {'Dataset':<45s}  {'DASH ratio':>12s}  {'Med ratio':>12s}  {'Trim ratio':>12s}")
+    print("  " + "-" * 85)
+    for dname, res in all_results.items():
+        print(
+            f"  {dname:<45s}  {res['dash_ratio_mean']:12.6f}"
+            f"  {res['median_ratio_mean']:12.6f}  {res['trimmed_ratio_mean']:12.6f}"
+        )
+    print()
+
+    # Per-dataset variance-conflict correlation (Fix 5)
+    print(f"  {'Dataset':<45s}  {'rho(abs)':>10s}  {'p(abs)':>12s}  {'rho(rel)':>10s}  {'p(rel)':>12s}")
+    print("  " + "-" * 92)
+    for dname, res in all_results.items():
+        rho_a = res["var_conflict_spearman_rho_abs"]
+        p_a = res["var_conflict_spearman_p_abs"]
+        rho_r = res["var_conflict_spearman_rho_rel"]
+        p_r = res["var_conflict_spearman_p_rel"]
+        rho_r_str = f"{rho_r:.4f}" if not np.isnan(rho_r) else "N/A"
+        p_r_str = f"{p_r:.4e}" if not np.isnan(p_r) else "N/A"
+        print(f"  {dname:<45s}  {rho_a:10.4f}  {p_a:12.4e}  {rho_r_str:>10s}  {p_r_str:>12s}")
+    print()
+
+    # Per-dataset identity verification (Fix 6)
+    print(f"  {'Dataset':<45s}  {'Identity violations':>20s}  {'Max |diff|':>12s}")
+    print("  " + "-" * 81)
+    for dname, res in all_results.items():
+        print(
+            f"  {dname:<45s}  {res['identity_violations']}/{res['identity_n_checked']:>14d}"
+            f"  {res['identity_max_diff']:12.2e}"
+        )
     print()
 
     # ------------------------------------------------------------------
-    # 9. Interpretation: the budget framing
+    # Interpretation
     # ------------------------------------------------------------------
     print("=" * 74)
     print("INTERPRETATION")
@@ -389,52 +454,9 @@ def main():
     print("  - Variance budget:   'How much does this feature's magnitude vary?' (continuous)")
     print("Together they give the full picture of explanation stability.")
     print()
-
-    # Top-3 most expensive features
-    print("Top 3 features by explanation quality budget (highest price of stability):")
-    for rank, idx in enumerate(sort_idx[:3], 1):
-        abs_shap = feat_mean_abs_shap[idx]
-        rel = feat_var[idx] / (abs_shap**2) if abs_shap > 1e-15 else np.nan
-        print(f"  {rank}. {feature_names[idx]}: Var={feat_var[idx]:.6f}, "
-              f"|DASH|={abs_shap:.4f}, relative budget={rel:.1%}")
-    print()
-
-    # ------------------------------------------------------------------
-    # 10. Summary statistics
-    # ------------------------------------------------------------------
-    print("=" * 74)
-    print("SUMMARY")
-    print("=" * 74)
-    print(f"  Models trained:                {N_MODELS}")
-    print(f"  Observations explained:        {N_OBS}")
-    print(f"  Features:                      {n_features}")
-    print()
-    print(f"  DASH MSE / Var[SHAP]:          {dash_ratio_mean:.6f}  (theory: 1.000000)")
-    print(f"  Median MSE / Var[SHAP]:        {median_ratio_mean:.6f}  (theory: >= 1)")
-    print(f"  Trimmed Mean MSE / Var[SHAP]:  {trimmed_ratio_mean:.6f}  (theory: >= 1)")
-    print()
-    print(f"  Median excess MSE:             +{median_excess:.2f}%")
-    print(f"  Trimmed mean excess MSE:       +{trimmed_excess:.2f}%")
-    print()
-    print(f"  Var-Conflict Spearman (abs):   {rho_abs:.4f} (p={p_abs:.4e})")
-    print(f"  Var-Conflict Spearman (rel):   {rho_corr:.4f} (p={p_val:.4e})")
-    print(f"  DASH identity max deviation:   {max_dash_deviation:.2e}")
     print("=" * 74)
 
-    return {
-        "dash_ratio_mean": dash_ratio_mean,
-        "median_ratio_mean": median_ratio_mean,
-        "trimmed_ratio_mean": trimmed_ratio_mean,
-        "dash_identity_max_dev": max_dash_deviation,
-        "median_violations": int(median_violations),
-        "trimmed_violations": int(trimmed_violations),
-        "var_conflict_spearman_rho_abs": rho_abs,
-        "var_conflict_spearman_p_abs": p_abs,
-        "var_conflict_spearman_rho_rel": rho_corr,
-        "var_conflict_spearman_p_rel": p_val,
-        "per_feature_var": {feature_names[i]: float(feat_var[i]) for i in range(n_features)},
-        "per_feature_conflict": {feature_names[i]: float(conflict_rate[i]) for i in range(n_features)},
-    }
+    return all_results
 
 
 if __name__ == "__main__":

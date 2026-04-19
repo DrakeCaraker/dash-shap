@@ -7,9 +7,11 @@ Tests whether SHAP interaction values are systematically more unstable
 than individual SHAP values across a Rashomon set of XGBoost models.
 Uses the fiber product prediction from the impossibility framework.
 
-200 models, 50 observations, California Housing dataset.
+200 models, 50 observations, California Housing + synthetic rho=0.9 datasets.
 Sensitivity analysis at 3 zero-exclusion thresholds (25%, 50%, 75%).
+Magnitude control and permutation control validate the effect is structural.
 """
+
 import time
 import warnings
 
@@ -31,6 +33,25 @@ N_OBS = 50  # fewer than main experiments — interactions are expensive
 SEED = 42
 TEST_SIZE = 0.2
 ZERO_THRESHOLDS = [0.25, 0.50, 0.75]
+
+
+# ---------------------------------------------------------------------------
+# Synthetic data generation (same DGP as validate_predictions.py)
+# ---------------------------------------------------------------------------
+def generate_synthetic(n_features=8, rho=0.9, n_samples=2000, seed=SEED):
+    """Generate synthetic data with 2 features correlated at rho.
+
+    Features 0 and 1 are correlated at level rho.
+    DGP: y = X[:,0] + 0.5*X[:,1] + 0.3*X[:,2] + noise
+    """
+    rng = np.random.RandomState(seed)
+    mean = np.zeros(n_features)
+    cov = np.eye(n_features)
+    cov[0, 1] = cov[1, 0] = rho
+    X = rng.multivariate_normal(mean, cov, n_samples)
+    y = X[:, 0] + 0.5 * X[:, 1] + 0.3 * X[:, 2] + rng.normal(0, 0.1, n_samples)
+    feature_names = [f"f{i}" for i in range(n_features)]
+    return X, y, feature_names
 
 
 # ---------------------------------------------------------------------------
@@ -117,37 +138,27 @@ def minority_fraction(signs):
 # ---------------------------------------------------------------------------
 # Main analysis
 # ---------------------------------------------------------------------------
-def run_interaction_experiment():
-    print("=" * 70)
-    print("PAIRWISE INTERACTION INSTABILITY EXPERIMENT")
-    print("=" * 70)
-    print()
-    print("Configuration:")
-    print(f"  N_MODELS           = {N_MODELS}")
-    print(f"  N_OBS              = {N_OBS}")
-    print(f"  SEED               = {SEED}")
-    print(f"  ZERO_THRESHOLDS    = {ZERO_THRESHOLDS}")
-    print(f"  Background samples = 50")
-    print()
+def run_single_dataset(dataset_name, X, y, feature_names):
+    """Run interaction instability analysis on a single dataset.
 
-    # ---- Load data ----
-    print("Loading California Housing...")
-    data = fetch_california_housing()
-    X, y = data.data, data.target
-    feature_names = list(data.feature_names)
+    Returns dict with interaction_flip_rates, max_individual, delta,
+    zero_fractions, pairs, feature_names, interactions_stack, shap_stack.
+    """
     n_features = X.shape[1]
+    print(f"\n{'=' * 70}")
+    print(f"DATASET: {dataset_name}")
+    print(f"{'=' * 70}")
     print(f"  Features ({n_features}): {feature_names}")
 
     # ---- Split data ----
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=SEED
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=TEST_SIZE, random_state=SEED)
 
     # Select observations for SHAP
     rng = np.random.RandomState(SEED + 1)
-    obs_idx = rng.choice(len(X_test), size=N_OBS, replace=False)
+    obs_idx = rng.choice(len(X_test), size=min(N_OBS, len(X_test)), replace=False)
     X_explain = X_test[obs_idx]
-    print(f"  Train: {len(X_train)}, Test: {len(X_test)}, Explain: {N_OBS}")
+    n_obs = len(obs_idx)
+    print(f"  Train: {len(X_train)}, Test: {len(X_test)}, Explain: {n_obs}")
 
     # ---- Train models ----
     print(f"\nTraining {N_MODELS} models...")
@@ -156,12 +167,10 @@ def run_interaction_experiment():
     print(f"  Trained in {time.time() - t0:.1f}s")
 
     # ---- Compute SHAP interaction values ----
-    print(f"\nComputing SHAP interaction values ({N_MODELS} models x {N_OBS} obs)...")
+    print(f"\nComputing SHAP interaction values ({N_MODELS} models x {n_obs} obs)...")
     print("  This may take 10-20 minutes...")
     t0 = time.time()
-    interaction_arrays, shap_arrays = compute_shap_interactions(
-        models, X_explain, X_train
-    )
+    interaction_arrays, shap_arrays = compute_shap_interactions(models, X_explain, X_train)
     elapsed_shap = time.time() - t0
     print(f"  SHAP interactions complete in {elapsed_shap:.1f}s ({elapsed_shap / 60:.1f} min)")
 
@@ -170,6 +179,7 @@ def run_interaction_experiment():
     interactions_stack = np.stack(interaction_arrays, axis=0)
     # shap_values: (N_MODELS, N_OBS, n_features)
     shap_stack = np.stack(shap_arrays, axis=0)
+    n_models = interactions_stack.shape[0]
 
     # ---- Enumerate feature pairs (upper triangle, A < B) ----
     pairs = []
@@ -182,21 +192,21 @@ def run_interaction_experiment():
     # ---- Compute per-pair, per-observation metrics ----
     print("\nComputing flip rates for interactions and individuals...")
 
-    # Store results: (n_pairs, N_OBS) for each metric
-    interaction_flip_rates = np.full((n_pairs, N_OBS), np.nan)
-    individual_flip_A = np.full((n_pairs, N_OBS), np.nan)
-    individual_flip_B = np.full((n_pairs, N_OBS), np.nan)
-    zero_fractions = np.full((n_pairs, N_OBS), np.nan)
+    # Store results: (n_pairs, n_obs) for each metric
+    interaction_flip_rates = np.full((n_pairs, n_obs), np.nan)
+    individual_flip_A = np.full((n_pairs, n_obs), np.nan)
+    individual_flip_B = np.full((n_pairs, n_obs), np.nan)
+    zero_fractions = np.full((n_pairs, n_obs), np.nan)
 
     for pi, (a, b) in enumerate(pairs):
-        for obs in range(N_OBS):
+        for obs in range(n_obs):
             # Interaction signs across models
             interaction_vals = interactions_stack[:, obs, a, b]
             interaction_signs = np.sign(interaction_vals)
 
             # Zero fraction for this pair-observation
             n_zero = np.sum(interaction_signs == 0)
-            zero_fractions[pi, obs] = n_zero / N_MODELS
+            zero_fractions[pi, obs] = n_zero / n_models
 
             # Interaction flip rate
             iflip, _ = minority_fraction(interaction_signs)
@@ -214,9 +224,15 @@ def run_interaction_experiment():
     max_individual = np.fmax(individual_flip_A, individual_flip_B)
     delta = interaction_flip_rates - max_individual
 
+    # ---- Mean interaction magnitude per pair-observation (for magnitude control) ----
+    mean_interaction_per_pair_obs = np.full((n_pairs, n_obs), np.nan)
+    for pi, (a, b) in enumerate(pairs):
+        for obs in range(n_obs):
+            mean_interaction_per_pair_obs[pi, obs] = np.mean(np.abs(interactions_stack[:, obs, a, b]))
+
     # ---- Sensitivity analysis at different zero-exclusion thresholds ----
     print("\n" + "=" * 70)
-    print("RESULTS")
+    print(f"RESULTS — {dataset_name}")
     print("=" * 70)
 
     for threshold in ZERO_THRESHOLDS:
@@ -231,7 +247,7 @@ def run_interaction_experiment():
         valid = mask & ~np.isnan(delta) & ~np.isnan(interaction_flip_rates) & ~np.isnan(max_individual)
 
         n_valid = np.sum(valid)
-        n_total = n_pairs * N_OBS
+        n_total = n_pairs * n_obs
         print(f"  Valid pair-observations: {n_valid}/{n_total} ({n_valid / n_total:.1%})")
 
         if n_valid < 10:
@@ -281,6 +297,27 @@ def run_interaction_experiment():
         print(f"  Fraction where interaction_flip = max_individual: {frac_equal:.4f}")
         print(f"  Fraction where interaction_flip < max_individual: {frac_lower:.4f}")
 
+        # ---- Magnitude control (Fix 1) ----
+        abs_mean_int = mean_interaction_per_pair_obs.copy()
+        valid_mask_mag = valid  # same validity mask
+        abs_flat = abs_mean_int[valid_mask_mag]
+        if len(abs_flat) > 20:
+            quartile_edges = np.percentile(abs_flat, [0, 25, 50, 75, 100])
+            print(f"\n  MAGNITUDE CONTROL (by interaction magnitude quartile):")
+            print(f"  {'Quartile':>10s}  {'N':>6s}  {'Mean delta':>12s}  {'p-value':>10s}")
+            for q in range(4):
+                lo, hi = quartile_edges[q], quartile_edges[q + 1]
+                q_mask = valid_mask_mag & (abs_mean_int >= lo) & (abs_mean_int < hi + 1e-10)
+                q_deltas = delta[q_mask]
+                if len(q_deltas) > 10:
+                    try:
+                        _, q_p = wilcoxon(q_deltas, alternative="greater")
+                    except ValueError:
+                        q_p = np.nan
+                    print(f"  Q{q + 1} [{lo:.4f}-{hi:.4f}]  {len(q_deltas):6d}  {q_deltas.mean():+12.4f}  {q_p:10.2e}")
+                else:
+                    print(f"  Q{q + 1} [{lo:.4f}-{hi:.4f}]  {len(q_deltas):6d}  (too few)")
+
         # ---- Per-pair summary ----
         print(f"\n  Per-pair summary:")
         print(f"  {'Pair':>20s}  {'mean_int_flip':>14s}  {'mean_max_ind':>14s}  {'mean_delta':>12s}  {'n_valid':>8s}")
@@ -308,15 +345,79 @@ def run_interaction_experiment():
                 f"  {n_pair_valid:>8d}"
             )
 
+    # ---- Permutation control (Fix 2) ----
+    # Use the 50% threshold for the permutation test
+    valid_50 = (
+        (zero_fractions <= 0.50) & ~np.isnan(delta) & ~np.isnan(interaction_flip_rates) & ~np.isnan(max_individual)
+    )
+    if np.sum(valid_50) > 10:
+        print(f"\n{'─' * 70}")
+        print("PERMUTATION CONTROL (100 permutations, 50% threshold)")
+        print(f"{'─' * 70}")
+        print("  Shuffling interaction signs to break pair-specific structure...")
+
+        # Observed interaction signs: for each pair-obs, compute the marginal
+        # positive fraction across models, then in permutations, randomly assign
+        # signs with that marginal probability.
+        n_perm = 100
+        perm_signif = 0
+        rng_perm = np.random.RandomState(999)
+
+        # Precompute marginal positive fractions per pair-obs
+        pos_fracs = np.full((n_pairs, n_obs), np.nan)
+        for pi, (a, b) in enumerate(pairs):
+            for obs in range(n_obs):
+                iv = interactions_stack[:, obs, a, b]
+                nonzero = iv[iv != 0]
+                if len(nonzero) >= 2:
+                    pos_fracs[pi, obs] = np.mean(nonzero > 0)
+
+        for perm_i in range(n_perm):
+            # For each valid pair-obs, generate shuffled interaction signs
+            perm_int_flip = np.full((n_pairs, n_obs), np.nan)
+            for pi, (a, b) in enumerate(pairs):
+                for obs in range(n_obs):
+                    if not valid_50[pi, obs] or np.isnan(pos_fracs[pi, obs]):
+                        continue
+                    pf = pos_fracs[pi, obs]
+                    # Generate n_models random signs with probability pf of +1
+                    rand_signs = np.where(rng_perm.random(n_models) < pf, 1.0, -1.0)
+                    perm_int_flip[pi, obs], _ = minority_fraction(rand_signs)
+
+            perm_delta = perm_int_flip - max_individual
+            perm_delta_valid = perm_delta[valid_50 & ~np.isnan(perm_delta)]
+            if len(perm_delta_valid) > 10:
+                try:
+                    _, perm_p = wilcoxon(perm_delta_valid, alternative="greater")
+                    if perm_p < 0.05:
+                        perm_signif += 1
+                except ValueError:
+                    pass
+
+        perm_frac = perm_signif / n_perm
+        print(f"  {perm_frac:.0%} of permutations show significant effect (p < 0.05)")
+        print(f"  {'VALIDATED' if perm_frac < 0.10 else 'SUSPECT'}: ", end="")
+        if perm_frac < 0.10:
+            print("real effect is not an artifact of marginal sign distributions")
+        else:
+            print("effect may be driven by marginal sign rates, not pair-specific structure")
+
     # ---- Overall summary ----
     print(f"\n\n{'=' * 70}")
-    print("SENSITIVITY SUMMARY")
+    print(f"SENSITIVITY SUMMARY — {dataset_name}")
     print(f"{'=' * 70}")
-    print(f"  {'Threshold':>10s}  {'n_valid':>8s}  {'mean_delta':>12s}  {'95% CI':>24s}  {'p-value':>12s}  {'frac>':>8s}")
+    print(
+        f"  {'Threshold':>10s}  {'n_valid':>8s}  {'mean_delta':>12s}  {'95% CI':>24s}  {'p-value':>12s}  {'frac>':>8s}"
+    )
     print(f"  {'─' * 10}  {'─' * 8}  {'─' * 12}  {'─' * 24}  {'─' * 12}  {'─' * 8}")
 
     for threshold in ZERO_THRESHOLDS:
-        mask = (zero_fractions <= threshold) & ~np.isnan(delta) & ~np.isnan(interaction_flip_rates) & ~np.isnan(max_individual)
+        mask = (
+            (zero_fractions <= threshold)
+            & ~np.isnan(delta)
+            & ~np.isnan(interaction_flip_rates)
+            & ~np.isnan(max_individual)
+        )
         n_valid = np.sum(mask)
         if n_valid < 10:
             print(f"  {threshold:>10.0%}  {n_valid:>8d}  {'---':>12s}  {'---':>24s}  {'---':>12s}  {'---':>8s}")
@@ -353,7 +454,66 @@ def run_interaction_experiment():
         "zero_fractions": zero_fractions,
         "pairs": pairs,
         "feature_names": feature_names,
+        "interactions_stack": interactions_stack,
+        "shap_stack": shap_stack,
     }
+
+
+def run_interaction_experiment():
+    """Run interaction instability analysis on both datasets."""
+    print("=" * 70)
+    print("PAIRWISE INTERACTION INSTABILITY EXPERIMENT")
+    print("=" * 70)
+    print()
+    print("Configuration:")
+    print(f"  N_MODELS           = {N_MODELS}")
+    print(f"  N_OBS              = {N_OBS}")
+    print(f"  SEED               = {SEED}")
+    print(f"  ZERO_THRESHOLDS    = {ZERO_THRESHOLDS}")
+    print(f"  Background samples = 50")
+    print(f"  Datasets           = California Housing, Synthetic rho=0.9")
+    print()
+
+    all_results = {}
+
+    # ---- Dataset 1: California Housing ----
+    data = fetch_california_housing()
+    X_cal, y_cal = data.data, data.target
+    fnames_cal = list(data.feature_names)
+    all_results["California Housing"] = run_single_dataset("California Housing", X_cal, y_cal, fnames_cal)
+
+    # ---- Dataset 2: Synthetic rho=0.9 ----
+    X_syn, y_syn, fnames_syn = generate_synthetic(n_features=8, rho=0.9, n_samples=2000, seed=SEED)
+    all_results["Synthetic rho=0.9"] = run_single_dataset("Synthetic rho=0.9", X_syn, y_syn, fnames_syn)
+
+    # ---- Cross-dataset comparison ----
+    print(f"\n\n{'=' * 70}")
+    print("CROSS-DATASET COMPARISON (50% threshold)")
+    print(f"{'=' * 70}")
+    print(f"  {'Dataset':>25s}  {'n_valid':>8s}  {'mean_delta':>12s}  {'p-value':>12s}  {'frac>':>8s}")
+    print(f"  {'─' * 25}  {'─' * 8}  {'─' * 12}  {'─' * 12}  {'─' * 8}")
+
+    for dname, res in all_results.items():
+        d = res["delta"]
+        zf = res["zero_fractions"]
+        iflip = res["interaction_flip_rates"]
+        mi = res["max_individual"]
+        mask = (zf <= 0.50) & ~np.isnan(d) & ~np.isnan(iflip) & ~np.isnan(mi)
+        n_valid = np.sum(mask)
+        if n_valid < 10:
+            print(f"  {dname:>25s}  {n_valid:>8d}  {'---':>12s}  {'---':>12s}  {'---':>8s}")
+            continue
+        dv = d[mask]
+        mean_d = np.mean(dv)
+        try:
+            _, pv = wilcoxon(dv, alternative="greater")
+            pv_str = f"{pv:.2e}"
+        except ValueError:
+            pv_str = "N/A"
+        frac = np.mean(dv > 0)
+        print(f"  {dname:>25s}  {n_valid:>8d}  {mean_d:>12.6f}  {pv_str:>12s}  {frac:>8.4f}")
+
+    return all_results
 
 
 if __name__ == "__main__":
