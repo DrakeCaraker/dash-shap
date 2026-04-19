@@ -356,6 +356,45 @@ def entropy_bimodality(ds):
     n_modes = 2 if bic2 < bic1 else 1
     mode_values = tuple(sorted(gmm2.means_.ravel()))
 
+    # --- PERMUTATION CONTROL FOR ENTROPY ---
+    # Under random sign assignment, all features get p+ ≈ 0.5 (CLT with 200 models),
+    # so all entropies are near 1.0 bit (unimodal). If the permuted data ALSO
+    # shows bimodal entropy, the bimodality is an artifact of the entropy function.
+    # If permuted data is unimodal, the real bimodality is validated.
+
+    n_perm = 100
+    perm_reject_count = 0
+    rng_perm = np.random.RandomState(12345)
+
+    for perm_i in range(n_perm):
+        # Randomly assign each model's sign to +/- with equal probability
+        perm_signs = rng_perm.choice([-1, 1], size=signs.shape)  # (n_models, n_obs, n_features)
+
+        # Compute entropy for permuted signs
+        perm_entropies = []
+        for obs in range(N_obs):
+            for feat in range(P):
+                s = perm_signs[:, obs, feat]
+                n_pos = (s > 0).sum()
+                n_total = len(s)
+                p_pos = n_pos / n_total
+                if p_pos == 0 or p_pos == 1:
+                    perm_entropies.append(0.0)
+                else:
+                    perm_entropies.append(-p_pos * np.log2(p_pos) - (1 - p_pos) * np.log2(1 - p_pos))
+
+        perm_ent = np.array(perm_entropies)
+        _, perm_p = diptest(perm_ent)
+        if perm_p < 0.05:
+            perm_reject_count += 1
+
+    perm_reject_frac = perm_reject_count / n_perm
+    print(f"  Permutation control: {perm_reject_frac:.0%} of permutations reject unimodality")
+    if perm_reject_frac > 0.50:
+        print(f"  WARNING: entropy bimodality may be artifact (>{perm_reject_frac:.0%} permutations also bimodal)")
+    else:
+        print(f"  VALIDATED: real bimodality confirmed (only {perm_reject_frac:.0%} permutations bimodal)")
+
     return {
         "dip_stat": dip_stat,
         "dip_pval": dip_pval,
@@ -364,6 +403,7 @@ def entropy_bimodality(ds):
         "n_modes": n_modes,
         "mode_values": mode_values,
         "entropies": entropies,
+        "perm_reject_frac": perm_reject_frac,
     }
 
 
@@ -445,21 +485,25 @@ def main():
     print("=== ENTROPY BIMODALITY (sign entropy distribution) ===")
     print("=" * 70)
 
-    print(
-        f"\n  {'Dataset':<25s} | {'Dip p-value':>11s} | {'Modes':>5s} | "
-        f"{'Mode 1 (bits)':>13s} | {'Mode 2 (bits)':>13s} | {'BIC1':>10s} | {'BIC2':>10s}"
-    )
-    print(f"  {'-' * 25}-+-{'-' * 11}-+-{'-' * 5}-+-{'-' * 13}-+-{'-' * 13}-+-{'-' * 10}-+-{'-' * 10}")
-
     all_entropy = {}
     for ds in datasets:
+        print(f"\n  Dataset: {ds['name']}")
         r = entropy_bimodality(ds)
         all_entropy[ds["name"]] = r
+
+    print(
+        f"\n  {'Dataset':<25s} | {'Dip p-value':>11s} | {'Modes':>5s} | "
+        f"{'Mode 1 (bits)':>13s} | {'Mode 2 (bits)':>13s} | {'BIC1':>10s} | {'BIC2':>10s} | {'Perm rej%':>9s}"
+    )
+    print(f"  {'-' * 25}-+-{'-' * 11}-+-{'-' * 5}-+-{'-' * 13}-+-{'-' * 13}-+-{'-' * 10}-+-{'-' * 10}-+-{'-' * 9}")
+
+    for ds_name, r in all_entropy.items():
         m1 = r["mode_values"][0] if len(r["mode_values"]) >= 1 else float("nan")
         m2 = r["mode_values"][1] if len(r["mode_values"]) >= 2 else float("nan")
+        perm_str = f"{r['perm_reject_frac']:.0%}"
         print(
-            f"  {ds['name']:<25s} | {r['dip_pval']:>11.6f} | {r['n_modes']:>5d} | "
-            f"{m1:>13.4f} | {m2:>13.4f} | {r['bic1']:>10.1f} | {r['bic2']:>10.1f}"
+            f"  {ds_name:<25s} | {r['dip_pval']:>11.6f} | {r['n_modes']:>5d} | "
+            f"{m1:>13.4f} | {m2:>13.4f} | {r['bic1']:>10.1f} | {r['bic2']:>10.1f} | {perm_str:>9s}"
         )
 
     # ===================================================================
@@ -496,9 +540,12 @@ def main():
         bic_pref = "2-comp" if r["n_modes"] == 2 else "1-comp"
         m1 = r["mode_values"][0]
         m2 = r["mode_values"][1]
+        perm_frac = r["perm_reject_frac"]
+        validated = "VALIDATED" if perm_frac <= 0.50 else "ARTIFACT WARNING"
         print(
             f"   {ds_name}: dip p={r['dip_pval']:.6f} ({reject}), "
-            f"BIC prefers {bic_pref}, modes at {m1:.3f} and {m2:.3f} bits"
+            f"BIC prefers {bic_pref}, modes at {m1:.3f} and {m2:.3f} bits, "
+            f"perm={perm_frac:.0%} bimodal ({validated})"
         )
 
     print(f"\nTotal runtime: {elapsed:.1f}s ({elapsed / 60:.1f} min)")
