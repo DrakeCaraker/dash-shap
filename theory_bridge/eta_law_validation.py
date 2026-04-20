@@ -14,12 +14,12 @@ For each dataset:
 import numpy as np
 import xgboost as xgb
 import shap
-from sklearn.datasets import (fetch_california_housing, load_diabetes,
-                               load_breast_cancer, load_iris)
+from sklearn.datasets import fetch_california_housing, load_diabetes, load_breast_cancer, load_iris
 from sklearn.model_selection import train_test_split
 from scipy.stats import spearmanr, pearsonr
 from scipy.cluster.hierarchy import fcluster, linkage
-import warnings, time
+import warnings
+import time
 
 warnings.filterwarnings("ignore")
 
@@ -43,9 +43,9 @@ def identify_groups(X, threshold):
     np.fill_diagonal(dist, 0)
     # condensed distance matrix
     condensed = squareform(dist, checks=False)
-    Z = linkage(condensed, method='complete')
+    Z = linkage(condensed, method="complete")
     # Cut at distance = 1 - threshold (features with |corr| > threshold are in same cluster)
-    labels = fcluster(Z, t=1 - threshold, criterion='distance')
+    labels = fcluster(Z, t=1 - threshold, criterion="distance")
     return labels
 
 
@@ -126,20 +126,19 @@ def run_eta_validation(X, y, dataset_name, feature_names=None):
         feature_names = [f"f{i}" for i in range(P)]
 
     # Split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=SEED)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=SEED)
     rng = np.random.RandomState(SEED + 1)
     obs_idx = rng.choice(len(X_test), size=min(N_OBS, len(X_test)), replace=False)
     X_explain = X_test[obs_idx]
 
     # Compute observed instability
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"DATASET: {dataset_name} (N={len(X)}, P={P})")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Training {M} models and computing SHAP...")
     t0 = time.time()
     observed = compute_observed_instability(X_train, y_train, X_explain, M, SEED)
-    print(f"  Done in {time.time()-t0:.0f}s")
+    print(f"  Done in {time.time() - t0:.0f}s")
 
     # Test eta law at multiple thresholds
     results = []
@@ -152,11 +151,11 @@ def run_eta_validation(X, y, dataset_name, feature_names=None):
         if len(np.unique(predicted)) > 1:
             r_spearman, p_spearman = spearmanr(predicted, observed)
             r_pearson, p_pearson = pearsonr(predicted, observed)
-            r2 = r_pearson ** 2
+            r2 = r_pearson**2
         else:
-            r_spearman, p_spearman = float('nan'), 1.0
-            r_pearson, p_pearson = float('nan'), 1.0
-            r2 = float('nan')
+            r_spearman, p_spearman = float("nan"), 1.0
+            r_pearson, p_pearson = float("nan"), 1.0
+            r2 = float("nan")
 
         n_groups = len(set(groups))
         max_group = max(np.bincount(groups)[1:]) if max(groups) > 0 else 1
@@ -170,16 +169,20 @@ def run_eta_validation(X, y, dataset_name, feature_names=None):
         print(f"    {'Feature':>15s}  {'Group':>5s}  {'g':>3s}  {'eta':>5s}  {'Pred':>6s}  {'Obs':>6s}")
         for i in range(P):
             g = np.sum(groups == groups[i])
-            print(f"    {feature_names[i]:>15s}  {groups[i]:>5d}  {g:>3d}  {eta[i]:>5.2f}  {predicted[i]:>6.3f}  {observed[i]:>6.3f}")
+            print(
+                f"    {feature_names[i]:>15s}  {groups[i]:>5d}  {g:>3d}  {eta[i]:>5.2f}  {predicted[i]:>6.3f}  {observed[i]:>6.3f}"
+            )
 
-        results.append({
-            "threshold": threshold,
-            "n_groups": n_groups,
-            "max_group_size": int(max_group),
-            "spearman_r": float(r_spearman),
-            "spearman_p": float(p_spearman),
-            "pearson_r2": float(r2),
-        })
+        results.append(
+            {
+                "threshold": threshold,
+                "n_groups": n_groups,
+                "max_group_size": int(max_group),
+                "spearman_r": float(r_spearman),
+                "spearman_p": float(p_spearman),
+                "pearson_r2": float(r2),
+            }
+        )
 
     return results, observed
 
@@ -187,12 +190,13 @@ def run_eta_validation(X, y, dataset_name, feature_names=None):
 # ==================== MAIN ====================
 if __name__ == "__main__":
     datasets = [
-        ("california_housing", *fetch_california_housing(return_X_y=True),
-         list(fetch_california_housing().feature_names)),
-        ("diabetes", *load_diabetes(return_X_y=True),
-         list(load_diabetes().feature_names)),
-        ("breast_cancer", *load_breast_cancer(return_X_y=True),
-         list(load_breast_cancer().feature_names)),
+        (
+            "california_housing",
+            *fetch_california_housing(return_X_y=True),
+            list(fetch_california_housing().feature_names),
+        ),
+        ("diabetes", *load_diabetes(return_X_y=True), list(load_diabetes().feature_names)),
+        ("breast_cancer", *load_breast_cancer(return_X_y=True), list(load_breast_cancer().feature_names)),
         ("synthetic_rho09", *generate_synthetic(0.9), None),
         ("synthetic_rho0", *generate_synthetic(0.0), None),
     ]
@@ -203,11 +207,15 @@ if __name__ == "__main__":
         all_results[name] = results
 
     # Summary table
-    print(f"\n\n{'='*80}")
+    print(f"\n\n{'=' * 80}")
     print("ETA LAW VALIDATION SUMMARY")
-    print(f"{'='*80}")
-    print(f"{'Dataset':>20s}  {'Threshold':>9s}  {'Groups':>6s}  {'MaxG':>4s}  {'Spearman':>8s}  {'p-value':>8s}  {'R^2':>5s}")
+    print(f"{'=' * 80}")
+    print(
+        f"{'Dataset':>20s}  {'Threshold':>9s}  {'Groups':>6s}  {'MaxG':>4s}  {'Spearman':>8s}  {'p-value':>8s}  {'R^2':>5s}"
+    )
     print("-" * 80)
     for name, results in all_results.items():
         for r in results:
-            print(f"{name:>20s}  {r['threshold']:>9.1f}  {r['n_groups']:>6d}  {r['max_group_size']:>4d}  {r['spearman_r']:>8.3f}  {r['spearman_p']:>8.4f}  {r['pearson_r2']:>5.3f}")
+            print(
+                f"{name:>20s}  {r['threshold']:>9.1f}  {r['n_groups']:>6d}  {r['max_group_size']:>4d}  {r['spearman_r']:>8.3f}  {r['spearman_p']:>8.4f}  {r['pearson_r2']:>5.3f}"
+            )
