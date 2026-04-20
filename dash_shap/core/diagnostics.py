@@ -10,6 +10,8 @@ __all__ = [
     "local_disagreement_map",
     "coverage_conflict",
     "compare_flip_predictors",
+    "predict_sign_instability",
+    "has_coverage_conflict",
 ]
 
 
@@ -405,3 +407,65 @@ def compare_flip_predictors(all_shap_matrices, importance_matrix=None):
         "gf_prediction": gf_per_feature,
         "cc_conflict_rate": cc["feature_conflict_rate"],
     }
+
+
+def predict_sign_instability(all_shap_matrices, threshold=0.1):
+    """Predict which features have unstable SHAP signs across the ensemble.
+
+    This is the practitioner-facing wrapper around coverage_conflict(). It
+    returns a simple per-feature boolean: is this feature's sign unstable?
+
+    A feature is predicted sign-unstable if its mean minority fraction exceeds
+    the threshold. Default threshold 0.1 means: if ≥10% of models disagree
+    on sign direction (averaged across observations), the feature is flagged.
+
+    Parameters
+    ----------
+    all_shap_matrices : np.ndarray
+        Shape (K, N', P) — SHAP values from K models.
+    threshold : float
+        Minority fraction threshold for flagging. Default 0.1.
+
+    Returns
+    -------
+    dict with keys:
+        'unstable': np.ndarray, shape (P,), dtype bool
+            True for features with predicted sign instability.
+        'scores': np.ndarray, shape (P,)
+            Continuous instability score per feature (mean minority fraction).
+        'n_unstable': int
+            Number of flagged features.
+    """
+    cc = coverage_conflict(all_shap_matrices)
+    scores = cc["feature_mean_minority"]
+    unstable = scores >= threshold
+    return {
+        "unstable": unstable,
+        "scores": scores,
+        "n_unstable": int(np.sum(unstable)),
+    }
+
+
+def has_coverage_conflict(all_shap_matrices, feature_idx):
+    """Check if a specific feature has coverage conflict (both signs present).
+
+    Quick lookup: does at least one observation have models disagreeing
+    on this feature's SHAP sign?
+
+    Parameters
+    ----------
+    all_shap_matrices : np.ndarray
+        Shape (K, N', P) — SHAP values from K models.
+    feature_idx : int
+        Index of the feature to check.
+
+    Returns
+    -------
+    bool
+        True if any observation has both positive and negative SHAP values
+        for this feature across models.
+    """
+    signs = np.sign(all_shap_matrices[:, :, feature_idx])  # (K, N')
+    has_pos = np.any(signs > 0, axis=0)  # (N',)
+    has_neg = np.any(signs < 0, axis=0)  # (N',)
+    return bool(np.any(has_pos & has_neg))
