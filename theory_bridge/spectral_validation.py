@@ -17,8 +17,7 @@ import shap
 from numpy.linalg import eigh, inv
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
-from sklearn.datasets import (fetch_california_housing, load_diabetes,
-                               load_breast_cancer)
+from sklearn.datasets import fetch_california_housing, load_diabetes, load_breast_cancer
 from sklearn.model_selection import train_test_split
 from scipy.stats import spearmanr
 import warnings
@@ -36,6 +35,7 @@ SEED = 42
 # ===========================================================================
 # Spectral predictors (data-only, per-feature)
 # ===========================================================================
+
 
 def compute_spectral_predictors(X, y):
     """All spectral/leverage predictors for P features."""
@@ -70,36 +70,31 @@ def compute_spectral_predictors(X, y):
         r.fit(Xs, ys)
         ridge_coefs.append(r.coef_)
     ridge_coefs = np.array(ridge_coefs)  # (n_alpha, P)
-    ridge_sign_consistency = np.mean(
-        np.sign(ridge_coefs) == np.sign(ridge_coefs[0]), axis=0
-    )
-    ridge_coef_cv = np.std(ridge_coefs, axis=0) / (
-        np.abs(np.mean(ridge_coefs, axis=0)) + 1e-10
-    )
+    ridge_sign_consistency = np.mean(np.sign(ridge_coefs) == np.sign(ridge_coefs[0]), axis=0)
+    ridge_coef_cv = np.std(ridge_coefs, axis=0) / (np.abs(np.mean(ridge_coefs, axis=0)) + 1e-10)
 
     # 6. Marginal R²
-    marginal_r2 = np.array([
-        np.corrcoef(Xs[:, j], ys)[0, 1] ** 2 for j in range(P)
-    ])
+    marginal_r2 = np.array([np.corrcoef(Xs[:, j], ys)[0, 1] ** 2 for j in range(P)])
 
     # 7. Importance-weighted small-eigenvalue loading
     weighted_loading = bottom_k_loading / np.maximum(marginal_r2, 0.01)
 
     return {
-        'small_eig_loading': small_loading,
-        'bottom_k_loading': bottom_k_loading,
-        'vif': vif,
-        'ridge_sign_consistency': ridge_sign_consistency,
-        'ridge_coef_cv': ridge_coef_cv,
-        'marginal_r2': marginal_r2,
-        'weighted_loading': weighted_loading,
-        'eigenvalues': eigenvalues,
+        "small_eig_loading": small_loading,
+        "bottom_k_loading": bottom_k_loading,
+        "vif": vif,
+        "ridge_sign_consistency": ridge_sign_consistency,
+        "ridge_coef_cv": ridge_coef_cv,
+        "marginal_r2": marginal_r2,
+        "weighted_loading": weighted_loading,
+        "eigenvalues": eigenvalues,
     }
 
 
 # ===========================================================================
 # Ridge SHAP instability
 # ===========================================================================
+
 
 def ridge_shap_instability(X_train, y_train, X_explain, M=200, seed=42):
     """
@@ -145,6 +140,7 @@ def ridge_shap_instability(X_train, y_train, X_explain, M=200, seed=42):
 # ===========================================================================
 # XGBoost SHAP instability
 # ===========================================================================
+
 
 def xgboost_shap_instability(X_train, y_train, X_explain, M=200, seed=42):
     """
@@ -201,6 +197,7 @@ def xgboost_shap_instability(X_train, y_train, X_explain, M=200, seed=42):
 # Synthetic data generator
 # ===========================================================================
 
+
 def generate_synthetic(g=2, rho=0.9, n=2000, seed=42):
     """Generate synthetic data with g correlated features + independent features."""
     P = max(10, g + 2)
@@ -223,6 +220,7 @@ def generate_synthetic(g=2, rho=0.9, n=2000, seed=42):
 # Dataset loading
 # ===========================================================================
 
+
 def load_datasets():
     """Load all 4 datasets, return dict of (X_train, y_train, X_explain)."""
     datasets = {}
@@ -230,28 +228,22 @@ def load_datasets():
     # 1. Synthetic g=2, rho=0.9
     X, y = generate_synthetic(g=2, rho=0.9)
     X_tr, X_ex, y_tr, _ = train_test_split(X, y, test_size=N_OBS, random_state=SEED)
-    datasets['syn'] = (X_tr, y_tr, X_ex[:N_OBS])
+    datasets["syn"] = (X_tr, y_tr, X_ex[:N_OBS])
 
     # 2. California Housing
     cal = fetch_california_housing()
-    X_tr, X_ex, y_tr, _ = train_test_split(
-        cal.data, cal.target, test_size=N_OBS, random_state=SEED
-    )
-    datasets['cal'] = (X_tr, y_tr, X_ex[:N_OBS])
+    X_tr, X_ex, y_tr, _ = train_test_split(cal.data, cal.target, test_size=N_OBS, random_state=SEED)
+    datasets["cal"] = (X_tr, y_tr, X_ex[:N_OBS])
 
     # 3. Breast Cancer
     bc = load_breast_cancer()
-    X_tr, X_ex, y_tr, _ = train_test_split(
-        bc.data, bc.target, test_size=N_OBS, random_state=SEED
-    )
-    datasets['bc'] = (X_tr, y_tr, X_ex[:N_OBS])
+    X_tr, X_ex, y_tr, _ = train_test_split(bc.data, bc.target, test_size=N_OBS, random_state=SEED)
+    datasets["bc"] = (X_tr, y_tr, X_ex[:N_OBS])
 
     # 4. Diabetes
     diab = load_diabetes()
-    X_tr, X_ex, y_tr, _ = train_test_split(
-        diab.data, diab.target, test_size=N_OBS, random_state=SEED
-    )
-    datasets['diab'] = (X_tr, y_tr, X_ex[:N_OBS])
+    X_tr, X_ex, y_tr, _ = train_test_split(diab.data, diab.target, test_size=N_OBS, random_state=SEED)
+    datasets["diab"] = (X_tr, y_tr, X_ex[:N_OBS])
 
     return datasets
 
@@ -259,6 +251,7 @@ def load_datasets():
 # ===========================================================================
 # Main validation
 # ===========================================================================
+
 
 def safe_spearman(x, y):
     """Spearman correlation, handling constant arrays."""
@@ -277,16 +270,16 @@ def run_validation():
     print()
 
     datasets = load_datasets()
-    ds_names = ['syn', 'cal', 'bc', 'diab']
+    ds_names = ["syn", "cal", "bc", "diab"]
 
     predictor_names = [
-        'small_eig_loading',
-        'bottom_k_loading',
-        'vif',
-        'ridge_sign_consistency',
-        'ridge_coef_cv',
-        'marginal_r2',
-        'weighted_loading',
+        "small_eig_loading",
+        "bottom_k_loading",
+        "vif",
+        "ridge_sign_consistency",
+        "ridge_coef_cv",
+        "marginal_r2",
+        "weighted_loading",
     ]
 
     # Storage: predictor -> dataset -> (xgb_spearman, ridge_spearman)
@@ -306,26 +299,29 @@ def run_validation():
         # 1. Spectral predictors
         t0 = time.time()
         predictors = compute_spectral_predictors(X_train, y_train)
-        print(f"  Spectral predictors computed ({time.time()-t0:.1f}s)")
-        print(f"    Eigenvalue range: [{predictors['eigenvalues'][0]:.4f}, "
-              f"{predictors['eigenvalues'][-1]:.4f}]")
+        print(f"  Spectral predictors computed ({time.time() - t0:.1f}s)")
+        print(f"    Eigenvalue range: [{predictors['eigenvalues'][0]:.4f}, {predictors['eigenvalues'][-1]:.4f}]")
         print(f"    Condition number: {predictors['eigenvalues'][-1] / max(predictors['eigenvalues'][0], 1e-10):.1f}")
 
         # 2. XGBoost instability
         t0 = time.time()
         print(f"  Training {M} XGBoost models...")
         xgb_flip, _ = xgboost_shap_instability(X_train, y_train, X_explain, M=M, seed=SEED)
-        print(f"  XGBoost done ({time.time()-t0:.1f}s)")
-        print(f"    XGB flip rates: mean={xgb_flip.mean():.4f}, "
-              f"std={xgb_flip.std():.4f}, range=[{xgb_flip.min():.4f}, {xgb_flip.max():.4f}]")
+        print(f"  XGBoost done ({time.time() - t0:.1f}s)")
+        print(
+            f"    XGB flip rates: mean={xgb_flip.mean():.4f}, "
+            f"std={xgb_flip.std():.4f}, range=[{xgb_flip.min():.4f}, {xgb_flip.max():.4f}]"
+        )
 
         # 3. Ridge instability
         t0 = time.time()
         print(f"  Training {M} Ridge models...")
         ridge_flip, _ = ridge_shap_instability(X_train, y_train, X_explain, M=M, seed=SEED)
-        print(f"  Ridge done ({time.time()-t0:.1f}s)")
-        print(f"    Ridge flip rates: mean={ridge_flip.mean():.4f}, "
-              f"std={ridge_flip.std():.4f}, range=[{ridge_flip.min():.4f}, {ridge_flip.max():.4f}]")
+        print(f"  Ridge done ({time.time() - t0:.1f}s)")
+        print(
+            f"    Ridge flip rates: mean={ridge_flip.mean():.4f}, "
+            f"std={ridge_flip.std():.4f}, range=[{ridge_flip.min():.4f}, {ridge_flip.max():.4f}]"
+        )
 
         # 4. Model-class correlation
         rho_mc = safe_spearman(xgb_flip, ridge_flip)
@@ -342,7 +338,7 @@ def run_validation():
             results[pred_name][ds_name] = (xgb_rho, ridge_rho)
 
     elapsed = time.time() - total_start
-    print(f"\n\nTotal runtime: {elapsed:.0f}s ({elapsed/60:.1f} min)")
+    print(f"\n\nTotal runtime: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
 
     # ===========================================================================
     # Results table
@@ -393,14 +389,14 @@ def run_validation():
 
     # Check if spectral predictors work for Ridge
     ridge_works = []
-    for pred_name in ['small_eig_loading', 'bottom_k_loading', 'vif', 'weighted_loading']:
+    for pred_name in ["small_eig_loading", "bottom_k_loading", "vif", "weighted_loading"]:
         ridge_corrs = [abs(results[pred_name][ds][1]) for ds in ds_names]
         ridge_works.append(np.mean(ridge_corrs))
     ridge_mean = np.mean(ridge_works)
 
     # Check if spectral predictors work for XGBoost
     xgb_works = []
-    for pred_name in ['small_eig_loading', 'bottom_k_loading', 'vif', 'weighted_loading']:
+    for pred_name in ["small_eig_loading", "bottom_k_loading", "vif", "weighted_loading"]:
         xgb_corrs = [abs(results[pred_name][ds][0]) for ds in ds_names]
         xgb_works.append(np.mean(xgb_corrs))
     xgb_mean = np.mean(xgb_works)

@@ -13,6 +13,7 @@ N_obs = 100 test observations
 
 import numpy as np
 import warnings
+
 warnings.filterwarnings("ignore")
 
 from scipy.stats import spearmanr
@@ -32,8 +33,8 @@ except ImportError:
 # =============================================================================
 # Configuration
 # =============================================================================
-M = 200          # number of bootstrap models
-N_OBS = 100      # test observations
+M = 200  # number of bootstrap models
+N_OBS = 100  # test observations
 SEED = 42
 
 np.random.seed(SEED)
@@ -49,53 +50,50 @@ def load_datasets():
     # California Housing
     cal = fetch_california_housing()
     X, y = cal.data, cal.target
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=SEED)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=SEED)
     # Take N_OBS test points
     X_test, y_test = X_test[:N_OBS], y_test[:N_OBS]
     scaler = StandardScaler().fit(X_train)
-    datasets['california'] = {
-        'X_train': scaler.transform(X_train),
-        'X_test': scaler.transform(X_test),
-        'y_train': y_train,
-        'y_test': y_test,
-        'feature_names': cal.feature_names,
-        'train_mean': np.zeros(X_train.shape[1]),  # already standardized
-        'task': 'regression'
+    datasets["california"] = {
+        "X_train": scaler.transform(X_train),
+        "X_test": scaler.transform(X_test),
+        "y_train": y_train,
+        "y_test": y_test,
+        "feature_names": cal.feature_names,
+        "train_mean": np.zeros(X_train.shape[1]),  # already standardized
+        "task": "regression",
     }
 
     # Breast Cancer (regression on target for uniformity)
     bc = load_breast_cancer()
     X, y = bc.data, bc.target.astype(float)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=SEED)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=SEED)
     X_test, y_test = X_test[:N_OBS], y_test[:N_OBS]
     scaler = StandardScaler().fit(X_train)
-    datasets['breast_cancer'] = {
-        'X_train': scaler.transform(X_train),
-        'X_test': scaler.transform(X_test),
-        'y_train': y_train,
-        'y_test': y_test,
-        'feature_names': bc.feature_names,
-        'train_mean': np.zeros(X_train.shape[1]),
-        'task': 'regression'
+    datasets["breast_cancer"] = {
+        "X_train": scaler.transform(X_train),
+        "X_test": scaler.transform(X_test),
+        "y_train": y_train,
+        "y_test": y_test,
+        "feature_names": bc.feature_names,
+        "train_mean": np.zeros(X_train.shape[1]),
+        "task": "regression",
     }
 
     # Diabetes
     diab = load_diabetes()
     X, y = diab.data, diab.target
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=SEED)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=SEED)
     X_test, y_test = X_test[:N_OBS], y_test[:N_OBS]
     scaler = StandardScaler().fit(X_train)
-    datasets['diabetes'] = {
-        'X_train': scaler.transform(X_train),
-        'X_test': scaler.transform(X_test),
-        'y_train': y_train,
-        'y_test': y_test,
-        'feature_names': diab.feature_names,
-        'train_mean': np.zeros(X_train.shape[1]),
-        'task': 'regression'
+    datasets["diabetes"] = {
+        "X_train": scaler.transform(X_train),
+        "X_test": scaler.transform(X_test),
+        "y_train": y_train,
+        "y_test": y_test,
+        "feature_names": diab.feature_names,
+        "train_mean": np.zeros(X_train.shape[1]),
+        "task": "regression",
     }
 
     return datasets
@@ -121,8 +119,8 @@ def compute_shap_linear(model, X_test, train_mean):
 def run_bootstrap_ridge(data, M, seed):
     """Run M bootstrap Ridge models, return SHAP values [M, N_obs, n_features]."""
     rng = np.random.RandomState(seed)
-    X_train, y_train = data['X_train'], data['y_train']
-    X_test = data['X_test']
+    X_train, y_train = data["X_train"], data["y_train"]
+    X_test = data["X_test"]
     n_features = X_train.shape[1]
     shap_values = np.zeros((M, N_OBS, n_features))
 
@@ -130,7 +128,7 @@ def run_bootstrap_ridge(data, M, seed):
         Xb, yb = bootstrap_sample(X_train, y_train, rng)
         model = Ridge(alpha=1.0)
         model.fit(Xb, yb)
-        shap_values[m] = compute_shap_linear(model, X_test, data['train_mean'])
+        shap_values[m] = compute_shap_linear(model, X_test, data["train_mean"])
 
     return shap_values
 
@@ -138,8 +136,8 @@ def run_bootstrap_ridge(data, M, seed):
 def run_bootstrap_lasso(data, M, seed):
     """Run M bootstrap LASSO models, return SHAP values [M, N_obs, n_features]."""
     rng = np.random.RandomState(seed)
-    X_train, y_train = data['X_train'], data['y_train']
-    X_test = data['X_test']
+    X_train, y_train = data["X_train"], data["y_train"]
+    X_test = data["X_test"]
     n_features = X_train.shape[1]
     shap_values = np.zeros((M, N_OBS, n_features))
 
@@ -147,7 +145,7 @@ def run_bootstrap_lasso(data, M, seed):
         Xb, yb = bootstrap_sample(X_train, y_train, rng)
         model = Lasso(alpha=0.01, max_iter=10000)
         model.fit(Xb, yb)
-        shap_values[m] = compute_shap_linear(model, X_test, data['train_mean'])
+        shap_values[m] = compute_shap_linear(model, X_test, data["train_mean"])
 
     return shap_values
 
@@ -155,8 +153,8 @@ def run_bootstrap_lasso(data, M, seed):
 def run_bootstrap_xgb(data, M, seed):
     """Run M bootstrap XGBoost models, return SHAP values [M, N_obs, n_features]."""
     rng = np.random.RandomState(seed)
-    X_train, y_train = data['X_train'], data['y_train']
-    X_test = data['X_test']
+    X_train, y_train = data["X_train"], data["y_train"]
+    X_test = data["X_test"]
     n_features = X_train.shape[1]
     shap_values = np.zeros((M, N_OBS, n_features))
 
@@ -167,9 +165,13 @@ def run_bootstrap_xgb(data, M, seed):
     for m in range(M):
         Xb, yb = bootstrap_sample(X_train, y_train, rng)
         model = XGBRegressor(
-            n_estimators=200, max_depth=4, learning_rate=0.1,
-            colsample_bytree=0.5, random_state=42, verbosity=0,
-            n_jobs=1
+            n_estimators=200,
+            max_depth=4,
+            learning_rate=0.1,
+            colsample_bytree=0.5,
+            random_state=42,
+            verbosity=0,
+            n_jobs=1,
         )
         model.fit(Xb, yb)
         explainer = shap.TreeExplainer(model, bg, feature_perturbation="interventional")
@@ -182,16 +184,14 @@ def run_bootstrap_xgb(data, M, seed):
 def run_bootstrap_rf(data, M, seed):
     """Run M bootstrap Random Forest models, return SHAP values [M, N_obs, n_features]."""
     rng = np.random.RandomState(seed)
-    X_train, y_train = data['X_train'], data['y_train']
-    X_test = data['X_test']
+    X_train, y_train = data["X_train"], data["y_train"]
+    X_test = data["X_test"]
     n_features = X_train.shape[1]
     shap_values = np.zeros((M, N_OBS, n_features))
 
     for m in range(M):
         Xb, yb = bootstrap_sample(X_train, y_train, rng)
-        model = RandomForestRegressor(
-            n_estimators=200, max_depth=6, random_state=42, n_jobs=1
-        )
+        model = RandomForestRegressor(n_estimators=200, max_depth=6, random_state=42, n_jobs=1)
         model.fit(Xb, yb)
         explainer = shap.TreeExplainer(model)
         sv = explainer.shap_values(X_test)
@@ -231,8 +231,8 @@ def compute_coverage_conflict_rate(shap_values):
     Returns: [n_features]
     """
     # For each obs, feature: does both a positive and negative sign appear?
-    has_pos = (shap_values > 0).any(axis=0)   # [N_obs, n_features]
-    has_neg = (shap_values < 0).any(axis=0)   # [N_obs, n_features]
+    has_pos = (shap_values > 0).any(axis=0)  # [N_obs, n_features]
+    has_neg = (shap_values < 0).any(axis=0)  # [N_obs, n_features]
     conflict = (has_pos & has_neg).astype(float)  # [N_obs, n_features]
     return conflict.mean(axis=0)  # [n_features]
 
@@ -263,7 +263,7 @@ def compute_small_eig_loading(X_train):
     n_small = max(1, len(eigenvalues) // 4)
     small_vecs = eigenvectors[:, :n_small]  # columns are eigenvectors
     # Loading = sum of squared loadings on small eigenvectors
-    loading = (small_vecs ** 2).sum(axis=1)
+    loading = (small_vecs**2).sum(axis=1)
     return loading
 
 
@@ -274,7 +274,7 @@ def compute_lasso_boundary(data, seed):
     We invert: boundary_proximity = 1 / (|coef| + eps) so higher = more unstable.
     """
     model = Lasso(alpha=0.01, max_iter=10000)
-    model.fit(data['X_train'], data['y_train'])
+    model.fit(data["X_train"], data["y_train"])
     coefs = np.abs(model.coef_)
     # Proximity to boundary: inverse of |coef|
     boundary_prox = 1.0 / (coefs + 1e-8)
@@ -286,14 +286,13 @@ def compute_xgb_importance_var(data, seed):
     XGBoost: feature importance variance across trees within a single model.
     """
     model = XGBRegressor(
-        n_estimators=200, max_depth=4, learning_rate=0.1,
-        colsample_bytree=0.5, random_state=seed, verbosity=0
+        n_estimators=200, max_depth=4, learning_rate=0.1, colsample_bytree=0.5, random_state=seed, verbosity=0
     )
-    model.fit(data['X_train'], data['y_train'])
+    model.fit(data["X_train"], data["y_train"])
 
     # Get per-tree feature importances via booster
     booster = model.get_booster()
-    n_features = data['X_train'].shape[1]
+    n_features = data["X_train"].shape[1]
 
     # Get gain-based importance per tree
     trees = booster.get_dump()
@@ -306,10 +305,9 @@ def compute_xgb_importance_var(data, seed):
     for i in range(0, n_trees - chunk_size + 1, chunk_size):
         # Train a model on subset of iterations
         sub_model = XGBRegressor(
-            n_estimators=200, max_depth=4, learning_rate=0.1,
-            colsample_bytree=0.5, random_state=seed, verbosity=0
+            n_estimators=200, max_depth=4, learning_rate=0.1, colsample_bytree=0.5, random_state=seed, verbosity=0
         )
-        sub_model.fit(data['X_train'], data['y_train'])
+        sub_model.fit(data["X_train"], data["y_train"])
         imp = sub_model.feature_importances_
         importances.append(imp)
 
@@ -318,10 +316,15 @@ def compute_xgb_importance_var(data, seed):
     rng = np.random.RandomState(seed)
     importances = np.zeros((20, n_features))
     for i in range(20):
-        Xb, yb = bootstrap_sample(data['X_train'], data['y_train'], rng)
+        Xb, yb = bootstrap_sample(data["X_train"], data["y_train"], rng)
         m = XGBRegressor(
-            n_estimators=200, max_depth=4, learning_rate=0.1,
-            colsample_bytree=0.5, random_state=42, verbosity=0, n_jobs=1
+            n_estimators=200,
+            max_depth=4,
+            learning_rate=0.1,
+            colsample_bytree=0.5,
+            random_state=42,
+            verbosity=0,
+            n_jobs=1,
         )
         m.fit(Xb, yb)
         importances[i] = m.feature_importances_
@@ -334,10 +337,10 @@ def compute_rf_importance_var(data, seed):
     RF: feature importance variance across trees within a single model.
     """
     model = RandomForestRegressor(n_estimators=200, max_depth=6, random_state=seed)
-    model.fit(data['X_train'], data['y_train'])
+    model.fit(data["X_train"], data["y_train"])
 
     # Get per-tree importances
-    n_features = data['X_train'].shape[1]
+    n_features = data["X_train"].shape[1]
     tree_importances = np.zeros((len(model.estimators_), n_features))
     for i, tree in enumerate(model.estimators_):
         tree_importances[i] = tree.feature_importances_
@@ -352,25 +355,25 @@ def main():
     print("Loading datasets...")
     datasets = load_datasets()
 
-    model_classes = ['Ridge', 'LASSO', 'XGB', 'RF']
+    model_classes = ["Ridge", "LASSO", "XGB", "RF"]
     runners = {
-        'Ridge': run_bootstrap_ridge,
-        'LASSO': run_bootstrap_lasso,
-        'XGB': run_bootstrap_xgb,
-        'RF': run_bootstrap_rf,
+        "Ridge": run_bootstrap_ridge,
+        "LASSO": run_bootstrap_lasso,
+        "XGB": run_bootstrap_xgb,
+        "RF": run_bootstrap_rf,
     }
 
     # Storage
-    all_shap = {}       # {dataset: {model_class: shap_values}}
-    all_flip = {}       # {dataset: {model_class: flip_rate per feature}}
-    all_var = {}        # {dataset: {model_class: var_shap per feature}}
-    all_cc = {}         # {dataset: {model_class: coverage_conflict per feature}}
-    all_dash = {}       # {dataset: {model_class: dash_mse per feature}}
+    all_shap = {}  # {dataset: {model_class: shap_values}}
+    all_flip = {}  # {dataset: {model_class: flip_rate per feature}}
+    all_var = {}  # {dataset: {model_class: var_shap per feature}}
+    all_cc = {}  # {dataset: {model_class: coverage_conflict per feature}}
+    all_dash = {}  # {dataset: {model_class: dash_mse per feature}}
 
     for dname, data in datasets.items():
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Dataset: {dname} ({data['X_train'].shape[1]} features)")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         all_shap[dname] = {}
         all_flip[dname] = {}
@@ -398,9 +401,8 @@ def main():
 
     # --- A. Cross-class instability correlation ---
     print("\nA. CROSS-CLASS INSTABILITY CORRELATION (Spearman of per-feature flip rates)")
-    pairs = [('Ridge', 'XGB'), ('Ridge', 'RF'), ('Ridge', 'LASSO'),
-             ('XGB', 'RF'), ('XGB', 'LASSO'), ('RF', 'LASSO')]
-    pair_labels = ['Ridge-XGB', 'Ridge-RF', 'Ridge-LASSO', 'XGB-RF', 'XGB-LASSO', 'RF-LASSO']
+    pairs = [("Ridge", "XGB"), ("Ridge", "RF"), ("Ridge", "LASSO"), ("XGB", "RF"), ("XGB", "LASSO"), ("RF", "LASSO")]
+    pair_labels = ["Ridge-XGB", "Ridge-RF", "Ridge-LASSO", "XGB-RF", "XGB-LASSO", "RF-LASSO"]
 
     header = f"{'Dataset':<15}" + "".join(f"{pl:<12}" for pl in pair_labels)
     print(header)
@@ -409,7 +411,7 @@ def main():
     table_a = {}
     for dname in datasets:
         row = []
-        for (c1, c2) in pairs:
+        for c1, c2 in pairs:
             r, p = spearmanr(all_flip[dname][c1], all_flip[dname][c2])
             row.append(r)
         table_a[dname] = row
@@ -438,14 +440,14 @@ def main():
     l2_predictors = {}
     for dname, data in datasets.items():
         l2_predictors[dname] = {
-            'small_eig_loading': compute_small_eig_loading(data['X_train']),
-            'lasso_boundary': compute_lasso_boundary(data, SEED),
-            'xgb_importance_var': compute_xgb_importance_var(data, SEED),
-            'rf_importance_var': compute_rf_importance_var(data, SEED),
+            "small_eig_loading": compute_small_eig_loading(data["X_train"]),
+            "lasso_boundary": compute_lasso_boundary(data, SEED),
+            "xgb_importance_var": compute_xgb_importance_var(data, SEED),
+            "rf_importance_var": compute_rf_importance_var(data, SEED),
         }
 
-    predictor_names = ['small_eig_loading', 'lasso_boundary', 'xgb_importance_var', 'rf_importance_var']
-    header = f"{'Predictor':<22}" + "".join(f"{'→ '+mc:<10}" for mc in model_classes)
+    predictor_names = ["small_eig_loading", "lasso_boundary", "xgb_importance_var", "rf_importance_var"]
+    header = f"{'Predictor':<22}" + "".join(f"{'→ ' + mc:<10}" for mc in model_classes)
     print(header)
     print("-" * len(header))
 
@@ -484,15 +486,17 @@ def main():
         print(f"{dname:<15}" + "".join(f"{v:<10.2e}" for v in row))
 
     # --- Summary ---
-    print(f"\n{'='*77}")
+    print(f"\n{'=' * 77}")
     print("SUMMARY")
-    print(f"{'='*77}")
+    print(f"{'=' * 77}")
 
     # A summary
     mean_cross = np.mean([v for row in table_a.values() for v in row])
     print(f"\nA. Mean cross-class Spearman: {mean_cross:.3f}")
-    print(f"   → {'High' if mean_cross > 0.5 else 'Moderate' if mean_cross > 0.3 else 'Low'} "
-          f"agreement on which features are unstable across model classes.")
+    print(
+        f"   → {'High' if mean_cross > 0.5 else 'Moderate' if mean_cross > 0.3 else 'Low'} "
+        f"agreement on which features are unstable across model classes."
+    )
 
     # B summary
     mean_cc = np.mean([v for row in table_b.values() for v in row])
@@ -506,17 +510,21 @@ def main():
         own = table_c[pred_name][own_class_idx]
         others = [table_c[pred_name][j] for j in range(4) if j != own_class_idx]
         mean_others = np.mean(others)
-        print(f"   {pred_name}: own={own:.3f}, others_mean={mean_others:.3f} "
-              f"({'SPECIFIC' if own > mean_others + 0.1 else 'TRANSFERS'})")
+        print(
+            f"   {pred_name}: own={own:.3f}, others_mean={mean_others:.3f} "
+            f"({'SPECIFIC' if own > mean_others + 0.1 else 'TRANSFERS'})"
+        )
 
     # D summary
     max_violation_all = max(v for row in table_d.values() for v in row)
     print(f"\nD. Max violation across all: {max_violation_all:.2e}")
-    print(f"   → Var[SHAP] = DASH MSE identity {'HOLDS' if max_violation_all < 1e-6 else 'APPROXIMATELY HOLDS' if max_violation_all < 0.01 else 'VIOLATED'} for all classes.")
+    print(
+        f"   → Var[SHAP] = DASH MSE identity {'HOLDS' if max_violation_all < 1e-6 else 'APPROXIMATELY HOLDS' if max_violation_all < 0.01 else 'VIOLATED'} for all classes."
+    )
 
-    print(f"\n{'='*77}")
+    print(f"\n{'=' * 77}")
     print("END OF REPORT")
-    print(f"{'='*77}")
+    print(f"{'=' * 77}")
 
 
 if __name__ == "__main__":

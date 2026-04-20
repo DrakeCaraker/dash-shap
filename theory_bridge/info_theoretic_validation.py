@@ -47,14 +47,15 @@ sys.stdout.reconfigure(line_buffering=True)
 # ===========================================================================
 # Configuration
 # ===========================================================================
-M = 200          # models per SHAP stack
-N_OBS = 100      # observations for SHAP explanation
+M = 200  # models per SHAP stack
+N_OBS = 100  # observations for SHAP explanation
 SEED = 42
 
 
 # ===========================================================================
 # SHAP stack computation (reused from eta_shap_correlation.py)
 # ===========================================================================
+
 
 def train_and_explain(X_train, y_train, X_explain, M=200, seed=42):
     """Train M diverse XGBoost models, compute interventional SHAP values."""
@@ -89,6 +90,7 @@ def train_and_explain(X_train, y_train, X_explain, M=200, seed=42):
 # ===========================================================================
 # Outcome computations
 # ===========================================================================
+
 
 def compute_rho_shap(shap_stack, i, j):
     """Mean cross-model SHAP correlation for pair (i, j)."""
@@ -132,6 +134,7 @@ def compute_flip_rate(shap_stack, i, j):
 # Predictor computations
 # ===========================================================================
 
+
 def compute_all_predictors(X, y, feature_pairs):
     """
     Compute all 7 predictors for the given feature pairs.
@@ -157,14 +160,14 @@ def compute_all_predictors(X, y, feature_pairs):
         R2_i[feat] = max(lr.score(X[:, [feat]], y), 0.0)
 
     R2_ij = {}
-    for (i, j) in feature_pairs:
+    for i, j in feature_pairs:
         lr = LinearRegression()
         lr.fit(X[:, [i, j]], y)
         R2_ij[(i, j)] = max(lr.score(X[:, [i, j]], y), 0.0)
 
     partial_R2 = {}
     co_info = {}
-    for (i, j) in feature_pairs:
+    for i, j in feature_pairs:
         # Partial R^2: how much does i add beyond j, and vice versa
         pr_i_given_j = (R2_ij[(i, j)] - R2_i[j]) / max(1 - R2_i[j], 1e-10)
         pr_j_given_i = (R2_ij[(i, j)] - R2_i[i]) / max(1 - R2_i[i], 1e-10)
@@ -197,13 +200,13 @@ def compute_all_predictors(X, y, feature_pairs):
         R2_rank_i[feat] = max(lr.score(X_ranked[:, [feat]], y_ranked), 0.0)
 
     R2_rank_ij = {}
-    for (i, j) in feature_pairs:
+    for i, j in feature_pairs:
         lr = LinearRegression()
         lr.fit(X_ranked[:, [i, j]], y_ranked)
         R2_rank_ij[(i, j)] = max(lr.score(X_ranked[:, [i, j]], y_ranked), 0.0)
 
     spearman_partial_R2 = {}
-    for (i, j) in feature_pairs:
+    for i, j in feature_pairs:
         pr_i = (R2_rank_ij[(i, j)] - R2_rank_i[j]) / max(1 - R2_rank_i[j], 1e-10)
         pr_j = (R2_rank_ij[(i, j)] - R2_rank_i[i]) / max(1 - R2_rank_i[i], 1e-10)
         spearman_partial_R2[(i, j)] = max(pr_i, pr_j)
@@ -215,7 +218,7 @@ def compute_all_predictors(X, y, feature_pairs):
         mi_each[feat] = mutual_info_regression(X[:, [feat]], y, random_state=SEED)[0]
 
     knn_co_info = {}
-    for (i, j) in feature_pairs:
+    for i, j in feature_pairs:
         mi_ij = mutual_info_regression(X[:, [i, j]], y, random_state=SEED)[0]
         knn_co_info[(i, j)] = mi_each[i] + mi_each[j] - mi_ij
 
@@ -230,7 +233,7 @@ def compute_all_predictors(X, y, feature_pairs):
         R2_xgb_i[feat] = m.score(X_te[:, [feat]], y_te)
 
     xgb_conditional = {}
-    for (i, j) in feature_pairs:
+    for i, j in feature_pairs:
         m = xgb.XGBRegressor(**xgb_params)
         m.fit(X_tr[:, [i, j]], y_tr, verbose=False)
         R2_xgb_ij = m.score(X_te[:, [i, j]], y_te)
@@ -254,6 +257,7 @@ def compute_all_predictors(X, y, feature_pairs):
 # Dataset generators
 # ===========================================================================
 
+
 def make_synthetic(g, rho, p=8, n=1000, seed=42):
     """Synthetic dataset with g correlated features and p-g independent."""
     rng = np.random.RandomState(seed)
@@ -266,7 +270,7 @@ def make_synthetic(g, rho, p=8, n=1000, seed=42):
     X = np.hstack([corr_block, indep_block])
     y = X.sum(axis=1) + 0.1 * rng.randn(n_total)
 
-    X_train, X_explain = X[:n], X[n:n + N_OBS]
+    X_train, X_explain = X[:n], X[n : n + N_OBS]
     y_train = y[:n]
 
     return X_train, y_train, X_explain
@@ -275,6 +279,7 @@ def make_synthetic(g, rho, p=8, n=1000, seed=42):
 # ===========================================================================
 # Main
 # ===========================================================================
+
 
 def run_dataset(name, X_train, y_train, X_explain, P):
     """Run full analysis for one dataset. Returns (predictors, outcomes, pairs)."""
@@ -334,9 +339,7 @@ def main():
     print("\n\n[3/4] California Housing (8 features)")
     data = fetch_california_housing()
     X_full, y_full = data.data, data.target
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_full, y_full, test_size=0.2, random_state=SEED
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X_full, y_full, test_size=0.2, random_state=SEED)
     X_explain = X_test[:N_OBS]
     datasets["calif"] = run_dataset("calif", X_train, y_train, X_explain, P=8)
 
@@ -344,9 +347,7 @@ def main():
     print("\n\n[4/4] Breast Cancer (30 features)")
     data = load_breast_cancer()
     X_full, y_full = data.data, data.target.astype(float)
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_full, y_full, test_size=0.2, random_state=SEED
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X_full, y_full, test_size=0.2, random_state=SEED)
     X_explain = X_test[:N_OBS]
     datasets["breast"] = run_dataset("breast", X_train, y_train, X_explain, P=30)
 
@@ -354,8 +355,13 @@ def main():
     # Compute Spearman correlations: predictor vs outcome, per dataset
     # ===================================================================
     predictor_names = [
-        "|rho_feature|", "Partial R^2", "Co-I (Gauss)",
-        "VIF", "Spearman pR^2", "kNN Co-I", "XGB conditional",
+        "|rho_feature|",
+        "Partial R^2",
+        "Co-I (Gauss)",
+        "VIF",
+        "Spearman pR^2",
+        "kNN Co-I",
+        "XGB conditional",
     ]
     outcome_names = ["rho_SHAP", "VarRatio", "FlipRate"]
     dataset_names = ["syn_g2", "syn_g3", "calif", "breast"]
@@ -393,10 +399,10 @@ def main():
         for ds in dataset_names:
             print(f"  {ds:>8}", end="")
         print(f"  {'|avg|':>8}")
-        print(f"  {'-'*18}", end="")
+        print(f"  {'-' * 18}", end="")
         for _ in dataset_names:
-            print(f"  {'-'*8}", end="")
-        print(f"  {'-'*8}")
+            print(f"  {'-' * 8}", end="")
+        print(f"  {'-' * 8}")
 
         for pred in predictor_names:
             print(f"  {pred:<18}", end="")
@@ -414,7 +420,7 @@ def main():
     # ===================================================================
     print(f"\n\n  OVERALL RANKING (average |Spearman| across all outcomes and datasets):")
     print(f"  {'Predictor':<18} {'avg |Spearman|':>14} {'avg vs rho_SHAP':>16}")
-    print(f"  {'-'*18} {'-'*14} {'-'*16}")
+    print(f"  {'-' * 18} {'-' * 14} {'-' * 16}")
 
     overall_scores = {}
     rho_shap_scores = {}
@@ -456,11 +462,11 @@ def main():
     if not any_above:
         print(f"    No predictor achieves avg |Spearman| > 0.7 with rho_SHAP across all datasets.")
 
-    print(f"\n\n  {'='*60}")
+    print(f"\n\n  {'=' * 60}")
     print(f"  WINNER:     {winner} (avg |Spearman| = {overall_scores[winner]:.4f})")
     print(f"  RUNNER-UP:  {runner_up} (avg |Spearman| = {overall_scores[runner_up]:.4f})")
-    print(f"  COMPUTATION TIME: {elapsed:.1f}s ({elapsed/60:.1f} min)")
-    print(f"  {'='*60}")
+    print(f"  COMPUTATION TIME: {elapsed:.1f}s ({elapsed / 60:.1f} min)")
+    print(f"  {'=' * 60}")
 
     # Full detail for the winner
     print(f"\n  Winner detail ({winner}):")

@@ -33,6 +33,7 @@ SEED = 42
 # Core computation functions
 # ===========================================================================
 
+
 def compute_shap_cross_correlation(shap_stack, i, j):
     """
     Compute the cross-model correlation between SHAP_i and SHAP_j.
@@ -75,6 +76,7 @@ def compute_feature_correlation(X, i, j):
 # Model training + SHAP computation
 # ===========================================================================
 
+
 def train_and_explain(X_train, y_train, X_explain, M=200, seed=42):
     """
     Train M models, compute interventional SHAP values.
@@ -112,6 +114,7 @@ def train_and_explain(X_train, y_train, X_explain, M=200, seed=42):
 # Dataset generators
 # ===========================================================================
 
+
 def make_synthetic(g, rho, p=10, n=1000, seed=42):
     """
     Synthetic dataset with g correlated features (ρ) and p-g independent features.
@@ -130,7 +133,7 @@ def make_synthetic(g, rho, p=10, n=1000, seed=42):
     X = np.hstack([corr_block, indep_block])
     y = X.sum(axis=1) + 0.1 * rng.randn(n_total)
 
-    X_train, X_explain = X[:n], X[n:n+N_OBS]
+    X_train, X_explain = X[:n], X[n : n + N_OBS]
     y_train = y[:n]
 
     return X_train, y_train, X_explain
@@ -140,15 +143,16 @@ def make_synthetic(g, rho, p=10, n=1000, seed=42):
 # Main analysis
 # ===========================================================================
 
+
 def analyze_dataset(name, shap_stack, X, pairs, pair_labels):
     """
     Analyze a dataset: compute feature correlations, SHAP correlations,
     and variance ratios for specified pairs.
     """
     P = X.shape[1]
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  DATASET: {name}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     # Feature correlation matrix (top corner)
     n_show = min(P, 10)
@@ -156,7 +160,7 @@ def analyze_dataset(name, shap_stack, X, pairs, pair_labels):
     feat_corr = np.corrcoef(X.T)
     print("       ", "  ".join([f"f{i:2d}" for i in range(n_show)]))
     for i in range(n_show):
-        row = "  ".join([f"{feat_corr[i,j]:+.2f}" for j in range(n_show)])
+        row = "  ".join([f"{feat_corr[i, j]:+.2f}" for j in range(n_show)])
         print(f"  f{i:2d}  {row}")
 
     # SHAP correlation matrix (top corner)
@@ -172,14 +176,14 @@ def analyze_dataset(name, shap_stack, X, pairs, pair_labels):
             # else already filled
     print("       ", "  ".join([f"f{i:2d}" for i in range(n_show)]))
     for i in range(n_show):
-        row = "  ".join([f"{shap_corr[i,j]:+.2f}" for j in range(n_show)])
+        row = "  ".join([f"{shap_corr[i, j]:+.2f}" for j in range(n_show)])
         print(f"  f{i:2d}  {row}")
 
     # Per-pair analysis
     results = []
     print(f"\n  Per-Pair Analysis:")
     print(f"  {'Pair':<12} {'ρ_feature':>10} {'ρ_SHAP':>10} {'VarRatio':>10} {'First-mover?':>14}")
-    print(f"  {'-'*12} {'-'*10} {'-'*10} {'-'*10} {'-'*14}")
+    print(f"  {'-' * 12} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 14}")
 
     for (i, j), label in zip(pairs, pair_labels):
         rho_feat = compute_feature_correlation(X, i, j)
@@ -187,14 +191,16 @@ def analyze_dataset(name, shap_stack, X, pairs, pair_labels):
         var_ratio = compute_variance_ratio(shap_stack, i, j)
         first_mover = "YES" if (rho_shap < -0.05 and var_ratio < 0.9) else "NO"
 
-        results.append({
-            'dataset': name,
-            'pair': label,
-            'rho_feature': rho_feat,
-            'rho_shap': rho_shap,
-            'var_ratio': var_ratio,
-            'first_mover': first_mover,
-        })
+        results.append(
+            {
+                "dataset": name,
+                "pair": label,
+                "rho_feature": rho_feat,
+                "rho_shap": rho_shap,
+                "var_ratio": var_ratio,
+                "first_mover": first_mover,
+            }
+        )
         print(f"  {label:<12} {rho_feat:>+10.3f} {rho_shap:>+10.3f} {var_ratio:>10.3f} {first_mover:>14}")
 
     return results
@@ -241,19 +247,17 @@ def main():
     feature_names = data.feature_names
     print(f"  Features: {feature_names}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_full, y_full, test_size=0.2, random_state=SEED
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X_full, y_full, test_size=0.2, random_state=SEED)
     X_explain = X_test[:N_OBS]
     shap_stack = train_and_explain(X_train, y_train, X_explain, M=M, seed=SEED)
 
     # Identify feature indices
     feat_idx = {name: i for i, name in enumerate(feature_names)}
     pairs = [
-        (feat_idx['Latitude'], feat_idx['Longitude']),
-        (feat_idx['AveRooms'], feat_idx['AveBedrms']),
-        (feat_idx['MedInc'], feat_idx['Population']),
-        (feat_idx['AveRooms'], feat_idx['Population']),
+        (feat_idx["Latitude"], feat_idx["Longitude"]),
+        (feat_idx["AveRooms"], feat_idx["AveBedrms"]),
+        (feat_idx["MedInc"], feat_idx["Population"]),
+        (feat_idx["AveRooms"], feat_idx["Population"]),
     ]
     labels = ["Lat-Long", "Rooms-Bed", "MedInc-Pop", "Rooms-Pop"]
     results = analyze_dataset("california", shap_stack, X_train, pairs, labels)
@@ -268,20 +272,18 @@ def main():
     feature_names = data.feature_names
     print(f"  Features (first 10): {list(feature_names[:10])}")
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_full, y_full, test_size=0.2, random_state=SEED
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X_full, y_full, test_size=0.2, random_state=SEED)
     X_explain = X_test[:N_OBS]
     shap_stack = train_and_explain(X_train, y_train, X_explain, M=M, seed=SEED)
 
     # Breast cancer: features 0-9 are "mean", 10-19 are "se", 20-29 are "worst"
     # mean radius (0) vs worst radius (20), mean texture (1) vs worst texture (21)
     pairs = [
-        (0, 20),   # mean radius vs worst radius
-        (1, 21),   # mean texture vs worst texture
-        (2, 22),   # mean perimeter vs worst perimeter
-        (0, 1),    # mean radius vs mean texture (lower correlation)
-        (5, 15),   # mean compactness vs se compactness (control)
+        (0, 20),  # mean radius vs worst radius
+        (1, 21),  # mean texture vs worst texture
+        (2, 22),  # mean perimeter vs worst perimeter
+        (0, 1),  # mean radius vs mean texture (lower correlation)
+        (5, 15),  # mean compactness vs se compactness (control)
     ]
     labels = ["rad_m-rad_w", "tex_m-tex_w", "per_m-per_w", "rad_m-tex_m", "comp_m-comp_se"]
     results = analyze_dataset("breast_cancer", shap_stack, X_train, pairs, labels)
@@ -295,18 +297,20 @@ def main():
     print("  SUMMARY: FIRST-MOVER EFFECT — SHAP CROSS-CORRELATION TEST")
     print("=" * 80)
     print(f"\n  {'Dataset':<14} {'Pair':<14} {'ρ_feature':>10} {'ρ_SHAP':>10} {'VarRatio':>10} {'First-mover?':>14}")
-    print(f"  {'-'*14} {'-'*14} {'-'*10} {'-'*10} {'-'*10} {'-'*14}")
+    print(f"  {'-' * 14} {'-' * 14} {'-' * 10} {'-' * 10} {'-' * 10} {'-' * 14}")
 
     for r in all_results:
-        print(f"  {r['dataset']:<14} {r['pair']:<14} {r['rho_feature']:>+10.3f} "
-              f"{r['rho_shap']:>+10.3f} {r['var_ratio']:>10.3f} {r['first_mover']:>14}")
+        print(
+            f"  {r['dataset']:<14} {r['pair']:<14} {r['rho_feature']:>+10.3f} "
+            f"{r['rho_shap']:>+10.3f} {r['var_ratio']:>10.3f} {r['first_mover']:>14}"
+        )
 
     # -----------------------------------------------------------------------
     # Spearman anti-correlation: ρ_feature vs ρ_SHAP
     # -----------------------------------------------------------------------
-    rho_features = np.array([r['rho_feature'] for r in all_results])
-    rho_shaps = np.array([r['rho_shap'] for r in all_results])
-    var_ratios = np.array([r['var_ratio'] for r in all_results])
+    rho_features = np.array([r["rho_feature"] for r in all_results])
+    rho_shaps = np.array([r["rho_shap"] for r in all_results])
+    var_ratios = np.array([r["var_ratio"] for r in all_results])
 
     spearman_rho, spearman_p = spearmanr(rho_features, rho_shaps)
     spearman_vr, spearman_vr_p = spearmanr(rho_features, var_ratios)
@@ -321,10 +325,10 @@ def main():
     print(f"    - Independent pairs (ρ_feature ≈ 0): ρ_SHAP ≈ 0, VarRatio ≈ 1.0")
 
     # Count
-    n_corr_pairs = sum(1 for r in all_results if r['rho_feature'] > 0.5)
-    n_first_mover = sum(1 for r in all_results if r['rho_feature'] > 0.5 and r['first_mover'] == 'YES')
-    n_indep_pairs = sum(1 for r in all_results if abs(r['rho_feature']) < 0.3)
-    n_indep_correct = sum(1 for r in all_results if abs(r['rho_feature']) < 0.3 and r['first_mover'] == 'NO')
+    n_corr_pairs = sum(1 for r in all_results if r["rho_feature"] > 0.5)
+    n_first_mover = sum(1 for r in all_results if r["rho_feature"] > 0.5 and r["first_mover"] == "YES")
+    n_indep_pairs = sum(1 for r in all_results if abs(r["rho_feature"]) < 0.3)
+    n_indep_correct = sum(1 for r in all_results if abs(r["rho_feature"]) < 0.3 and r["first_mover"] == "NO")
 
     print(f"\n  VERDICT:")
     print(f"    Correlated pairs showing first-mover effect: {n_first_mover}/{n_corr_pairs}")

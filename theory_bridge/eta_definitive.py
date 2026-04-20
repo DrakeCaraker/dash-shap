@@ -13,8 +13,7 @@ Synthetic g=2,3,4,5,8. Real data: California, Breast Cancer, Diabetes.
 import numpy as np
 import xgboost as xgb
 import shap
-from sklearn.datasets import (fetch_california_housing, load_diabetes,
-                               load_breast_cancer)
+from sklearn.datasets import fetch_california_housing, load_diabetes, load_breast_cancer
 from sklearn.model_selection import train_test_split
 from scipy.stats import wilcoxon
 import warnings
@@ -34,6 +33,7 @@ SEED = 42
 # ===========================================================================
 # Helper functions
 # ===========================================================================
+
 
 def flip_rate_vector(shap_vec):
     """Compute flip rate for a (M,) vector of SHAP values across models."""
@@ -88,9 +88,9 @@ def test_a_directional(shap_stack, group_indices):
     if len(nonzero_diff) < 10:
         p_val = 1.0
     else:
-        _, p_val = wilcoxon(nonzero_diff, alternative='greater')
+        _, p_val = wilcoxon(nonzero_diff, alternative="greater")
 
-    ratio = var_flip / inv_flip if inv_flip > 1e-10 else float('inf')
+    ratio = var_flip / inv_flip if inv_flip > 1e-10 else float("inf")
     return inv_flip, var_flip, ratio, p_val
 
 
@@ -158,6 +158,7 @@ def compute_observed_rho(X, group_indices):
 # Model training + SHAP computation
 # ===========================================================================
 
+
 def train_and_explain(X_train, y_train, X_explain, shap_variant, M=200, seed=42):
     """
     Train M models, compute SHAP values.
@@ -167,7 +168,7 @@ def train_and_explain(X_train, y_train, X_explain, shap_variant, M=200, seed=42)
     rng = np.random.RandomState(seed)
     shap_matrices = []
 
-    if shap_variant == 'interventional':
+    if shap_variant == "interventional":
         bg = X_train[:100]
 
     for i in range(M):
@@ -184,7 +185,7 @@ def train_and_explain(X_train, y_train, X_explain, shap_variant, M=200, seed=42)
         m = xgb.XGBRegressor(**params)
         m.fit(X_train, y_train, verbose=False)
 
-        if shap_variant == 'interventional':
+        if shap_variant == "interventional":
             explainer = shap.TreeExplainer(m, bg, feature_perturbation="interventional")
         else:
             explainer = shap.TreeExplainer(m, feature_perturbation="tree_path_dependent")
@@ -201,6 +202,7 @@ def train_and_explain(X_train, y_train, X_explain, shap_variant, M=200, seed=42)
 # ===========================================================================
 # Synthetic data generators
 # ===========================================================================
+
 
 def generate_synthetic(g, rho=0.9, n=2000, seed=42):
     """
@@ -230,6 +232,7 @@ def generate_synthetic(g, rho=0.9, n=2000, seed=42):
 # Real datasets
 # ===========================================================================
 
+
 def get_real_datasets():
     """
     Returns list of (name, X, y, groups_dict) for real datasets.
@@ -242,28 +245,49 @@ def get_real_datasets():
     X_cal, y_cal = cal.data, cal.target
     # Latitude=6, Longitude=7
     # AveRooms=3, AveBedrms=4
-    datasets.append(("California", X_cal, y_cal, {
-        "Lat/Long": [6, 7],
-        "Rooms/Bedrms": [3, 4],
-    }))
+    datasets.append(
+        (
+            "California",
+            X_cal,
+            y_cal,
+            {
+                "Lat/Long": [6, 7],
+                "Rooms/Bedrms": [3, 4],
+            },
+        )
+    )
 
     # Breast Cancer
     bc = load_breast_cancer()
     X_bc, y_bc = bc.data, bc.target.astype(float)
     # radius: mean=0, se=10, worst=20
     # area: mean=3, se=13, worst=23
-    datasets.append(("BreastCancer", X_bc, y_bc, {
-        "radius(3)": [0, 10, 20],
-        "area(3)": [3, 13, 23],
-    }))
+    datasets.append(
+        (
+            "BreastCancer",
+            X_bc,
+            y_bc,
+            {
+                "radius(3)": [0, 10, 20],
+                "area(3)": [3, 13, 23],
+            },
+        )
+    )
 
     # Diabetes
     diab = load_diabetes()
     X_d, y_d = diab.data, diab.target
     # s1=4, s2=5
-    datasets.append(("Diabetes", X_d, y_d, {
-        "s1/s2": [4, 5],
-    }))
+    datasets.append(
+        (
+            "Diabetes",
+            X_d,
+            y_d,
+            {
+                "s1/s2": [4, 5],
+            },
+        )
+    )
 
     return datasets
 
@@ -271,6 +295,7 @@ def get_real_datasets():
 # ===========================================================================
 # Main validation
 # ===========================================================================
+
 
 def run_validation():
     print("=" * 90)
@@ -293,7 +318,7 @@ def run_validation():
         rho_obs = compute_observed_rho(X_train, group_indices)
         print(f"  Observed rho={rho_obs:.3f}, group={group_indices}")
 
-        for variant in ['interventional', 'marginal']:
+        for variant in ["interventional", "marginal"]:
             t0 = time.time()
             shap_stack = train_and_explain(X_train, y_train, X_explain, variant, M=M, seed=SEED)
             dt = time.time() - t0
@@ -303,21 +328,23 @@ def run_validation():
             percentile, _ = test_b_random_control(shap_stack, group_indices, inv_flip)
             frac, pred, diff = test_c_variance_fraction(shap_stack, group_indices, rho_obs)
 
-            results.append({
-                'dataset': f'syn_g{g}',
-                'group': f'Z_{g}',
-                'g': g,
-                'shap': variant[:4],
-                'inv_flip': inv_flip,
-                'var_flip': var_flip,
-                'ratio': ratio,
-                'p_val': p_val,
-                'percentile': percentile,
-                'struct': percentile < 5,
-                'frac': frac,
-                'pred': pred,
-                'diff': diff,
-            })
+            results.append(
+                {
+                    "dataset": f"syn_g{g}",
+                    "group": f"Z_{g}",
+                    "g": g,
+                    "shap": variant[:4],
+                    "inv_flip": inv_flip,
+                    "var_flip": var_flip,
+                    "ratio": ratio,
+                    "p_val": p_val,
+                    "percentile": percentile,
+                    "struct": percentile < 5,
+                    "frac": frac,
+                    "pred": pred,
+                    "diff": diff,
+                }
+            )
 
     # ---- Real datasets ----
     real_datasets = get_real_datasets()
@@ -326,7 +353,7 @@ def run_validation():
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=SEED)
         X_explain = X_test[:N_OBS]
 
-        for variant in ['interventional', 'marginal']:
+        for variant in ["interventional", "marginal"]:
             t0 = time.time()
             shap_stack = train_and_explain(X_train, y_train, X_explain, variant, M=M, seed=SEED)
             dt = time.time() - t0
@@ -340,21 +367,23 @@ def run_validation():
                 percentile, _ = test_b_random_control(shap_stack, group_indices, inv_flip)
                 frac, pred, diff = test_c_variance_fraction(shap_stack, group_indices, rho_obs)
 
-                results.append({
-                    'dataset': ds_name,
-                    'group': grp_name,
-                    'g': g,
-                    'shap': variant[:4],
-                    'inv_flip': inv_flip,
-                    'var_flip': var_flip,
-                    'ratio': ratio,
-                    'p_val': p_val,
-                    'percentile': percentile,
-                    'struct': percentile < 5,
-                    'frac': frac,
-                    'pred': pred,
-                    'diff': diff,
-                })
+                results.append(
+                    {
+                        "dataset": ds_name,
+                        "group": grp_name,
+                        "g": g,
+                        "shap": variant[:4],
+                        "inv_flip": inv_flip,
+                        "var_flip": var_flip,
+                        "ratio": ratio,
+                        "p_val": p_val,
+                        "percentile": percentile,
+                        "struct": percentile < 5,
+                        "frac": frac,
+                        "pred": pred,
+                        "diff": diff,
+                    }
+                )
 
     total_time = time.time() - total_time_start
 
@@ -363,19 +392,23 @@ def run_validation():
     print("=" * 120)
     print("CONSOLIDATED RESULTS")
     print("=" * 120)
-    header = (f"{'Dataset':<14} {'Group':<12} {'g':>2} {'SHAP':<5} "
-              f"{'Inv':>6} {'Var':>6} {'Ratio':>6} {'p-val':>9} "
-              f"{'Pctile':>7} {'Struct':>6} "
-              f"{'Frac':>6} {'Pred':>6} {'|Diff|':>7}")
+    header = (
+        f"{'Dataset':<14} {'Group':<12} {'g':>2} {'SHAP':<5} "
+        f"{'Inv':>6} {'Var':>6} {'Ratio':>6} {'p-val':>9} "
+        f"{'Pctile':>7} {'Struct':>6} "
+        f"{'Frac':>6} {'Pred':>6} {'|Diff|':>7}"
+    )
     print(header)
     print("-" * 120)
 
     for r in results:
-        row = (f"{r['dataset']:<14} {r['group']:<12} {r['g']:>2} {r['shap']:<5} "
-               f"{r['inv_flip']:>6.3f} {r['var_flip']:>6.3f} {r['ratio']:>6.1f}x "
-               f"{r['p_val']:>9.1e} "
-               f"{r['percentile']:>6.1f}% {'YES' if r['struct'] else 'no':>5} "
-               f"{r['frac']:>6.3f} {r['pred']:>6.3f} {r['diff']:>7.4f}")
+        row = (
+            f"{r['dataset']:<14} {r['group']:<12} {r['g']:>2} {r['shap']:<5} "
+            f"{r['inv_flip']:>6.3f} {r['var_flip']:>6.3f} {r['ratio']:>6.1f}x "
+            f"{r['p_val']:>9.1e} "
+            f"{r['percentile']:>6.1f}% {'YES' if r['struct'] else 'no':>5} "
+            f"{r['frac']:>6.3f} {r['pred']:>6.3f} {r['diff']:>7.4f}"
+        )
         print(row)
 
     # ---- Summary ----
@@ -388,17 +421,17 @@ def run_validation():
     bonferroni_alpha = 0.05 / n_tests
 
     # Test A
-    test_a_pass = sum(1 for r in results if r['p_val'] < bonferroni_alpha)
+    test_a_pass = sum(1 for r in results if r["p_val"] < bonferroni_alpha)
     print(f"\nTest A (directional, Bonferroni alpha={bonferroni_alpha:.4f}):")
-    print(f"  Pass: {test_a_pass}/{n_tests} ({100*test_a_pass/n_tests:.0f}%)")
+    print(f"  Pass: {test_a_pass}/{n_tests} ({100 * test_a_pass / n_tests:.0f}%)")
 
     # Test B
-    test_b_pass = sum(1 for r in results if r['struct'])
+    test_b_pass = sum(1 for r in results if r["struct"])
     print(f"\nTest B (random control, actual < 5th percentile):")
-    print(f"  Pass: {test_b_pass}/{n_tests} ({100*test_b_pass/n_tests:.0f}%)")
+    print(f"  Pass: {test_b_pass}/{n_tests} ({100 * test_b_pass / n_tests:.0f}%)")
 
     # Test C
-    diffs = [r['diff'] for r in results]
+    diffs = [r["diff"] for r in results]
     print(f"\nTest C (variance fraction):")
     print(f"  Mean |diff| from prediction: {np.mean(diffs):.4f}")
     print(f"  Max  |diff|: {np.max(diffs):.4f}")
@@ -406,21 +439,21 @@ def run_validation():
 
     # Marginal vs interventional
     print(f"\nMarginal vs Interventional comparison:")
-    int_results = [r for r in results if r['shap'] == 'inte']
-    marg_results = [r for r in results if r['shap'] == 'marg']
+    int_results = [r for r in results if r["shap"] == "inte"]
+    marg_results = [r for r in results if r["shap"] == "marg"]
     if int_results and marg_results:
-        int_ratios = [r['ratio'] for r in int_results]
-        marg_ratios = [r['ratio'] for r in marg_results]
+        int_ratios = [r["ratio"] for r in int_results]
+        marg_ratios = [r["ratio"] for r in marg_results]
         print(f"  Mean ratio (int):  {np.mean(int_ratios):.2f}x")
         print(f"  Mean ratio (marg): {np.mean(marg_ratios):.2f}x")
-        int_a_pass = sum(1 for r in int_results if r['p_val'] < bonferroni_alpha)
-        marg_a_pass = sum(1 for r in marg_results if r['p_val'] < bonferroni_alpha)
+        int_a_pass = sum(1 for r in int_results if r["p_val"] < bonferroni_alpha)
+        marg_a_pass = sum(1 for r in marg_results if r["p_val"] < bonferroni_alpha)
         print(f"  Test A pass: int={int_a_pass}/{len(int_results)}, marg={marg_a_pass}/{len(marg_results)}")
-        int_b_pass = sum(1 for r in int_results if r['struct'])
-        marg_b_pass = sum(1 for r in marg_results if r['struct'])
+        int_b_pass = sum(1 for r in int_results if r["struct"])
+        marg_b_pass = sum(1 for r in marg_results if r["struct"])
         print(f"  Test B pass: int={int_b_pass}/{len(int_results)}, marg={marg_b_pass}/{len(marg_results)}")
 
-    print(f"\nTotal wall time: {total_time/60:.1f} minutes")
+    print(f"\nTotal wall time: {total_time / 60:.1f} minutes")
     print("=" * 90)
 
 
