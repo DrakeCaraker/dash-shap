@@ -83,6 +83,7 @@ ignore = [
 "tests/*" = ["F841"]
 "dash_shap/evaluation/*" = ["F841"]
 "run_experiments*.py" = ["E402"]
+"theory_bridge/*.py" = ["E402", "F841"]
 
 [tool.ruff.format]
 quote-style = "double"
