@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "generated_date": "2026-04-20",
+  "signal_count": 4,
+  "signals": [
+    {
+      "category": "git_workflow",
+      "pattern": "Watch for multiple unrelated features accumulating on a single branch. Suggest splitting before the PR becomes unreviewable.",
+      "local_occurrences": 1,
+      "promoted_to": "rule",
+      "project_type": "unknown"
+    },
+    {
+      "category": "git_workflow",
+      "pattern": "Fixes pushed to main don't reach plugin users until they update their cached copy. During dog-fooding, consent and persona fixes were pushed but the installed plugin still ran the old version.",
+      "local_occurrences": 1,
+      "promoted_to": "memory",
+      "project_type": "unknown"
+    },
+    {
+      "category": "tooling",
+      "pattern": "Claude [NAME] slash commands (like /self-improve, /teach, /status) are project-scoped \u2014 they load from `.[REPO]/` relative to the working directory. Running `claude` from `~` won't see comma...",
+      "local_occurrences": 1,
+      "promoted_to": "hook",
+      "project_type": "unknown"
+    },
+    {
+      "category": "git_workflow",
+      "pattern": "Ask about security, access control, and encryption requirements BEFORE building any feature that moves or stores data externally.",
+      "local_occurrences": 1,
+      "promoted_to": "memory",
+      "project_type": "unknown"
+    }
+  ]
+}
