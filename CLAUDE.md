@@ -1,6 +1,6 @@
 # DASH-SHAP
 
-DASH (Diversified Aggregation of SHAP) produces stable feature importance explanations under feature collinearity by aggregating SHAP values across a diverse ensemble of independently trained models. Target venue: TMLR. Authors: Caraker, Arnold, Rhoads (2026).
+DASH (Diversified Aggregation for Stable Hypotheses) produces stable feature importance explanations under feature collinearity by aggregating SHAP values across a diverse ensemble of independently trained models. Target venue: TMLR. Authors: Caraker, Arnold, Rhoads (2026).
 
 ## Non-Negotiable Rules
 

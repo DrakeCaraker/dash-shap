@@ -1,4 +1,4 @@
-# DASH: Diversified Aggregation of SHAP
+# DASH: Diversified Aggregation for Stable Hypotheses
 
 [![PyPI](https://img.shields.io/pypi/v/dash-shap.svg)](https://pypi.org/project/dash-shap/)
 [![ArXiv](https://img.shields.io/badge/arXiv-2603.22346-b31b1b.svg)](https://arxiv.org/abs/2603.22346)

@@ -1,4 +1,4 @@
-"""DASH: Diversified Aggregation of SHAP for Stable Feature Importance Under Feature Collinearity."""
+"""DASH: Diversified Aggregation for Stable Hypotheses for Stable Feature Importance Under Feature Collinearity."""
 
 try:
     from importlib.metadata import version as _version

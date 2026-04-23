@@ -141,7 +141,7 @@ We provide evidence that \emph{model independence} is sufficient to largely
 neutralize first-mover bias in the linear, high-collinearity regime we study,
 and that it remains the most effective mitigation under nonlinear
 data-generating processes. Both our proposed
-method, \dash{} (Diversified Aggregation of SHAP), and simple seed-averaging
+method, \dash{} (Diversified Aggregation for Stable Hypotheses), and simple seed-averaging
 (Stochastic Retrain) restore stability by breaking the sequential dependency
 chain, supporting the view that the operative mechanism is independence between
 explained models, not any particular aggregation strategy. At $\rhovar = 0.9$, both methods achieve stability
@@ -231,7 +231,7 @@ cumulative residual advantage that is attenuated---but not eliminated---by
 column subsampling.
 
 \paragraph{Our contribution.}
-We propose \dash{} (Diversified Aggregation of SHAP), a five-stage
+We propose \dash{} (Diversified Aggregation for Stable Hypotheses), a five-stage
 pipeline that produces stable and reproducible feature importance
 explanations. \dash{} is not intended to outperform tuned single models on
 prediction; its objective is reproducible attribution under multicollinearity
@@ -286,7 +286,7 @@ We make five contributions:
     Importance-Stability (IS) Plot detect first-mover bias without
     access to ground truth, enabling practitioners to audit explanation
     reliability.
-  \item \textbf{Method.} \dash{} (Diversified Aggregation of SHAP) is
+  \item \textbf{Method.} \dash{} (Diversified Aggregation for Stable Hypotheses) is
     an engineered pipeline that operationalizes the independence principle
     with forced feature restriction, diversity-aware model selection,
     and integrated diagnostics.
@@ -1957,7 +1957,7 @@ multicollinearity. Three lines of evidence support this finding:
     remain flat. This matches the mechanistic prediction.
 \end{enumerate}
 
-\dash{} (Diversified Aggregation of SHAP) operationalizes the
+\dash{} (Diversified Aggregation for Stable Hypotheses) operationalizes the
 independence principle at two layers: the \emph{core operation}---averaging
 attributions across independent models, proved to be the minimum-variance
 unbiased estimator \citep{caraker2026impossibility}---and the
