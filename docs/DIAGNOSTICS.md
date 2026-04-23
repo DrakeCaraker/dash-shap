@@ -243,7 +243,9 @@ Coverage conflict is a **sign-stability** diagnostic that complements FSI's **ma
 | 0.3–0.5 | Severe disagreement — models are nearly split on direction |
 | 0.5 | Perfect split — half positive, half negative (coin flip) |
 
-The distribution-free minority fraction is a distribution-free predictor of sign instability. Its performance relative to the parametric Gaussian flip formula is regime-dependent: coverage conflict wins under weak/partial collinearity (California Housing: Spearman 0.96 vs 0.46) while the Gaussian formula wins under strong/pervasive collinearity (Breast Cancer: 0.93 vs 0.45). Use `compare_flip_predictors()` to determine which is more reliable on your dataset. This is grounded in the bilemma's all-or-nothing theorem: features are either unanimously signed or split, with a predicted dead zone in between.
+The distribution-free minority fraction is a distribution-free predictor of sign instability. Its performance relative to the parametric Gaussian flip formula is regime-dependent: coverage conflict wins under weak/partial collinearity (California Housing: Spearman 0.96 vs 0.46) while the Gaussian formula wins under strong/pervasive collinearity (Breast Cancer: 0.93 vs 0.45). Use `compare_flip_predictors()` to determine which is more reliable on your dataset.
+
+This diagnostic is grounded in the [bilemma](https://github.com/DrakeCaraker/dash-impossibility-lean) — the formal proof that binary sign attribution cannot be simultaneously faithful and stable under collinearity. The bilemma's all-or-nothing theorem predicts that features are either unanimously signed or split, with a dead zone in between. Coverage conflict directly measures where each feature falls on this spectrum. The impossibility holds at every ε-tolerance level (approximate bilemma), so relaxing the faithfulness requirement does not escape it — the only resolution is enrichment (expanding from binary signs to continuous values), which is what DASH's consensus averaging provides.
 
 **When to use coverage conflict vs. FSI:**
 

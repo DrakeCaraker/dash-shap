@@ -104,7 +104,7 @@ results = validate_from_attributions(attribution_matrix)  # Z-tests + flip rates
 stable = consensus_from_attributions(attribution_matrix)   # averaged importance
 ```
 
-The underlying [impossibility theorem](https://github.com/DrakeCaraker/dash-impossibility-lean) is proved for all iterative optimizers (gradient boosting, Lasso, neural networks), so the resolution — independent model averaging — is equally general.
+The underlying [impossibility theorem](https://github.com/DrakeCaraker/dash-impossibility-lean) — mechanically verified in Lean 4 (248 theorems, 0 unproved gaps) — proves that no single-model ranking can be simultaneously faithful and stable under collinearity (the *bilemma*). DASH's consensus averaging is the unique structural resolution: it enriches the binary output space with a neutral element (ties), which the resolution taxonomy proves is the *only* escape from the impossibility. This holds for all iterative optimizers (gradient boosting, Lasso, neural networks).
 
 ## Extensions
 
@@ -159,7 +159,7 @@ DASH is a five-stage pipeline:
 4. **Consensus** — Compute attributions for each selected model, then average
 5. **Diagnostics** — Feature Stability Index (FSI), IS plots, and coverage conflict (sign-stability diagnostic) for auditing without ground truth
 
-The key insight: **model independence** — not model size — is what cancels the arbitrary noise. See the [paper](https://arxiv.org/abs/2603.22346) for the full mechanism analysis.
+The key insight: **model independence** — not model size — is what cancels the arbitrary noise. A colsample ablation confirms that forced low `colsample_bytree` (0.1–0.5) is the operative diversity mechanism: ensembles with unrestricted feature access achieve only single-best-level stability. See the [paper](https://arxiv.org/abs/2603.22346) for the full mechanism analysis (TMLR submission under review).
 
 ## Documentation
 

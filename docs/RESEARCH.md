@@ -61,7 +61,7 @@ Use DASH when:
 
 ### When simpler alternatives suffice
 
-**Stochastic Retrain** (same hyperparameters, different seeds) achieves stability equivalent to DASH (~0.977 at ρ = 0.9) with minimal implementation effort. Use it when diagnostics and equity are not required.
+**Stochastic Retrain** (same hyperparameters, different seeds) achieves stability equivalent to DASH in the linear regime (~0.977 at ρ = 0.9) with minimal implementation effort. Use it when diagnostics and equity are not required. Under nonlinear DGPs at ρ ≥ 0.9, DASH significantly outperforms SR (0.887 vs 0.857; bootstrap CIs non-overlapping) — hyperparameter diversity matters when models learn qualitatively different functional forms.
 
 ### DASH vs. other methods
 
@@ -89,7 +89,7 @@ See **[REPRODUCE.md](../REPRODUCE.md)** for the complete reproduction guide, inc
 pip install -r requirements.lock
 pip install -e .
 
-# Run all 17 default experiments (~6–10 hours on 72-vCPU instance)
+# Run all 18 default experiments (~6–10 hours on 72-vCPU instance)
 python run_experiments_parallel.py
 
 # Run a single experiment
@@ -116,9 +116,14 @@ DASH is Paper 1 of a five-paper research program on trustworthy feature attribut
 | **3. Attribution Impossibility** | Formally verified impossibility theorem (Lean 4) | NeurIPS 2026 | [dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean) |
 | **4. Ostrowski Impossibility** | Bilemma for binary explanation spaces | Letters in Mathematical Physics | [ostrowski-impossibility](https://github.com/DrakeCaraker/ostrowski-impossibility) |
 
-The impossibility theorem (Paper 3) proves that no single-model feature ranking can simultaneously be faithful, stable, and complete when features are collinear — formalizing the theoretical foundation for why DASH's ensemble approach is necessary.
+The impossibility theorem (Paper 3) proves that no single-model feature ranking can simultaneously be faithful, stable, and complete when features are collinear — formalizing the theoretical foundation for why DASH's ensemble approach is necessary. The companion paper further proves:
 
-The Ostrowski impossibility (Paper 4) strengthens this for **binary questions** (e.g., "is this feature's effect positive or negative?"): the bilemma proves that faithful + stable is impossible for binary explanation spaces — not just the trilemma's three-way tradeoff, but the two-way tradeoff fails. DASH averaging resolves the ranking instability (via enrichment with ties) but cannot resolve sign instability. Any stable sign attribution method is wrong at ≥ 50% of Rashomon-equivalent model pairs.
+- **Bilemma**: Even for binary sign attribution (is this feature's effect positive or negative?), faithfulness and stability cannot coexist — completeness is not needed to generate the impossibility.
+- **Enrichment resolution**: Collapsed tightness (the binary sign case) can *only* be resolved by enrichment — expanding the output space to include a neutral element (ties). DASH's consensus averaging is precisely this enrichment, making it the unique structural resolution class.
+- **Approximate bilemma**: The impossibility survives ε-approximation at every tolerance level, with a quantitative bound: unfaith₁ + unfaith₂ ≥ Δ − δ.
+- **DASH optimality**: Consensus averaging is the minimum-variance unbiased estimator (Cramér-Rao bound σ²/M) and is Pareto-optimal among all stable attribution methods.
+
+The Ostrowski impossibility (Paper 4) extends the bilemma to physics: Ostrowski's classification of absolute values on ℚ creates a binary partition (archimedean vs p-adic) that triggers the same impossibility for spacetime geometry explanations, resolved by the adelic framework — the physics analogue of DASH.
 
 ---
 
