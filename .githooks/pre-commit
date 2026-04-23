@@ -35,8 +35,8 @@ if [ ${#BLOCKED[@]} -gt 0 ]; then
 fi
 
 # Ruff lint (auto-fix, then verify clean)
-ruff check . --fix --quiet
-ruff format . --quiet
+python3 -m ruff check . --fix --quiet
+python3 -m ruff format . --quiet
 
 # Stage any auto-fixes ruff made so they're included in the commit
 git add -u
