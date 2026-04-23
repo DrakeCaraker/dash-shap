@@ -28,7 +28,7 @@ The consequence is **path-dependent explanation**: the ranking of correlated fea
 
 ## 3. What DASH Does
 
-DASH (Diversified Aggregation of SHAP) resolves first-mover bias through independence. Instead of training one large model, DASH trains many small models independently, so their arbitrary first-mover choices are *uncorrelated*. When you average their SHAP matrices, the arbitrary noise cancels, and the signal compounds.
+DASH (Diversified Aggregation for Stable Hypotheses) resolves first-mover bias through independence. Instead of training one large model, DASH trains many small models independently, so their arbitrary first-mover choices are *uncorrelated*. When you average their SHAP matrices, the arbitrary noise cancels, and the signal compounds.
 
 The five-stage pipeline:
 
