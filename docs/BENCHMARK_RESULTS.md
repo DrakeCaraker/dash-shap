@@ -261,6 +261,20 @@ Concentration converges at M≥500 (~0.248–0.264). Single vs independent train
 
 Confirms low colsample_bytree (0.1–0.5) is the operative mechanism: stability advantage appears at ρ=0.9 but not at ρ=0.0.
 
+### Nonlinear DGP (50 reps)
+
+```
+    ρ      DASH        SB       LSM     LSM-T        SR
+=======================================================
+  0.0    0.9329    0.9312    0.9128    0.9285    0.9347
+  0.5    0.8570    0.8499    0.8365    0.8461    0.8601
+  0.7    0.8582    0.8454    0.8254    0.8498    0.8527
+  0.9    0.8870    0.8106    0.7780    0.8249    0.8572
+ 0.95    0.8840    0.8005    0.7549    0.7911    0.8594
+```
+
+All methods degrade under nonlinearity (stability ~0.86–0.93 vs ~0.93–0.98 in linear). At ρ≥0.9, DASH significantly outperforms SR (bootstrap CIs non-overlapping: DASH [0.880, 0.892] vs SR [0.845, 0.865] at ρ=0.9). At ρ≤0.5, SR matches or marginally beats DASH. This shows hyperparameter diversity matters under nonlinearity — seed diversity alone is insufficient.
+
 ### Key Findings (v7)
 
 1. **Independence is the mechanism**: SR ≈ DASH on stability at every ρ (p=0.40 at ρ=0.9). Any independent ensemble recovers stability.

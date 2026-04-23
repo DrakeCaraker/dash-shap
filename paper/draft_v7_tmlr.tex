@@ -1576,7 +1576,10 @@ different parts of the overlapping feature space.
 $\varepsilon$ values ($0.03$ to $0.10$), stability varies by $< 0.005$
 (Table~\ref{tab:epsilon}, Appendix~\ref{app:ablation}).
 Population size $M$ shows diminishing returns past $M = 100$;
-$M = 200$ is the default for a margin of safety
+$M = 200$ is the default for a margin of safety.
+The diversity threshold $\delta$ is the one sensitive parameter:
+stability degrades from $0.977$ to $0.963$ at $\delta = 0.20$, with
+the default $\delta = 0.05$ at the elbow
 (Figure~\ref{fig:ablation}, Appendix~\ref{app:ablation}).
 
 \paragraph{Computational cost.}
@@ -1643,6 +1646,12 @@ forms introduces noise rather than canceling arbitrary choices.
 At $\rhovar \geq 0.7$, first-mover bias reasserts itself as the dominant
 source of instability, and \dash{}'s independence-based cancellation
 provides clear benefit ($+0.083$ at $\rhovar = 0.95$).
+Notably, \dash{} significantly outperforms Stochastic Retrain under
+nonlinearity at $\rhovar \geq 0.9$ ($0.887$ vs.\ $0.857$; bootstrap
+95\% CIs non-overlapping), in contrast to their equivalence in the
+linear regime---indicating that hyperparameter diversity, not just seed
+diversity, matters when models learn qualitatively different functional
+forms.
 Practitioners should therefore check both the degree of collinearity
 \emph{and} the presence of strong nonlinear interactions before applying
 \dash{}. The FSI diagnostic (Section~\ref{sec:diagnostics}) can help:
@@ -1862,8 +1871,11 @@ settings with heavy collinearity.
     one feature is causally active and its correlate is a passive proxy,
     directly testing whether \dash{} over-equalizes.
   \item \textbf{Background dataset size.} All experiments use $B = 100$
-    background samples for interventional TreeSHAP. For high-dimensional
-    datasets with strong correlation structure, this may be insufficient
+    background samples for interventional TreeSHAP. A sensitivity analysis
+    across $B \in \{50, 100, 200, 500\}$ at $\rhovar = 0.9$ shows
+    stability variation below $0.0002$, suggesting this choice is not
+    critical for the current datasets; however, for high-dimensional
+    datasets with strong correlation structure, larger $B$ may be needed
     to capture the joint distribution faithfully.
 \end{itemize}
 
@@ -1891,13 +1903,29 @@ $\rhovar$---is consistent with the formal impossibility result of
 single-model feature ranking can simultaneously be faithful (reflect
 the model's attributions), stable (consistent across equivalent models),
 and complete (rank all feature pairs) when features are collinear.
-This trilemma holds for any attribution method applied to any model
+This incompatibility holds for any attribution method applied to any model
 class exhibiting the Rashomon property under correlation---not only
-gradient boosting. The present work provides the empirical foundation
+gradient boosting.  Indeed, the companion paper proves a stronger
+\emph{bilemma}: even for binary sign attribution (merely determining
+whether a feature's effect is positive or negative), faithfulness and
+stability cannot coexist---completeness is not required to generate the
+impossibility.\footnote{The impossibility is not fragile:
+\citet{caraker2026impossibility} prove an approximate bilemma showing
+that faithfulness--stability incompatibility persists at every
+$\varepsilon$-tolerance level, and a quantitative version bounding
+$\text{unfaith}_1 + \text{unfaith}_2 \geq \Delta - \delta$.}
+The present work provides the empirical foundation
 and constructive resolution; the theorem of \citet{caraker2026impossibility},
 mechanically verified in the Lean~4 proof assistant, proves that ensemble-based
 approaches like \dash{} are not merely effective but mathematically
 necessary for achieving both stability and equity.
+The resolution taxonomy of the companion paper further shows that
+\emph{collapsed tightness}---the specific form of incompatibility
+governing binary sign attribution---can only be resolved by
+\emph{enrichment}: expanding the output space to include a neutral
+element that permits ties.  \dash{}'s consensus averaging implements
+precisely this enrichment, placing it in the unique structural
+resolution class for the attribution impossibility.
 
 The neural network case warrants particular attention. Attribution
 instability under feature collinearity is well-documented for NNs:

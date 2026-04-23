@@ -18,17 +18,17 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": ".claude/hooks/ruff-format-on-write.sh",
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/ruff-format-on-write.sh",
                         "timeout": 10
                     },
                     {
                         "type": "command",
-                        "command": ".claude/hooks/sync-check-on-edit.sh",
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/sync-check-on-edit.sh",
                         "timeout": 15
                     },
                     {
                         "type": "command",
-                        "command": ".claude/hooks/latex-lint-on-write.sh",
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/latex-lint-on-write.sh",
                         "timeout": 10
                     }
                 ]
@@ -40,7 +40,7 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": ".claude/hooks/notebook-size-check.sh"
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/notebook-size-check.sh"
                     }
                 ]
             }
@@ -50,19 +50,19 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": ".claude/hooks/ci-on-change.sh",
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/ci-on-change.sh",
                         "timeout": 300,
                         "statusMessage": "Running CI checks..."
                     },
                     {
                         "type": "command",
-                        "command": ".claude/hooks/feedback-capture.sh",
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/feedback-capture.sh",
                         "timeout": 5,
                         "statusMessage": "Saving session learnings..."
                     },
                     {
                         "type": "command",
-                        "command": ".claude/hooks/self-improve-check.sh",
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/self-improve-check.sh",
                         "timeout": 5,
                         "statusMessage": "Checking for improvement opportunities..."
                     }
@@ -74,7 +74,7 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": ".claude/hooks/session-start.sh"
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/session-start.sh"
                     }
                 ]
             }
@@ -84,7 +84,7 @@
                 "hooks": [
                     {
                         "type": "command",
-                        "command": ".claude/hooks/pre-compact.sh"
+                        "command": "cd /Users/drake.caraker/ds_projects/dash-shap && .claude/hooks/pre-compact.sh"
                     }
                 ]
             }

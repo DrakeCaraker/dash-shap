@@ -1744,15 +1744,22 @@ these dependent trees yet achieves only $0.956$ stability, well below the
 independent-tier methods ($\approx 0.977$).  This between-tier gap
 provides the strongest available evidence that independence, not merely
 the number of trees or the act of aggregation, is the operative factor.
-Nonetheless, the cleanest isolation would test Stochastic Retrain with
-\emph{unrestricted} \texttt{colsample\_bytree} ($0.6$--$1.0$), preserving
-model independence while removing the forced feature restriction that
-both \dash{} and standard SR share (see footnote on
-Table~\ref{tab:baselines}).  This experiment is deferred to future work.
-Until such evidence is available, our central claim should be read as:
-model independence \emph{combined with} SHAP averaging is the operative
-mechanism, with the Ensemble SHAP counter-example providing the strongest
-available evidence that independence is the dominant factor.
+A colsample ablation (Appendix~\ref{app:ablation},
+\S\ref{par:colsample_ablation}) provides direct evidence: \dash{} and
+Random Selection with unrestricted \texttt{colsample\_bytree}
+($0.5$--$1.0$) achieve only Single-Best-level stability ($0.953$ vs.\
+$0.958$), while the same methods with low \texttt{colsample\_bytree}
+($0.1$--$0.5$) achieve $0.976$--$0.977$ ($p < 0.001$).  At
+$\rhovar = 0$ the colsample range has no effect ($p = 0.54$), confirming
+that forced feature restriction is specifically needed under collinearity.
+The one remaining gap is a direct test of Stochastic Retrain with
+unrestricted \texttt{colsample\_bytree}; until such evidence is
+available, our central claim should be read as: model independence
+\emph{combined with} forced feature restriction is the operative
+mechanism, with the colsample ablation showing that restriction alone
+accounts for a $+0.023$ stability gap and the Ensemble SHAP
+counter-example showing that aggregation without independence is
+insufficient.
 
 \paragraph{Positioning relative to prior work.}
 Our contribution is complementary to, not competitive with, the
@@ -2538,6 +2545,27 @@ a $3\times$ range ($0.03$--$0.10$).
 $0.05$; the default $\delta = 0.05$ is at the elbow.}
 \label{fig:ablation}
 \end{figure}
+
+\paragraph{Colsample restriction ablation.}
+\label{par:colsample_ablation}
+To isolate whether forced low \texttt{colsample\_bytree} is the operative
+diversity mechanism, we train \dash{} and Random Selection under three
+\texttt{colsample\_bytree} ranges: Low (0.1--0.5, the default), High
+(0.5--1.0), and Full (0.1--1.0), with Stochastic Retrain and Single Best
+as controls.
+
+At $\rhovar = 0$ (safety control), the colsample range has no effect:
+\dash{} Low and High achieve identical stability ($0.972$ vs.\ $0.973$;
+$p = 0.54$).  At $\rhovar = 0.9$, low colsample significantly outperforms
+high colsample for both \dash{} ($0.976$ vs.\ $0.953$;
+$\Delta = +0.023$, $p < 0.001$, bootstrap CIs non-overlapping) and
+Random Selection ($0.977$ vs.\ $0.957$; $\Delta = +0.020$, $p < 0.001$).
+Notably, \dash{} with high \texttt{colsample\_bytree} ($0.953$) performs
+comparably to Single Best ($0.958$), indicating that ensemble averaging
+\emph{without} forced feature restriction does not recover \dash{}-level
+stability.  Under nonlinearity at $\rhovar = 0.9$, the gap widens:
+\dash{} Low achieves $0.885$ vs.\ High $0.801$ ($\Delta = +0.084$;
+bootstrap CIs non-overlapping).
 
 \paragraph{Computational cost.}
 Table~\ref{tab:cost} reports wall-clock time for each method at
