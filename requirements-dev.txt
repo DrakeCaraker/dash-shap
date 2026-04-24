@@ -1,5 +1,5 @@
 # Dev/CI dependencies — pinned for reproducibility
-pytest>=7.4,<9
+pytest>=8.4.2,<9
 pytest-cov>=4.1,<8
 pytest-timeout>=2.3,<3
 ruff>=0.8,<1
