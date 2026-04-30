@@ -29,6 +29,8 @@ def compute_consensus(
     seed=None,
     verbose=True,
     n_jobs=1,
+    aggregation="mean",
+    groups=None,
 ):
     """Compute consensus SHAP matrix via element-wise averaging.
 
@@ -43,6 +45,13 @@ def compute_consensus(
     n_jobs : int
         Number of parallel jobs for SHAP computation. Default 1 (sequential).
         Set to -1 to use all available cores.
+    aggregation : str
+        'mean' (default): element-wise mean across models.
+        'pca': within each group, project SHAP onto first principal component.
+            More robust than sum for opposite-directional features (e.g.,
+            MedInc-AveOccup). Requires ``groups`` parameter.
+    groups : list of list of int or None
+        Feature index groups for PCA aggregation. Required if aggregation='pca'.
     """
     K = len(selected_indices)
     N_prime, P = X_ref.shape
@@ -75,11 +84,37 @@ def compute_consensus(
                 raise ValueError(f"Model at position {k}: expected SHAP shape {(N_prime, P)}, got {sv.shape}")
             all_shap[k] = sv
 
-    consensus = np.mean(all_shap, axis=0)
+    if aggregation == "pca" and groups is not None:
+        from sklearn.decomposition import PCA
+
+        consensus = np.mean(all_shap, axis=0)  # start with mean
+        for group in groups:
+            if len(group) < 2:
+                continue
+            # For each model, extract group SHAP and project onto PC1
+            group_shap = all_shap[:, :, group]  # (K, N', G)
+            # Reshape to (K*N', G) for PCA
+            flat = group_shap.reshape(-1, len(group))
+            pca = PCA(n_components=1)
+            pca.fit(flat)
+            loadings = pca.components_[0]  # (G,)
+            # Ensure loadings point in the direction of positive mean importance
+            mean_imp = np.mean(np.abs(consensus[:, group]), axis=0)
+            if np.dot(loadings, mean_imp) < 0:
+                loadings = -loadings
+            # Project each model's group SHAP onto PC1, distribute back
+            for k in range(K):
+                scores = group_shap[k] @ loadings  # (N',)
+                for idx, feat in enumerate(group):
+                    all_shap[k, :, feat] = scores * loadings[idx]
+        consensus = np.mean(all_shap, axis=0)
+    else:
+        consensus = np.mean(all_shap, axis=0)
 
     if verbose:
         global_imp = np.mean(np.abs(consensus), axis=0)
         top_5 = np.argsort(global_imp)[-5:][::-1]
-        print(f"Consensus computed from {K} models. Top 5 features: {top_5.tolist()}")
+        agg_label = f" ({aggregation})" if aggregation != "mean" else ""
+        print(f"Consensus{agg_label} computed from {K} models. Top 5 features: {top_5.tolist()}")
 
     return consensus, all_shap
