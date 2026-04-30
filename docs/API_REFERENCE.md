@@ -523,3 +523,55 @@ Compares the coverage-conflict predictor against the Gaussian flip formula (Phi(
 | `cc_prediction` | (P,) | Coverage-conflict predictor (mean minority fraction per feature). |
 | `gf_prediction` | (P,) | Gaussian flip formula predictor (Phi(-SNR) per feature, averaged over all pairs). |
 | `cc_conflict_rate` | (P,) | Fraction of observations with sign conflict per feature. |
+
+---
+
+## `mi_prescreen`
+
+```python
+from dash_shap.core.diagnostics import mi_prescreen
+
+result = mi_prescreen(
+    X,                       # (N, P) feature matrix
+    threshold='permutation', # 'permutation' or float — MI significance threshold
+    n_permutations=100,      # number of permutations for null distribution
+    corr_ceiling=0.7,        # max |Pearson ρ| to flag as "hidden"
+    random_state=42,
+)
+```
+
+Pre-screens feature pairs for hidden dependence using mutual information. Identifies pairs where MI is significant but linear correlation is low — dependencies that Pearson ρ and VIF miss (e.g., X₂ = X₁² gives MI=1.81 but |ρ|=0.12). Grounded in the MI quantitative bridge theorem: MI > 0 implies an error floor of Δ/2 for any stable attribution method.
+
+**Returns:** dict with keys:
+
+| Key | Shape | Description |
+|-----|-------|-------------|
+| `mi_matrix` | (P, P) | Pairwise MI values (symmetrized). |
+| `corr_matrix` | (P, P) | Absolute Pearson correlation. |
+| `threshold` | float | MI threshold used. |
+| `hidden_pairs` | list of (i, j, mi, corr) | Pairs with MI > threshold and |ρ| < corr_ceiling. |
+| `n_hidden` | int | Count of hidden pairs. |
+| `n_total_pairs` | int | Total pairs tested. |
+
+---
+
+## `shap_residual`
+
+```python
+from dash_shap.core.diagnostics import shap_residual
+
+result = shap_residual(
+    all_shap_matrices,  # (K, N', P) — SHAP values from K models
+    groups,             # list of list of int — feature index groups
+)
+```
+
+Computes within-group SHAP residuals (|SHAP_r|). For each group, subtracts the group-mean SHAP from each feature's SHAP values. High residuals indicate first-mover bias concentrating credit on arbitrary group members.
+
+**Returns:** dict with keys:
+
+| Key | Shape | Description |
+|-----|-------|-------------|
+| `residuals` | (K, N', P) | Per-element residual from group mean. |
+| `feature_mean_residual` | (P,) | Mean |residual| per feature. |
+| `group_mean_residual` | list of float | Mean |residual| per group. |

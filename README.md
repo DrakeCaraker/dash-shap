@@ -149,6 +149,23 @@ print(f"Cross-site agreement: {fed.cross_site_agreement:.3f}")
 
 All 12 extensions: `confidence_intervals`, `partial_order`, `feature_groups`, `stable_feature_selection`, `local_uncertainty`, `robust_certification`, `theory_bridge`, `causal_flags`, `audit_report`, `DriftMonitor`, `ParetoSelector`, `federated_consensus`.
 
+## Pre-Screening: Do You Need DASH?
+
+Before fitting a full pipeline, check if your data has hidden dependencies that will cause instability:
+
+```python
+from dash_shap.core.diagnostics import mi_prescreen
+
+result = mi_prescreen(X_train)
+print(f"Hidden dependent pairs: {result['n_hidden']}/{result['n_total_pairs']}")
+
+# Show pairs where MI is significant but correlation is low
+for i, j, mi, corr in result['hidden_pairs'][:5]:
+    print(f"  features {i}-{j}: MI={mi:.3f}, |ρ|={corr:.3f}")
+```
+
+MI catches nonlinear dependencies that Pearson correlation and VIF miss entirely (e.g., X₂ = X₁² gives MI=1.81 but |ρ|=0.12). If `n_hidden > 0`, your SHAP rankings are provably unreliable — the [companion paper](https://github.com/DrakeCaraker/dash-impossibility-lean) proves an error floor of Δ/2 for any stable attribution method when MI > 0.
+
 ## How It Works
 
 DASH is a five-stage pipeline:
@@ -157,7 +174,7 @@ DASH is a five-stage pipeline:
 2. **Filtering** — Keep models within ε of the best validation score
 3. **Diversity Selection** — Greedy MaxMin selection maximizing pairwise distance among importance vectors
 4. **Consensus** — Compute attributions for each selected model, then average
-5. **Diagnostics** — Feature Stability Index (FSI), IS plots, and coverage conflict (sign-stability diagnostic) for auditing without ground truth
+5. **Diagnostics** — Feature Stability Index (FSI), IS plots, coverage conflict (sign-stability), and MI pre-screening (nonlinear dependence detection) for auditing without ground truth
 
 The key insight: **model independence** — not model size — is what cancels the arbitrary noise. A colsample ablation confirms that forced low `colsample_bytree` (0.1–0.5) is the operative diversity mechanism: ensembles with unrestricted feature access achieve only single-best-level stability. See the [paper](https://arxiv.org/abs/2603.22346) for the full mechanism analysis (TMLR submission under review).
 

@@ -227,6 +227,41 @@ See the **[Extensions Guide](EXTENSIONS_GUIDE.md)** for worked examples of all 1
 
 ---
 
+## Three-Level Diagnostic Hierarchy
+
+DASH diagnostics operate at three levels, from structural guarantees down to per-feature quantification:
+
+| Level | Question | Tool | What it tells you |
+|---|---|---|---|
+| **Structure** | *What compromises are mathematically forced?* | Tightness classification (companion paper) | F+S impossible for binary attribution; enrichment is the only resolution |
+| **Existence** | *Does this dataset trigger the impossibility?* | `mi_prescreen(X)` | Which feature pairs share mutual information — even nonlinear dependence that correlation misses |
+| **Magnitude** | *How much instability, per feature?* | `coverage_conflict()` + FSI | Per-feature flip rates and importance variance |
+
+**Level 1 (Structure)** is proved once and applies universally — the [companion paper](https://github.com/DrakeCaraker/dash-impossibility-lean) establishes that MI > 0 between features implies a provable error floor of Δ/2 for any stable attribution method.
+
+**Level 2 (Existence)** is dataset-specific. `mi_prescreen()` computes pairwise MI with a permutation-based null threshold and flags "hidden" pairs where MI is significant but |Pearson ρ| is low — dependencies that standard correlation diagnostics miss. On Breast Cancer, MI catches 292/435 hidden pairs (67%). On a drug discovery dataset (BBBP), MI reduces prediction error from 23 percentage points to ~4pp vs. correlation-only screening.
+
+```python
+from dash_shap.core.diagnostics import mi_prescreen
+
+result = mi_prescreen(X)
+print(f"Hidden pairs: {result['n_hidden']}/{result['n_total_pairs']}")
+for i, j, mi, corr in result['hidden_pairs'][:5]:
+    print(f"  features {i}-{j}: MI={mi:.3f}, |ρ|={corr:.3f}")
+```
+
+**Level 3 (Magnitude)** uses coverage conflict and FSI after fitting a DASH pipeline — see the sections below. The `shap_residual()` function adds within-group attribution noise measurement: high |SHAP_r| indicates first-mover bias is actively concentrating credit.
+
+```python
+from dash_shap.core.diagnostics import shap_residual
+
+groups = [[0, 1, 2], [3, 4]]  # known or discovered feature groups
+resid = shap_residual(pipeline.all_shap_matrices_, groups)
+print(f"Per-group residual: {resid['group_mean_residual']}")
+```
+
+---
+
 ## Coverage Conflict
 
 Coverage conflict is a **sign-stability** diagnostic that complements FSI's **magnitude-stability** measurement. While FSI measures how much a feature's SHAP values vary in magnitude across models, coverage conflict measures whether models even agree on the *direction* (positive or negative) of a feature's effect.

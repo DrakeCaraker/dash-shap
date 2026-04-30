@@ -1784,6 +1784,29 @@ attributions.  In each case, the prior work establishes the
 (FSI, IS~Plot) for detecting when the problem affects a particular
 analysis.
 
+\paragraph{Quantitative bridge via mutual information.}
+The companion work also establishes a quantitative chain linking feature
+dependence to explanation error: if two features share positive mutual
+information ($I > 0$), there exist Rashomon-equivalent models whose
+attributions for those features have opposite signs; the triangle
+inequality then implies that any stable explanation has error
+$\geq \Delta/2$ on at least one witness, where $\Delta$ is the
+attribution gap between the models.  This floor is unreachable---no
+algorithm can beat it.  Mutual information thus serves as the
+\emph{exact boundary} for the impossibility: $I > 0$ triggers it,
+$I = 0$ does not.  Standard correlation-based diagnostics (Pearson
+$\rhovar$, VIF) miss nonlinear dependencies entirely (e.g., $X_2 =
+X_1^2$ yields $|\rhovar| \approx 0$, VIF $\approx 1$, but $I = 1.91$).
+On the Breast Cancer dataset, MI-based pre-screening identifies 292 of
+435 feature pairs as structurally dependent despite low linear
+correlation, each subject to the $\Delta/2$ error floor.
+\dash{} resolves this by changing the question: instead of producing a
+single ranking (which must violate either faithfulness or stability when
+$I > 0$), it aggregates across models to produce a stable consensus
+at the cost of decisive pairwise ordering---the enrichment that the
+companion paper proves is the \emph{only} structural escape from
+collapsed tightness.
+
 The implication is that the problem is not with SHAP itself---whose
 axiomatic properties (local accuracy, missingness, consistency) are
 sound for a given model---but with explaining a single

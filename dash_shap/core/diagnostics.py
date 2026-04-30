@@ -12,6 +12,8 @@ __all__ = [
     "compare_flip_predictors",
     "predict_sign_instability",
     "has_coverage_conflict",
+    "mi_prescreen",
+    "shap_residual",
 ]
 
 
@@ -469,3 +471,138 @@ def has_coverage_conflict(all_shap_matrices, feature_idx):
     has_pos = np.any(signs > 0, axis=0)  # (N',)
     has_neg = np.any(signs < 0, axis=0)  # (N',)
     return bool(np.any(has_pos & has_neg))
+
+
+def mi_prescreen(X, threshold="permutation", n_permutations=100, corr_ceiling=0.7, random_state=42):
+    """Pre-screen feature pairs for hidden dependence using mutual information.
+
+    Identifies pairs where MI > threshold but |Pearson ρ| < corr_ceiling —
+    dependencies that correlation-based diagnostics miss (e.g., X₂ = X₁²).
+    Grounded in the MI quantitative bridge theorem: MI > 0 implies a
+    provable error floor of Δ/2 for any stable explanation method.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Feature matrix, shape (N, P).
+    threshold : str or float
+        'permutation' (default): 95th percentile of MI under shuffled null.
+        float: fixed MI threshold.
+    n_permutations : int
+        Number of permutations for null distribution (default 100).
+    corr_ceiling : float
+        Maximum |Pearson ρ| to flag as "hidden" (default 0.7). Pairs above
+        this are already detectable by correlation.
+    random_state : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    dict with keys:
+        'mi_matrix': np.ndarray, shape (P, P) — pairwise MI values.
+        'corr_matrix': np.ndarray, shape (P, P) — absolute Pearson correlation.
+        'threshold': float — MI threshold used.
+        'hidden_pairs': list of (i, j, mi, corr) tuples — MI-significant, low-correlation pairs.
+        'n_hidden': int — count of hidden pairs.
+        'n_total_pairs': int — total pairs tested.
+    """
+    from sklearn.feature_selection import mutual_info_regression
+
+    N, P = X.shape
+    rng = np.random.RandomState(random_state)
+
+    # Pairwise MI
+    mi_matrix = np.zeros((P, P))
+    for j in range(P):
+        mi_vals = mutual_info_regression(X, X[:, j], random_state=random_state)
+        mi_matrix[:, j] = mi_vals
+    # Symmetrize
+    mi_matrix = (mi_matrix + mi_matrix.T) / 2
+    np.fill_diagonal(mi_matrix, 0.0)
+
+    # Absolute Pearson correlation
+    corr_matrix = np.abs(np.corrcoef(X, rowvar=False))
+    np.fill_diagonal(corr_matrix, 0.0)
+
+    # Threshold
+    if threshold == "permutation":
+        null_mis = []
+        for _ in range(n_permutations):
+            j = rng.randint(P)
+            X_shuffled = X.copy()
+            X_shuffled[:, j] = rng.permutation(X_shuffled[:, j])
+            k = rng.choice([c for c in range(P) if c != j])
+            mi_null = mutual_info_regression(
+                X_shuffled[:, j].reshape(-1, 1),
+                X_shuffled[:, k],
+                random_state=random_state,
+            )[0]
+            null_mis.append(mi_null)
+        mi_threshold = float(np.percentile(null_mis, 95))
+    else:
+        mi_threshold = float(threshold)
+
+    # Find hidden pairs
+    hidden_pairs = []
+    for i in range(P):
+        for j in range(i + 1, P):
+            if mi_matrix[i, j] > mi_threshold and corr_matrix[i, j] < corr_ceiling:
+                hidden_pairs.append((i, j, float(mi_matrix[i, j]), float(corr_matrix[i, j])))
+
+    return {
+        "mi_matrix": mi_matrix,
+        "corr_matrix": corr_matrix,
+        "threshold": mi_threshold,
+        "hidden_pairs": hidden_pairs,
+        "n_hidden": len(hidden_pairs),
+        "n_total_pairs": P * (P - 1) // 2,
+    }
+
+
+def shap_residual(all_shap_matrices, groups):
+    """Compute within-group SHAP residuals (|SHAP_r|).
+
+    For each feature group, computes the group-mean SHAP and each feature's
+    residual from that mean. High residuals indicate that models disagree
+    about credit allocation within the group — the signature of first-mover
+    bias that DASH resolves.
+
+    Parameters
+    ----------
+    all_shap_matrices : np.ndarray
+        Shape (K, N', P) — SHAP values from K models.
+    groups : list of list of int
+        Feature index groups, e.g., [[0, 1, 2], [3, 4]].
+
+    Returns
+    -------
+    dict with keys:
+        'residuals': np.ndarray, shape (K, N', P) — per-element residual from group mean.
+        'feature_mean_residual': np.ndarray, shape (P,) — mean |residual| per feature.
+        'group_mean_residual': list of float — mean |residual| per group.
+    """
+    K, N_prime, P = all_shap_matrices.shape
+    residuals = np.zeros_like(all_shap_matrices)
+
+    for group in groups:
+        if len(group) < 2:
+            continue
+        group_shap = all_shap_matrices[:, :, group]  # (K, N', G)
+        group_mean = np.mean(group_shap, axis=2, keepdims=True)  # (K, N', 1)
+        for idx, feat in enumerate(group):
+            residuals[:, :, feat] = all_shap_matrices[:, :, feat] - group_mean[:, :, 0]
+
+    feature_mean_residual = np.mean(np.abs(residuals), axis=(0, 1))  # (P,)
+
+    group_mean_residual = []
+    for group in groups:
+        if len(group) < 2:
+            group_mean_residual.append(0.0)
+        else:
+            group_mean_residual.append(float(np.mean(feature_mean_residual[group])))
+
+    return {
+        "residuals": residuals,
+        "feature_mean_residual": feature_mean_residual,
+        "group_mean_residual": group_mean_residual,
+    }
