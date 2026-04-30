@@ -50,7 +50,7 @@ Why doesn't **Stochastic Retrain** (same approach, simpler implementation) fully
 
 Use this checklist before applying DASH:
 
-- **Are your features correlated?** Check with `np.corrcoef(X)` — if any pairs have |r| > 0.7, DASH is likely beneficial. The advantage grows with correlation severity: statistically significant at ρ ≥ 0.7, substantial at ρ ≥ 0.9.
+- **Are your features dependent?** Start with `mi_prescreen(X)` — it detects nonlinear dependencies that `np.corrcoef` misses (e.g., X₂ = X₁² has |ρ|≈0 but MI=1.81). If `n_hidden > 0`, your SHAP rankings are provably unreliable. For a quick linear check, `np.corrcoef(X)` with |r| > 0.7 also works but misses nonlinear cases.
 - **Do your explanations need to be reproducible?** If you retrain the model and the feature ranking changes substantially, DASH will stabilize it. If rankings are already stable across seeds, DASH adds overhead without benefit.
 - **Do you need to audit which features are collinear proxies vs. robust drivers?** The IS plot and FSI are the only diagnostic tools for this that work without ground truth.
 
