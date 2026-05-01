@@ -268,13 +268,17 @@ All experiments use PAPER_CONFIG: M=200, K=30, N_REPS=50, ε=0.08, δ=0.05, SEED
 | 11 | Background sensitivity | `background_sensitivity.json` | Stability Δ<0.0002 across B∈{50-500}. Not critical. |
 | 12 | Asymmetric DGP | `asymmetric_dgp.json` | DASH has highest passive leak (0.089 vs SB 0.068) — equity tradeoff |
 | 14 | K sweep independence | `k_sweep_independence.json` | Stability plateaus at K≈20. DASH fails at K=1. |
+| 16 | Extensions sanity check | (stdout assertions) | Paper 2 claims: within-group π ≈ 0.5, between-group π > 0.7 |
 | 17 | High-dimensional scaling | PENDING | Deferred to future work |
+| 18 | Success criteria | (meta) | 11/11 automated criteria pass |
 
 ---
 
 ## Theory Bridge Validations
 
 These experiments validate predictions from the impossibility theorems against empirical data from the DASH pipeline. Scripts in `theory_bridge/`.
+
+All theory bridge scripts are in `theory_bridge/`. Additional scripts not individually described below: `validate_predictions.py` (master runner), `extended_predictions.py` (stability curve + DASH optimality), `eta_law_validation.py` (η law — retracted initial test), `eta_group_validation.py` (η group-mean — 12/14 after Bonferroni), `eta_definitive.py` (η definitive — random averaging control), `model_class_comparison.py` (initial comparison — superseded by rigorous version), `spectral_validation.py` (spectral + ridge predictors — nuanced), `test_interactions.py` (pairwise interactions — weakened), `cross_domain_validation.py` (7-dataset CC universality — ~58% baseline).
 
 ### Coverage Conflict (VALIDATED — HIGH confidence)
 
@@ -401,6 +405,7 @@ These results were produced during the research but subsequently invalidated by 
 
 | Function / Class | Module | Purpose |
 |---|---|---|
+| `compute_diagnostics()` | `dash_shap.core.diagnostics` | Compute consensus, variance, FSI, and global importance from SHAP matrices |
 | `mi_prescreen(X)` | `dash_shap.core.diagnostics` | Pre-pipeline: pairwise MI with permutation threshold |
 | `FeatureStabilityIndex` | `dash_shap.core.diagnostics` | FSI computation and summary |
 | `ImportanceStabilityPlot` | `dash_shap.core.diagnostics` | IS Plot with quadrant classification |
@@ -425,7 +430,7 @@ These results were produced during the research but subsequently invalidated by 
 | `causal_flags` | Label each feature: robust / collinear / fragile / unimportant | CausalResult |
 | `audit_report` | Structured stakeholder report with warnings | AuditResult |
 | `DriftMonitor` | Cosine distance between model versions | DriftAlert |
-| `ParetoSelector` | RMSE-stability Pareto frontier optimization | ParetoFrontier |
+| `ParetoSelector` (`model_selection`) | RMSE-stability Pareto frontier optimization | ParetoFrontier |
 | `federated_consensus` | Cross-site consensus without sharing data | FederatedResult |
 
 ### Baselines (11 total)
@@ -467,3 +472,24 @@ All experiments use train / val / explain / test (A4 fix). SHAP is computed on t
 M = 200, K = 30, N_REPS = 50, EPSILON = 0.08, DELTA = 0.05, SEED = 42
 Real-world: REAL_EPSILON = 0.05, epsilon_mode = 'relative'
 ```
+
+---
+
+## Documentation Index
+
+| File | Purpose |
+|------|---------|
+| [RESEARCH_REFERENCE.md](RESEARCH_REFERENCE.md) | This file — exhaustive cross-session reference |
+| [RESEARCH.md](RESEARCH.md) | Practitioner-facing research summary with key results tables |
+| [API_REFERENCE.md](API_REFERENCE.md) | Complete parameter and method documentation |
+| [EXTENSIONS_GUIDE.md](EXTENSIONS_GUIDE.md) | All 12 extensions with worked examples, organized by use case |
+| [DIAGNOSTICS.md](DIAGNOSTICS.md) | IS plots, FSI thresholds, coverage conflict, MI pre-screening, disagreement maps |
+| [GETTING_STARTED.md](GETTING_STARTED.md) | Concept-first introduction with worked examples |
+| [BENCHMARK_RESULTS.md](BENCHMARK_RESULTS.md) | Full v7 (TMLR) and v6 (ArXiv) results tables |
+| [AI_ASSISTED_DEV_GUIDE.md](AI_ASSISTED_DEV_GUIDE.md) | How this project uses AI-assisted development |
+| [CI.md](CI.md) | CI pipeline, branch guards, and quality gates |
+| [NN_GENERALIZATION_DESIGN.md](../docs/private/nn_generalization_design.md) | Neural network generalization research design (encrypted) |
+| [../EXPERIMENT_GUIDE.md](../EXPERIMENT_GUIDE.md) | Full methodology: 18 experiments, 11 methods, design decision tags |
+| [../REPRODUCE.md](../REPRODUCE.md) | Step-by-step reproduction guide with hardware requirements |
+| [../FAQ.md](../FAQ.md) | Usage, troubleshooting, parameter guidance |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | How to contribute and add extensions |
