@@ -307,7 +307,7 @@ Proactively suggest these commands when the conditions are met. Explain briefly 
 
 ## Comprehensive Results Reference
 
-This section catalogs every proved theorem, completed experiment, and validated result across the research program. Use it to understand what's available before planning work.
+**Full reference:** [docs/RESEARCH_REFERENCE.md](docs/RESEARCH_REFERENCE.md) — exhaustive documentation of every proved theorem, experiment, validation, diagnostic, and their interconnections. Read that file for methodology, provenance, implications, and caveats. The summary below is for quick lookup.
 
 ### Related Repositories
 
