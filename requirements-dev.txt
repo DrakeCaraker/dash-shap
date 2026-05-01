@@ -4,6 +4,6 @@ pytest-cov>=7.1.0,<8
 pytest-timeout>=2.3,<3
 ruff>=0.15.11,<1
 mypy>=1.19.1,<2
-pre-commit>=3.6,<5
+pre-commit>=4.3.0,<5
 pip-audit>=2.9.0,<3
 nbformat>=5.9,<6
