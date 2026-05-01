@@ -305,10 +305,207 @@ Proactively suggest these commands when the conditions are met. Explain briefly 
 - **Suggest `/experiment-summary`** when: new experiment results arrive from SageMaker or notebooks. Say: *"New results available — want me to format them?"*
 - **Suggest `/sync-check`** when: PAPER_CONFIG values are changed, or before submission prep. Say: *"Config may have drifted — want me to check consistency?"*
 
-## Research Program
+## Comprehensive Results Reference
 
-Key claim: independence between models in the DASH population cancels path-dependent noise in feature attributions. See EXPERIMENT_GUIDE.md for full methodology and method descriptions.
+This section catalogs every proved theorem, completed experiment, and validated result across the research program. Use it to understand what's available before planning work.
 
-## Related Repositories
+### Related Repositories
 
-- **[dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean)** — Lean 4 formalization of the attribution impossibility theorem (Paper 3, targeting NeurIPS 2026). Contains 58 Lean files (352 theorems, 6 axioms, 0 sorry) with formal proofs that no feature ranking can simultaneously be faithful, stable, and complete under collinearity. Uses axioms verified by `paper/proofs/verify_lemma6_algebra.py` in this repo.
+| Repo | Purpose | Lean files | Theorems | Axioms | Sorry |
+|------|---------|-----------|----------|--------|-------|
+| **[dash-shap](https://github.com/DrakeCaraker/dash-shap)** (this repo) | DASH method, experiments, PyPI package | — | — | — | — |
+| **[dash-impossibility-lean](https://github.com/DrakeCaraker/dash-impossibility-lean)** | Attribution impossibility (NeurIPS 2026) | 58 | 357 | 6 | 0 |
+| **[ostrowski-impossibility](https://github.com/DrakeCaraker/ostrowski-impossibility)** | Universal impossibility + physics (FoP/Nature) | 38 | 482 | 13 | 0 |
+
+### Proved Theorems (Lean 4, zero sorry)
+
+#### Attribution Impossibility (dash-impossibility-lean — NeurIPS scope)
+
+**Core impossibility (zero axioms):**
+- `attribution_impossibility` (Trilemma.lean) — no ranking is simultaneously faithful, stable, and complete under interchangeable components. THE core result.
+- `attribution_impossibility_weak` — weaker variant with relaxed assumptions.
+
+**Bilemma (zero axioms):**
+- `bilemma_of_compatible_eq` (Bilemma.lean) — F+S impossible for maximally incompatible explanation spaces.
+- `all_or_nothing` — explanations are either perfectly faithful (unstable) or perfectly stable (unfaithful). No smooth tradeoff.
+- `rashomon_unfaithfulness` — any stable method is unfaithful at ≥1 of every 2 Rashomon witnesses.
+- `shap_sign_bilemma`, `feature_selection_bilemma`, `counterfactual_bilemma` — three constructive ML instances (Bool/Unit, zero axioms).
+
+**Tightness classification:**
+- `tightness_dichotomy` (BeyondBinary.lean) — neutral element exists ↔ F+S achievable. Complete classification.
+- `coverageConflict_implies_no_neutral` — coverage conflict diagnoses collapsed tightness.
+- `neutral_implies_FS_achievable` — enrichment restores F+S.
+
+**Design space:**
+- `design_space_theorem` (DesignSpace.lean) — every attribution method is Family A (faithful+decisive, unstable) or Family B (faithful+stable, indecisive). No Family C.
+- `family_a_or_family_b` (DesignSpaceFull.lean) — exhaustive classification.
+- `no_complete_faithful_ranking` — completeness forces instability.
+
+**DASH optimality:**
+- `dash_unique_pareto_optimal` (ParetoOptimality.lean) — DASH is the unique Pareto-optimal resolution.
+- `pareto_frontier_dichotomy` — exactly two non-dominated strategies.
+- `dash_pareto_dominance_within_group` — DASH dominates within correlated groups.
+- `consensus_variance_from_independence` (VarianceDerivation.lean) — variance decays as σ²/M (Cramér-Rao).
+- `double_M_halves_variance_derived` — doubling M halves variance.
+- `weighted_variance_ge_consensus_variance` — no weighted scheme beats equal weighting.
+
+**Model-class instantiation:**
+- `split_gap_exact` (SplitGap.lean) — GBDT attribution ratio 1/(1-ρ²), diverges as ρ→1.
+- Lasso.lean — Lasso ratio ∞ (sign instability for all ρ>0).
+- NeuralNet.lean — NN conditional violations under symmetry breaking.
+- RandomForest.lean — RF bounded O(1/√T), convergent (independence by construction).
+
+**Quantitative bounds:**
+- `alpha_faithful_bound` (AlphaFaithful.lean) — ε-approximate faithfulness bound.
+- `stable_ranking_half_unfaithful` — stable rankings are ≥50% unfaithful.
+- `attribution_prob_half` (UnfaithfulQuantitative.lean) — probability bound for unfaithfulness.
+
+**Extensions:**
+- FairnessAudit.lean — fairness audit impossibility under collinearity.
+- MechInterp.lean — mechanistic interpretability ceiling (≥50% circuit disagreement).
+- ModelSelection.lean, CausalDiscovery.lean — additional instances.
+- RashomonUniversality.lean, RashomonInevitability.lean — Rashomon is generic.
+- FlipRate.lean, GaussianFlipRate.lean — flip rate prediction formulas.
+
+#### Universal Impossibility (ostrowski-impossibility — Nature/FoP scope)
+
+**Bilemma extensions:**
+- `approximate_bilemma` (ApproximateBilemma.lean) — F+S incompatibility survives ε-approximation at every tolerance.
+- `quantitative_bilemma` — unfaith₁ + unfaith₂ ≥ Δ − δ (triangle inequality). Tight.
+- `exact_bilemma_from_quantitative` — exact bilemma as special case of quantitative.
+
+**Enrichment theory:**
+- `forced_resolution_complete` (EnrichmentForcedResolution.lean) — collapsed tightness can ONLY be resolved by enrichment. DASH is the unique structural resolution class.
+- `prime_collapsed_tightness` — prime-indexed collapsed tightness.
+- `enrichment_cumulative_unfaithfulness_unbounded` (EnrichmentFunctor.lean) — cost of enrichment grows without bound.
+
+**Social choice:**
+- Arrow's impossibility (GeneralTheory.lean) — proved from scratch, IIA decomposition, 2 voters 3 alternatives. First Lean 4 proof.
+- May's theorem — majority rule for binary alternatives. Proved from scratch.
+
+**Physics application:**
+- Ostrowski bridge to Mathlib (`Rat.AbsoluteValue.equiv_real_or_padic`).
+- Freund-Witten three-fold zeta symmetry (FreundWitten.lean).
+- Adelic resolution uniqueness (AdelicResolution.lean).
+- Physics bilemma: spacetime geometry impossibility via Ostrowski classification.
+
+**Enrichment stack:**
+- Physical stack depth ≥ 4 (quantum, adelic, black holes, spacetime emergence).
+- `kthBit` construction proving unbounded abstract depth.
+- Gödel's incompleteness from `hasGoedelProperty` (weaker than diagonal lemma).
+
+**Cross-domain:**
+- Quantum contextuality: Bell/CHSH (16-strategy enumeration), Kochen-Specker (Peres-Mermin).
+- Navier-Stokes regularity as conditional tightness + Reynolds parameterization.
+- Circuit complexity: depth-2 parity impossibility.
+- Diophantine (DPRM) trilemma + Selmer curve.
+- Langlands functoriality, GL(2), GL(n) instances.
+- Unified N-property meta-theorem (`AbstractImpossibilityN` for any N).
+
+**MI quantitative bridge (universal repo):**
+- `mi_implies_positive_gap` — MI > 0 → ∃ models with opposite-sign attributions.
+- `total_unfaithfulness_bound` — triangle inequality on unfaithfulness.
+- `mi_quantitative_unfaithfulness` — MI > 0 → any stable explanation has error ≥ Δ/2. The exact boundary.
+
+### Completed Experiments (all 50 reps, PAPER_CONFIG, SageMaker v7)
+
+All results in `results/tables/*.json`. Source: `run_experiments_parallel.py`.
+
+| # | Experiment | JSON file | Key finding |
+|---|-----------|-----------|-------------|
+| 1 | Linear correlation sweep | `synthetic_linear_sweep.json` | DASH stability flat 0.973-0.977 across ρ=0.0-0.95; SB degrades 0.972→0.952 |
+| 2 | Overlapping correlation | `overlapping.json` | DASH's largest advantage: +0.079 stability, +0.156 top-k5 over SB |
+| 3 | Nonlinear DGP sweep | `nonlinear_sweep.json` | DASH>SR at ρ≥0.9 (0.887 vs 0.857, CIs non-overlapping); all methods degrade |
+| 4a | California Housing | `california_housing.json` | DASH 0.978 vs SB 0.969 (+0.009, p=0.063 n.s.) — mild collinearity |
+| 4b | Breast Cancer | `breast_cancer.json` | DASH 0.925 vs SB 0.376 (+0.549) — largest improvement, 21 pairs \|r\|>0.9 |
+| 4c | Superconductor | `superconductor.json` | DASH 0.964 vs SB 0.840 (+0.124); RS/NTN slightly beat DASH (81 features) |
+| 5 | Epsilon sensitivity | `epsilon_sensitivity.json` | Stability varies <0.005 across ε∈{0.03-0.10}. Robust. |
+| 6 | Ablation (M, K, ε, δ) | `ablation.json` | M insensitive past 100; K saturates at 20; δ sensitive above 0.05 |
+| 7 | Variance decomposition (marginal) | `variance_decomposition.json` | SB: 58% model variance; DASH: 21% model variance |
+| 8 | First-mover visualization | `first_mover_visualization.json` | SB/LSM concentrate; DASH distributes within group |
+| 9 | First-mover bias isolation | `first_mover_bias.json` | Concentration converges at M≥500 |
+| 10 | Table 2 extended baselines | `table2_baselines.json` | 5 additional methods at ρ=0.9 |
+| 11 | Background sensitivity | `background_sensitivity.json` | Stability Δ<0.0002 across B∈{50-500}. Not critical. |
+| 12 | Asymmetric DGP | `asymmetric_dgp.json` | DASH highest passive leak (0.089 vs SB 0.068) — equity tradeoff |
+| 13 | Crossed ANOVA (7×7) | `variance_decomposition_crossed.json` | SB: 40.6% model noise → DASH: 16.2%. 60% reduction. |
+| 14 | K sweep independence | `k_sweep_independence.json` | Stability plateaus at K≈20. DASH fails at K=1. |
+| 15 | Colsample ablation | `colsample_ablation.json` | Low colsample (0.976) >> High (0.953) at ρ=0.9; no effect at ρ=0.0 |
+| 16 | Extensions sanity check | (stdout only) | Assertions pass for Paper 2 claims |
+| 17 | High-dimensional scaling | PENDING | Deferred to future work |
+| 18 | Success criteria | (meta) | 11/11 criteria pass |
+
+### Theory Bridge Experiments (ostrowski-impossibility validated)
+
+Run via `theory_bridge/*.py`. These validate predictions from the impossibility theorems against DASH experimental data.
+
+| Experiment | Script | Key result | Status |
+|-----------|--------|------------|--------|
+| Bimodality prediction | `test_bimodality.py` | Dip p<0.002 at ρ≥0.5 (synthetic); p=0.575 on California (NOT confirmed) | VALIDATED (synthetic), NUANCED (real) |
+| Coverage conflict | `test_coverage_conflict.py` | Spearman 0.59-0.98 across 4 model classes, 3 datasets | VALIDATED |
+| Variance bound | `test_variance_bound.py` | Var[SHAP] = DASH MSE — 0/12 violations | VALIDATED |
+| First-mover SHAP correlation | `eta_shap_correlation.py` | ρ_SHAP < 0 for substitutable features (synthetic -0.11 to -0.24) | VALIDATED |
+| Model-class structure | `model_class_rigorous.py` | Within-family ρ=0.79-0.94; cross-family not significant | VALIDATED |
+| η group-mean test | `eta_group_validation.py` | 12/14 significant after Bonferroni | VALIDATED |
+| Info-theoretic predictors | `info_theoretic_validation.py` | 7 data-only predictors tested, max Spearman 0.26 — NO data-only formula | VALIDATED (negative) |
+| Spectral predictors | `spectral_validation.py` | Tautological for ridge; weak for non-ridge | NUANCED |
+| Cross-domain universality | `cross_domain_validation.py` | CC universal across 7 datasets but ~58% baseline | VALIDATED |
+| MI boundary test | `mi_only_dependence_test.py` | MI=1.91 catches X₂=X₁² that ρ=0.08 and VIF=1.008 miss | VALIDATED |
+
+### Retracted Results (do NOT use)
+
+| Result | Why retracted |
+|--------|---------------|
+| Entropy bimodality | 100% permutation artifact (discretization) |
+| Pairwise "audit pairs" | Marginal rates suffice; no pair-specific signal |
+| η = 1/g from correlation thresholds | Inverts reality for XGBoost+SHAP |
+| Data-only instability prediction | Max Spearman 0.26 — no formula exists |
+| Phase transition in stability curve | Gradual, not sharp |
+
+### API Surface
+
+**Core pipeline** (`dash_shap.core`):
+- `DASHPipeline` — full 5-stage pipeline, `.fit()`, `.fit_from_population()`, `.fit_from_attributions()`
+- `check()` — 3-line stability check API (top-level `dash_shap.check`)
+- `compute_consensus(aggregation='mean'|'pca')` — consensus with optional PCA aggregation
+
+**Diagnostics** (`dash_shap.core.diagnostics`):
+- `FeatureStabilityIndex` / `ImportanceStabilityPlot` — FSI and IS Plot
+- `coverage_conflict()` — nonparametric sign-flip predictor (Spearman 0.59-0.98)
+- `compare_flip_predictors()` — CC vs Gaussian formula comparison
+- `predict_sign_instability()` / `has_coverage_conflict()` — per-feature sign stability
+- `mi_prescreen()` — pairwise MI with permutation threshold, flags hidden pairs
+- `shap_residual()` — within-group |SHAP_r| metric
+- `local_disagreement_map()` — per-observation SHAP with error bars
+
+**Extensions** (`dash_shap.extensions`):
+- `confidence_intervals` — BCa bootstrap CI for importance, FSI, rank
+- `partial_order` — π(A>B) pairwise confidence
+- `feature_groups` — SHAP-substitutability clustering
+- `stable_feature_selection` — importance+stability composite ranking
+- `local_uncertainty` — per-observation K×P slice with sign-flip rate
+- `robust_certification` — worst-case top-k guarantee
+- `theory_bridge` — SNR, predicted flip rates, M recommendation, divergence ratio
+- `causal_flags` — robust / collinear / fragile / unimportant labels
+- `audit_report` — structured stakeholder report
+- `DriftMonitor` — cosine distance between model versions
+- `ParetoSelector` — RMSE-stability Pareto frontier
+- `federated_consensus` — cross-site consensus without data sharing
+
+**Baselines** (`dash_shap.baselines`): SingleBest, SingleBest(M=200), LargeSingleModel, LSM(Tuned), EnsembleSHAP, StochasticRetrain, RandomSelection, NaiveTopN, RandomForest, PermutationImportance, LightGBM
+
+### Paper Drafts
+
+| File | Version | Status | Scope |
+|------|---------|--------|-------|
+| `paper/draft_v7_tmlr.tex` | v7 | TMLR submission (anonymous, under review) | Method + empirical validation |
+| `paper/draft_v7_preprint.tex` | v7 | ArXiv preprint (de-anonymized) | Same content, author names visible |
+| `paper/draft_v8_reviewer_response.tex` | v8 | Reviewer response revision | Adds colsample ablation, MI quantitative bridge, enrichment theory |
+| `paper/draft_v1.tex` through `draft_v6_preprint.tex` | v1-v6 | Historical/frozen | Do not modify |
+
+### Three-Level Diagnostic Hierarchy
+
+| Level | Question | Tool | Evidence |
+|-------|----------|------|----------|
+| **Structure** | What compromises are forced? | Tightness classification (Lean) | 839 theorems across 2 repos, 0 sorry |
+| **Existence** | Does this dataset trigger it? | `mi_prescreen()` | MI catches 67-93% hidden dependencies |
+| **Magnitude** | How much instability? | `coverage_conflict()` + FSI | Spearman 0.59-0.98 against observed flip rates |
