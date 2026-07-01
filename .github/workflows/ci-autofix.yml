@@ -103,7 +103,7 @@ jobs:
         if: fromJSON(steps.guard.outputs.result).skip == true
         run: exit 0
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: fromJSON(steps.guard.outputs.result).skip != true
         with:
           ref: ${{ fromJSON(steps.pr.outputs.result).branch }}
@@ -207,7 +207,7 @@ jobs:
       matrix: ${{ fromJSON(needs.detect-conflicts.outputs.matrix) }}
       fail-fast: false
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 0
@@ -277,7 +277,7 @@ jobs:
             });
             return { branch: pr.data.head.ref };
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ fromJSON(steps.pr.outputs.result).branch }}
           fetch-depth: 0
